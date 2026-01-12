@@ -86,11 +86,11 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         return self.send_text(text)
 
     def send_image_to_window(self, window: MacOSWindow, image_base64: str) -> bool:
-        """向指定窗口发送图片（base64编码）
+        """向指定窗口发送图片（纯 base64 编码）
 
         Args:
             window: 窗口对象
-            image_base64: base64 编码的图片数据
+            image_base64: base64 编码的图片数据（不带 data: 前缀）
 
         Returns:
             bool: 是否发送成功

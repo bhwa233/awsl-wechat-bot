@@ -5,7 +5,7 @@
 
 import requests
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from config import config
 
 logger = logging.getLogger(__name__)
@@ -77,7 +77,7 @@ class CommandService:
         logger.debug(f"未找到匹配的命令")
         return None
 
-    def execute_command(self, command_key: str, params: str = "") -> Optional[str]:
+    def execute_command(self, command_key: str, params: str = "") -> Optional[Dict]:
         """
         执行命令并返回结果
 
@@ -86,7 +86,8 @@ class CommandService:
             params: 命令参数
 
         Returns:
-            str: 命令执行结果文本，失败返回 None
+            Dict: {"content": "...", "type": "text|image"}，失败返回 None
+            - type 为 "image" 时，content 是带 data: 前缀的 base64 图片
         """
         try:
             # 构建 API URL
@@ -110,15 +111,21 @@ class CommandService:
             )
             response.raise_for_status()
 
-            # 解析响应 - API 返回格式 {"content": "...", "type": "text"}
+            # 解析响应 - API 返回格式 {"content": "...", "type": "text|image"}
             data = response.json()
             response_content = data.get('content', '')
+            response_type = data.get('type', 'text')
+
+            # 如果是图片类型，去掉 data: 前缀
+            if response_type == 'image' and response_content.startswith('data:'):
+                # 格式: data:image/png;base64,xxxxx
+                response_content = response_content.split(',', 1)[1] if ',' in response_content else response_content
 
             # DEBUG 模式：打印 API 返回值
             if config.DEBUG:
-                logger.debug(f"API返回: 长度={len(response_content)} 内容={repr(response_content)}")
+                logger.debug(f"API返回: type={response_type} 长度={len(response_content)}")
 
-            return response_content
+            return {"content": response_content, "type": response_type}
 
         except Exception as e:
             logger.error(f"执行命令 {command_key} 失败: {e}")

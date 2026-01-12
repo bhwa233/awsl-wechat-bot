@@ -341,7 +341,11 @@ class AWSlBot:
                         logger.info(f"[{group_name}] 执行命令: {content[0]}")
                         res = self.command_service.execute_command(content[0], content[1])
                         if res:
-                            self.wechat.send_text_to_window(window, res)
+                            if res.get("type") == "image":
+                                # base64 图片
+                                self.wechat.send_image_to_window(window, res["content"])
+                            else:
+                                self.wechat.send_text_to_window(window, res["content"])
                     # 刷新命令列表
                     elif trigger_type == "command_refresh":
                         logger.info(f"[{group_name}] 刷新命令列表")
