@@ -44,48 +44,50 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 40px;
+            background: #f5f5f5;
+            padding: 32px;
             min-height: 100vh;
         }
         .container {
             max-width: 800px;
             margin: 0 auto;
             background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            background: #1a1a2e;
             color: white;
-            padding: 30px 40px;
+            padding: 28px 36px;
         }
-        .header h1 { font-size: 28px; margin-bottom: 15px; text-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .header .meta { font-size: 14px; opacity: 0.9; }
-        .header .meta span { margin-right: 20px; }
-        .content { padding: 40px; color: #333; line-height: 1.8; }
+        .header h1 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
+        .header .meta { font-size: 13px; opacity: 0.8; }
+        .header .meta span { margin-right: 24px; }
+        .content { padding: 36px; color: #333; line-height: 1.75; font-size: 15px; }
         .content h1 { display: none; }
         .content h2 {
-            color: #4facfe;
-            font-size: 20px;
-            margin: 25px 0 15px 0;
+            color: #1a1a2e;
+            font-size: 17px;
+            font-weight: 600;
+            margin: 28px 0 14px 0;
             padding-bottom: 8px;
-            border-bottom: 2px solid #e0e0e0;
+            border-bottom: 1px solid #eee;
         }
-        .content h3 { color: #555; font-size: 16px; margin: 20px 0 10px 0; }
+        .content h2:first-child { margin-top: 0; }
+        .content h3 { color: #444; font-size: 15px; font-weight: 600; margin: 20px 0 10px 0; }
         .content p { margin: 10px 0; text-align: justify; }
-        .content ul, .content ol { margin: 10px 0 10px 25px; }
-        .content li { margin: 8px 0; }
-        .content strong { color: #4facfe; }
+        .content ul, .content ol { margin: 10px 0 10px 20px; }
+        .content li { margin: 6px 0; }
+        .content strong { color: #1a1a2e; font-weight: 600; }
         .content hr { display: none; }
         .footer {
-            background: #f8f9fa;
-            padding: 20px 40px;
-            text-align: center;
-            color: #888;
-            font-size: 12px;
-            border-top: 1px solid #e0e0e0;
+            background: #fafafa;
+            padding: 16px 36px;
+            text-align: right;
+            color: #999;
+            font-size: 11px;
+            border-top: 1px solid #eee;
         }
     </style>
 </head>
@@ -94,16 +96,15 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="header">
             <h1>$title</h1>
             <div class="meta">
-                <span>📅 $date</span>
-                <span>💬 $msg_count 条消息</span>
-                <span>🕐 $gen_time</span>
+                <span>$date</span>
+                <span>$msg_count 条消息</span>
             </div>
         </div>
         <div class="content">
             $content
         </div>
         <div class="footer">
-            由 AI 自动生成 · AWSL WeChat Bot
+            $gen_time
         </div>
     </div>
 </body>
@@ -201,7 +202,7 @@ def generate_ranking(sender_stats: dict[str, tuple[int, int]], top_n: int = 10) 
     # 计算总字数
     total_chars = sum(chars for _, chars in sender_stats.values())
 
-    lines = ["## 📊 发言排行榜", ""]
+    lines = ["## 发言排行榜", ""]
     for i, (sender, (count, chars)) in enumerate(sorted_senders):
         icon = rank_icons[i] if i < len(rank_icons) else f"#{i + 1}"
         lines.append(f"- {icon} **{sender}** - {count} 条消息 / {chars} 字")
@@ -480,7 +481,7 @@ def render_to_image(
     template = Template(HTML_TEMPLATE)
     import html
     safe_group = html.escape(group_name) if group_name else ""
-    title = f"📊 【{safe_group}】群聊总结" if safe_group else "📊 群聊总结"
+    title = f"【{safe_group}】群聊总结" if safe_group else "群聊总结"
     full_html = template.safe_substitute(
         title=title,
         date=date_str,
