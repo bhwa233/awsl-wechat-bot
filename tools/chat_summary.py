@@ -557,16 +557,18 @@ def render_to_image(
         pixels = img.load()
         width, height = img.size
 
-        # 从底部向上扫描，找到白色容器（footer）的底部
-        # footer 背景是 #f8f9fa (248, 249, 250)，容器底部有圆角
+        # 从底部向上扫描，找到容器底部
+        # 背景色是 #f5f5f5 (245, 245, 245)，容器内是白色或浅灰 #fafafa
+        # 找到第一个非背景色的像素位置
         bottom = height
         center_x = width // 2  # 检测中心位置
+        bg_color = (245, 245, 245)  # #f5f5f5
 
         for y in range(height - 1, 100, -1):
             r, g, b = pixels[center_x, y][:3]
-            # 检测到浅灰色 footer 或白色内容区域
-            if r > 240 and g > 240 and b > 240:
-                bottom = y + 50  # 留 50px 底部边距
+            # 检测到非背景色（容器内的颜色）
+            if not (r == bg_color[0] and g == bg_color[1] and b == bg_color[2]):
+                bottom = y + 40  # 留 40px 底部边距
                 break
 
         # 裁剪图片
