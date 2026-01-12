@@ -261,9 +261,10 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         import base64
-        from PIL import Image
+        import tempfile
+        import os
+        import struct
         import win32clipboard
-        import io
 
         logger.debug(f"[send_image_to_window] 向窗口 {window.Name} 发送图片...")
 
@@ -271,22 +272,29 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         self.activate_specific_window(window)
 
         try:
-            # 解码 base64 数据
+            # 解码 base64 数据并保存为临时文件
             image_data = base64.b64decode(image_base64)
 
-            # 使用 PIL 读取图片
-            img = Image.open(io.BytesIO(image_data))
+            # 根据 magic bytes 检测图片格式
+            suffix = '.png'
+            if image_data[:2] == b'\xff\xd8':
+                suffix = '.jpg'
+            elif image_data[:4] == b'GIF8':
+                suffix = '.gif'
+            elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
+                suffix = '.webp'
 
-            # 转换为 BMP 格式（Windows 剪贴板支持）
-            output = io.BytesIO()
-            img.convert("RGB").save(output, "BMP")
-            bmp_data = output.getvalue()[14:]  # 移除 BMP 文件头
-            output.close()
+            fd, temp_path = tempfile.mkstemp(suffix=suffix)
+            with os.fdopen(fd, 'wb') as f:
+                f.write(image_data)
 
-            # 复制到剪贴板
+            # 使用 CF_HDROP 格式将文件复制到剪贴板（保持原始格式）
+            temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
+            dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
+
             win32clipboard.OpenClipboard()
             win32clipboard.EmptyClipboard()
-            win32clipboard.SetClipboardData(win32clipboard.CF_DIB, bmp_data)
+            win32clipboard.SetClipboardData(win32clipboard.CF_HDROP, dropfiles)
             win32clipboard.CloseClipboard()
 
             time.sleep(0.3)
@@ -296,6 +304,13 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
             # 发送
             window.SendKeys('{ENTER}', waitTime=0.2)
+
+            # 延迟删除临时文件
+            time.sleep(1)
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
 
             logger.info(f"✓ 图片发送成功到 [{window.Name}]")
             return True
