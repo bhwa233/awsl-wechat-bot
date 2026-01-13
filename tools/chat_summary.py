@@ -45,48 +45,85 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             background: #f5f5f5;
-            padding: 32px;
+            padding: 40px;
             min-height: 100vh;
         }
         .container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             background: white;
-            border-radius: 8px;
+            border-radius: 12px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
             overflow: hidden;
         }
         .header {
             background: #1a1a2e;
             color: white;
-            padding: 28px 36px;
+            padding: 36px 48px;
         }
-        .header h1 { font-size: 22px; font-weight: 600; margin-bottom: 12px; }
-        .header .meta { font-size: 13px; opacity: 0.8; }
-        .header .meta span { margin-right: 24px; }
-        .content { padding: 36px; color: #333; line-height: 1.75; font-size: 15px; }
+        .header h1 { font-size: 32px; font-weight: 600; margin-bottom: 14px; }
+        .header .meta { font-size: 20px; opacity: 0.8; }
+        .header .meta span { margin-right: 32px; }
+        .content { padding: 20px 24px; color: #333; line-height: 1.8; font-size: 22px; }
         .content h1 { display: none; }
         .content h2 {
             color: #1a1a2e;
-            font-size: 17px;
+            font-size: 26px;
             font-weight: 600;
-            margin: 28px 0 14px 0;
-            padding-bottom: 8px;
+            margin: 0;
+            padding: 16px 20px;
+            background: #f8f9fa;
             border-bottom: 1px solid #eee;
         }
-        .content h2:first-child { margin-top: 0; }
-        .content h3 { color: #444; font-size: 15px; font-weight: 600; margin: 20px 0 10px 0; }
-        .content p { margin: 10px 0; text-align: justify; }
-        .content ul, .content ol { margin: 10px 0 10px 20px; }
-        .content li { margin: 6px 0; }
+        .content h3 {
+            color: #1a1a2e;
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0;
+            padding: 14px 20px;
+            background: #f0f0f0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .content .section-card {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            margin: 12px 0;
+            overflow: hidden;
+        }
+        .content .section-card > p,
+        .content .section-card > ul,
+        .content .section-card > ol {
+            padding: 16px 20px 16px 48px;
+            margin: 0;
+        }
+        .content .topic-card {
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 6px;
+            margin: 16px 20px;
+            overflow: hidden;
+        }
+        .content .topic-card ul {
+            margin: 0;
+            padding: 14px 20px;
+            list-style: none;
+        }
+        .content .topic-card li {
+            margin: 10px 0;
+            padding-left: 0;
+        }
+        .content p { margin: 16px 0; text-align: justify; }
+        .content ul, .content ol { margin: 16px 0 16px 32px; }
+        .content li { margin: 10px 0; }
         .content strong { color: #1a1a2e; font-weight: 600; }
         .content hr { display: none; }
         .footer {
             background: #fafafa;
-            padding: 16px 36px;
+            padding: 20px 48px;
             text-align: right;
             color: #999;
-            font-size: 11px;
+            font-size: 16px;
             border-top: 1px solid #eee;
         }
     </style>
@@ -386,61 +423,72 @@ def _get_group_display_name(db_path: str, group_id: str) -> str:
 
 
 def markdown_to_html(md_text: str) -> str:
-    """将 Markdown 转换为 HTML"""
-    try:
-        import markdown
-        return markdown.markdown(md_text, extensions=['tables', 'fenced_code'])
-    except ImportError:
-        # 简单的 Markdown 转换
-        import re
-        lines = md_text.split('\n')
-        html_lines = []
-        in_list = False
+    """将 Markdown 转换为 HTML，使用卡片形式"""
+    import re
+    lines = md_text.split('\n')
+    html_lines = []
+    in_list = False
+    in_card = False  # 是否在卡片内（h2 或 h3 都用同一个卡片样式）
 
-        for line in lines:
-            stripped = line.strip()
+    for line in lines:
+        stripped = line.strip()
 
-            # 标题
-            if stripped.startswith('### '):
-                if in_list:
-                    html_lines.append('</ul>')
-                    in_list = False
-                html_lines.append(f'<h3>{stripped[4:]}</h3>')
-            elif stripped.startswith('## '):
-                if in_list:
-                    html_lines.append('</ul>')
-                    in_list = False
-                html_lines.append(f'<h2>{stripped[3:]}</h2>')
-            elif stripped.startswith('# '):
-                if in_list:
-                    html_lines.append('</ul>')
-                    in_list = False
-                html_lines.append(f'<h1>{stripped[2:]}</h1>')
-            # 列表项
-            elif stripped.startswith('- '):
-                if not in_list:
-                    html_lines.append('<ul>')
-                    in_list = True
-                content = stripped[2:]
-                content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', content)
-                html_lines.append(f'<li>{content}</li>')
-            # 空行
-            elif not stripped:
-                if in_list:
-                    html_lines.append('</ul>')
-                    in_list = False
-            # 普通段落
-            else:
-                if in_list:
-                    html_lines.append('</ul>')
-                    in_list = False
-                content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', stripped)
-                html_lines.append(f'<p>{content}</p>')
+        # h3 标题 - 新卡片
+        if stripped.startswith('### '):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            if in_card:
+                html_lines.append('</div>')
+            html_lines.append('<div class="section-card">')
+            html_lines.append(f'<h3>{stripped[4:]}</h3>')
+            in_card = True
+        # h2 标题 - 新卡片
+        elif stripped.startswith('## '):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            if in_card:
+                html_lines.append('</div>')
+            html_lines.append('<div class="section-card">')
+            html_lines.append(f'<h2>{stripped[3:]}</h2>')
+            in_card = True
+        # h1 标题
+        elif stripped.startswith('# '):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            if in_card:
+                html_lines.append('</div>')
+                in_card = False
+            html_lines.append(f'<h1>{stripped[2:]}</h1>')
+        # 列表项
+        elif stripped.startswith('- '):
+            if not in_list:
+                html_lines.append('<ul>')
+                in_list = True
+            content = stripped[2:]
+            content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', content)
+            html_lines.append(f'<li>{content}</li>')
+        # 空行
+        elif not stripped:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+        # 普通段落
+        else:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            content = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', stripped)
+            html_lines.append(f'<p>{content}</p>')
 
-        if in_list:
-            html_lines.append('</ul>')
+    if in_list:
+        html_lines.append('</ul>')
+    if in_card:
+        html_lines.append('</div>')
 
-        return '\n'.join(html_lines)
+    return '\n'.join(html_lines)
 
 
 def render_to_image(
@@ -470,12 +518,12 @@ def render_to_image(
     # 将 markdown 转为 HTML
     html_content = markdown_to_html(summary)
 
-    # 根据内容估算高度（每个字符约 0.5-1px，加上基础高度）
-    base_height = 300  # header + footer + padding
-    content_height = len(summary) * 0.8 + summary.count('\n') * 25
+    # 根据内容估算高度（字体增大两倍，相应调整参数）
+    base_height = 500  # header + footer + padding
+    content_height = len(summary) * 1.6 + summary.count('\n') * 50
     estimated_height = int(base_height + content_height)
     # 设置一个足够大的高度，确保不截断
-    render_height = max(estimated_height, 1000) + 500
+    render_height = max(estimated_height, 1500) + 800
 
     # 生成完整 HTML（使用 Template 避免花括号冲突）
     template = Template(HTML_TEMPLATE)
