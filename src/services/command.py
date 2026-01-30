@@ -98,15 +98,15 @@ class CommandService:
             if params:
                 full_command = f"{command_key} {params}"
 
-            # query string 只包含 command 参数
-            query_params = {'command': full_command}
+            # 构建 JSON 请求体
+            json_body = {'command': full_command}
 
-            logger.info(f"调用命令 API: {url} with params: {query_params}")
+            logger.info(f"调用命令 API: POST {url} with body: {json_body}")
 
-            response = requests.get(
+            response = requests.post(
                 url,
-                params=query_params,
-                headers={'accept': 'application/json'},
+                json=json_body,
+                headers={'accept': 'application/json', 'Content-Type': 'application/json'},
                 timeout=30
             )
             response.raise_for_status()
