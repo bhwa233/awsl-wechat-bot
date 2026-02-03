@@ -3,12 +3,26 @@
 动态加载和管理来自 API 的命令
 """
 
-import requests
+import httpx
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 from config import config
 
 logger = logging.getLogger(__name__)
+
+# 全局 httpx 客户端，复用连接池
+_http_client: Optional[httpx.Client] = None
+
+
+def get_http_client() -> httpx.Client:
+    """获取全局 httpx 客户端实例"""
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.Client(
+            timeout=httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0),
+            limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+        )
+    return _http_client
 
 
 class CommandService:
@@ -27,10 +41,11 @@ class CommandService:
             bool: 是否成功加载
         """
         try:
-            response = requests.get(
+            client = get_http_client()
+            response = client.get(
                 f"{self.api_base_url}/command/hp",
                 headers={'accept': 'application/json'},
-                timeout=30
+                timeout=30.0
             )
             response.raise_for_status()
 
@@ -103,11 +118,11 @@ class CommandService:
 
             logger.info(f"调用命令 API: POST {url} with body: {json_body}")
 
-            response = requests.post(
+            client = get_http_client()
+            response = client.post(
                 url,
                 json=json_body,
                 headers={'accept': 'application/json', 'Content-Type': 'application/json'},
-                timeout=30
             )
             response.raise_for_status()
 
