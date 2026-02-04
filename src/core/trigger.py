@@ -28,7 +28,7 @@ class TriggerMatcher:
             if content.lower().startswith(at_pattern.lower()):
                 after_at = content[len(at_pattern):].strip()
                 # 转换为 "a xxx" 格式，继续走后续匹配逻辑
-                content = f"{config.TRIGGER_KEYWORD} {after_at}"
+                content = f"a {after_at}"
 
         content_lower = content.lower()
         keyword_lower = config.TRIGGER_KEYWORD.lower()
