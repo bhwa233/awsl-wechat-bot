@@ -7,7 +7,7 @@ import logging
 import sqlite3
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 from croniter import croniter
 
@@ -64,6 +64,8 @@ class ScheduledTaskService:
     """定时任务服务"""
 
     _CACHE_TTL_SECONDS = 120
+    _EXECUTION_WINDOW_SECONDS = 30  # 执行窗口（秒）
+    _DB_BUSY_TIMEOUT_MS = 5000      # 数据库繁忙超时（毫秒）
 
     def __init__(self, db_path: str):
         """
@@ -78,7 +80,7 @@ class ScheduledTaskService:
         # 启用 WAL 模式以支持并发读写
         self.conn.execute('PRAGMA journal_mode=WAL')
         # 设置更短的超时时间
-        self.conn.execute('PRAGMA busy_timeout=5000')
+        self.conn.execute(f'PRAGMA busy_timeout={self._DB_BUSY_TIMEOUT_MS}')
 
         self.db_lock = threading.Lock()
         self._run_cache_lock = threading.Lock()
@@ -189,12 +191,12 @@ class ScheduledTaskService:
                 )
                 self.conn.commit()
                 task_id = cursor.lastrowid
-
-                # 返回创建的任务
-                return self.get_task(task_id)
             except sqlite3.Error as e:
                 logger.error(f"创建定时任务失败: {e}")
                 return None
+
+        # 返回创建的任务（在锁外读取）
+        return self.get_task(task_id)
 
     def get_task(self, task_id: int) -> Optional[ScheduledTask]:
         """
@@ -377,55 +379,71 @@ class ScheduledTaskService:
             # 获取上次应该运行的时间（本地时间）
             prev_run_local = cron.get_prev(datetime)
 
-            # 获取下次应该运行的时间
-            next_run = cron.get_next(datetime)
-
             # 计算当前时间距离上次应该执行的时间差（秒）
             time_since_prev = (current_time - prev_run_local).total_seconds()
 
-            # 如果距离上次执行时间在30秒内，认为当前在执行窗口内
-            # 窗口设置为30秒，容忍调度器5秒检查间隔的延迟（最多6次检查机会）
-            in_execution_window = 0 <= time_since_prev <= 30
+            # 如果距离上次执行时间在窗口内，认为当前在执行窗口内
+            in_execution_window = 0 <= time_since_prev <= self._EXECUTION_WINDOW_SECONDS
 
-            # 防止同一计划触发时间被重复执行（内存缓存）
-            if in_execution_window:
-                cached_prev = self._get_cached_run(task.id)
-                if cached_prev is not None and cached_prev == prev_run_local:
-                    return False
-
-            # 如果从未运行过，只有在执行窗口内才运行
-            if task.last_run is None or not task.last_run.strip():
-                if in_execution_window:
-                    self._set_cached_run(task.id, prev_run_local)
-                    return True
+            if not in_execution_window:
                 return False
 
-            # 解析最后运行时间（数据库存储的是 UTC 时间）
-            try:
-                # 尝试多种时间格式
-                last_run_str = task.last_run.replace('Z', '+00:00')
-                # SQLite CURRENT_TIMESTAMP 格式: YYYY-MM-DD HH:MM:SS (UTC)
-                if ' ' in last_run_str and '+' not in last_run_str:
-                    last_run_utc = datetime.strptime(last_run_str, '%Y-%m-%d %H:%M:%S')
-                else:
-                    last_run_utc = datetime.fromisoformat(last_run_str)
-            except (ValueError, AttributeError) as e:
-                logger.warning(f"无法解析任务 {task.id} 的 last_run 时间 '{task.last_run}': {e}，视为从未运行")
-                return in_execution_window
+            # 防止同一计划触发时间被重复执行（内存缓存）
+            cached_prev = self._get_cached_run(task.id)
+            if cached_prev is not None and cached_prev == prev_run_local:
+                return False
+
+            # 如果从未运行过，执行
+            if task.last_run is None or not task.last_run.strip():
+                self._set_cached_run(task.id, prev_run_local)
+                return True
+
+            # 解析最后运行时间并比较
+            last_run_dt = self._parse_last_run(task.last_run)
+            if last_run_dt is None:
+                # 解析失败，视为从未运行
+                self._set_cached_run(task.id, prev_run_local)
+                return True
 
             # 将本地时间的 prev_run 转换为 UTC 进行比较
-            # 计算本地时间与 UTC 的时差
-            utc_offset = datetime.now() - datetime.utcnow()
-            prev_run_utc = prev_run_local - utc_offset
+            local_tz = datetime.now().astimezone().tzinfo
+            prev_run_utc = prev_run_local.replace(tzinfo=local_tz).astimezone(timezone.utc).replace(tzinfo=None)
 
-            # 比较两个 UTC 时间：如果上次应该运行的时间在最后运行时间之后，且当前在执行窗口内，说明需要运行
-            should_fire = prev_run_utc > last_run_utc and in_execution_window
-            if should_fire:
+            # 如果上次应该运行的时间在最后运行时间之后，说明需要运行
+            if prev_run_utc > last_run_dt:
                 self._set_cached_run(task.id, prev_run_local)
-            return should_fire
+                return True
+
+            return False
+
         except Exception as e:
             logger.error(f"检查任务 {task.id} 运行时间失败: {e}")
             return False
+
+    def _parse_last_run(self, last_run_str: str) -> Optional[datetime]:
+        """
+        解析 last_run 时间字符串
+
+        Args:
+            last_run_str: 时间字符串（UTC）
+
+        Returns:
+            datetime 对象（无时区信息，UTC），解析失败返回 None
+        """
+        try:
+            last_run_str = last_run_str.replace('Z', '+00:00')
+            # SQLite CURRENT_TIMESTAMP 格式: YYYY-MM-DD HH:MM:SS (UTC)
+            if ' ' in last_run_str and '+' not in last_run_str:
+                return datetime.strptime(last_run_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                # ISO 格式，移除时区信息以便比较
+                dt = datetime.fromisoformat(last_run_str)
+                if dt.tzinfo is not None:
+                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return dt
+        except (ValueError, AttributeError) as e:
+            logger.warning(f"无法解析 last_run 时间 '{last_run_str}': {e}")
+            return None
 
     def _get_cached_run(self, task_id: int) -> Optional[datetime]:
         with self._run_cache_lock:
@@ -461,13 +479,13 @@ class ScheduledTaskService:
             name=row[1],
             cron_expression=row[2],
             message=row[3],
-            message_type=row[4] if len(row) > 10 else "text",  # 新增字段，兼容旧数据
-            image_base64=row[5] if len(row) > 10 else "",  # 新增字段，兼容旧数据
-            target_groups=row[6] if len(row) > 10 else row[4],  # 兼容旧数据
-            enabled=bool(row[7] if len(row) > 10 else row[5]),  # 兼容旧数据
-            created_at=row[8] if len(row) > 10 else row[6],  # 兼容旧数据
-            updated_at=row[9] if len(row) > 10 else row[7],  # 兼容旧数据
-            last_run=row[10] if len(row) > 10 else row[8]  # 兼容旧数据
+            message_type=row[4] or "text",
+            image_base64=row[5] or "",
+            target_groups=row[6] or "",
+            enabled=bool(row[7]),
+            created_at=row[8],
+            updated_at=row[9],
+            last_run=row[10] if len(row) > 10 else None
         )
 
     def close(self):
