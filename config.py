@@ -27,8 +27,12 @@ class Config(BaseSettings):
     # 检查消息间隔（秒）
     CHECK_INTERVAL: int = 3
 
-    # 触发冷却时间（秒）
-    TRIGGER_COOLDOWN: int = 10
+    # 触发冷却时间（秒）- 群级冷却
+    TRIGGER_COOLDOWN: int = 3
+
+    # 并发处理配置
+    MAX_CONCURRENT_TASKS: int = 5       # 线程池大小
+    GLOBAL_SEND_INTERVAL: float = 10.0  # 全局发送间隔（秒）
 
     # 调试模式（输出每次检测到的所有消息）
     DEBUG: bool = False

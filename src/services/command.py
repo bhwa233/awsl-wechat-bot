@@ -146,25 +146,6 @@ class CommandService:
             logger.error(f"执行命令 {command_key} 失败: {e}")
             return None
 
-    def _format_response(self, data) -> str:
-        """格式化 API 响应为可读文本"""
-        if isinstance(data, str):
-            return data
-        elif isinstance(data, list):
-            # 数组类型，逐行显示
-            return '\n'.join(str(item) for item in data)
-        elif isinstance(data, dict):
-            # 字典类型，格式化显示
-            lines = []
-            for key, value in data.items():
-                if isinstance(value, (dict, list)):
-                    lines.append(f"{key}: {str(value)}")
-                else:
-                    lines.append(f"{key}: {value}")
-            return '\n'.join(lines)
-        else:
-            return str(data)
-
     def get_help_text(self) -> str:
         """获取命令帮助文本"""
         if not self.commands:

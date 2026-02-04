@@ -2,6 +2,7 @@
 HTTP API 认证模块
 """
 
+import hmac
 from typing import Optional
 from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -26,7 +27,7 @@ def verify_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(s
             headers={"WWW-Authenticate": "Bearer"}
         )
 
-    if credentials.credentials != config.HTTP_API_TOKEN:
+    if not hmac.compare_digest(credentials.credentials, config.HTTP_API_TOKEN):
         raise HTTPException(
             status_code=401,
             detail="无效的 Token",

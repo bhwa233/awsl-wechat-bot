@@ -36,7 +36,7 @@ def create_routes(bot_instance):
         """健康检查"""
         return {
             "status": "healthy",
-            "groups_count": len(bot_instance.groups),
+            "groups_count": len(bot_instance.group_windows),
             "server_time": datetime.now().isoformat(),
             "timezone": time.strftime("%Z"),
             "timezone_offset": time.strftime("%z"),

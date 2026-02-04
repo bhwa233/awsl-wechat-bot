@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 
 from .models import ChatSummaryRequest
+from src.models.tasks import SendTask
 
 logger = logging.getLogger(__name__)
 
@@ -81,24 +82,21 @@ class TaskScheduler:
                 target_groups = []
 
             if not target_groups:
-                groups_to_send = self.bot.groups
+                groups_to_send = list(self.bot.group_windows.keys())
             else:
-                groups_to_send = [g for g in self.bot.groups if g["name"] in target_groups]
+                groups_to_send = [name for name in target_groups if name in self.bot.group_windows]
 
-            for group in groups_to_send:
-                if not group["window"].Exists(0.5):
-                    logger.debug(f"群 [{group['name']}] 窗口已关闭，跳过")
-                    continue
+            is_image = task.message_type == "image"
+            content = task.image_base64 if is_image else task.message
 
-                try:
-                    if task.message_type == "image":
-                        self.bot.wechat.send_image_to_window(group["window"], task.image_base64)
-                        logger.info(f"[Scheduler] 定时任务图片已发送到 [{group['name']}]")
-                    else:
-                        self.bot.wechat.send_text_to_window(group["window"], task.message)
-                        logger.info(f"[Scheduler] 定时任务消息已发送到 [{group['name']}]")
-                except Exception as e:
-                    logger.error(f"[Scheduler] 定时任务发送失败 [{group['name']}]: {e}")
+            for group_name in groups_to_send:
+                send_task = SendTask(
+                    group_name=group_name,
+                    content=content,
+                    is_image=is_image,
+                )
+                self.bot.send(send_task)
+
         finally:
             # summary 类型任务由回调处理 task.id 移除，其他类型在此处移除
             if task.message_type != "summary":

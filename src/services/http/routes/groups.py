@@ -20,13 +20,13 @@ def create_routes(bot_instance):
     async def list_groups():
         """列出所有聊天窗口"""
         groups = []
-        for group in bot_instance.groups:
+        for group_name, window in bot_instance.group_windows.items():
             try:
-                is_active = group["window"].Exists(0.5)
-                groups.append(GroupInfo(name=group["name"], active=is_active))
+                is_active = window.Exists(0.5)
+                groups.append(GroupInfo(name=group_name, active=is_active))
             except Exception as e:
-                logger.error(f"检查群组 {group['name']} 状态失败: {e}")
-                groups.append(GroupInfo(name=group["name"], active=False))
+                logger.error(f"检查群组 {group_name} 状态失败: {e}")
+                groups.append(GroupInfo(name=group_name, active=False))
         return groups
 
     return router
