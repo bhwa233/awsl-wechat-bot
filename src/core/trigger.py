@@ -21,6 +21,16 @@ class TriggerMatcher:
             return (None, "")
 
         content = text.strip()
+
+        # @BOT_NAME 触发 -> 转换为 AI 触发（不区分大小写）
+        if config.BOT_NAME:
+            at_pattern = f"@{config.BOT_NAME}"
+            if content.lower().startswith(at_pattern.lower()):
+                after_at = content[len(at_pattern):].strip()
+                if after_at:
+                    return (TriggerType.AI, after_at)
+                return (None, "")
+
         content_lower = content.lower()
         keyword_lower = config.TRIGGER_KEYWORD.lower()
 

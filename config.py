@@ -59,6 +59,19 @@ class Config(BaseSettings):
     HTTP_API_HOST: str = "0.0.0.0"
     HTTP_API_PORT: int = 8000
     HTTP_API_TOKEN: str = ""  # Bearer Token 认证，为空则不启用认证
+    HTTP_API_BASE_URL: str = "http://localhost:8000"  # 内部回调地址
+
+    # 机器人名称（@BOT_NAME 触发，替换为 "a " + 文本）
+    BOT_NAME: str = ""
+
+    # 微信数据库解密/总结配置
+    WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
+    WECHAT_DB_OUTPUT_PATH: str = ""  # 解密后输出目录
+    WECHAT_DB_KEY: str = ""          # 数据库解密密钥
+
+    def has_wechat_db_config(self) -> bool:
+        """检查微信数据库配置是否完整"""
+        return bool(self.WECHAT_DB_INPUT_PATH and self.WECHAT_DB_OUTPUT_PATH and self.WECHAT_DB_KEY)
 
     model_config = SettingsConfigDict(
         env_file=".env",

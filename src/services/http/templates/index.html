@@ -664,23 +664,12 @@
                             <p style="font-size: 13px; color: #78350f; margin-bottom: 10px;">
                                 群聊总结会自动解密数据库、获取聊天记录、生成 AI 总结并发送图片到群聊。
                             </p>
-                            <div style="font-size: 12px; color: #92400e;">
-                                <strong>必填字段：</strong>
-                                <ul style="margin: 5px 0 0 20px;">
-                                    <li><code>input_path</code> - 微信数据目录路径</li>
-                                    <li><code>key</code> - 解密密钥</li>
-                                    <li><code>output_path</code> - 解密输出目录</li>
-                                    <li><code>api_base</code> - API 基础地址</li>
-                                    <li><code>groups</code> - 群聊列表，每项包含 group_id 和 group_name</li>
-                                </ul>
-                            </div>
+                            <p style="font-size: 12px; color: #92400e;">
+                                数据库路径和密钥使用服务器环境变量配置 (WECHAT_DB_*)，此处只需配置目标群聊。
+                            </p>
                         </div>
-                        <label for="taskSummaryConfig">总结配置 (JSON)</label>
-                        <textarea id="taskSummaryConfig" style="min-height: 200px; font-family: 'Courier New', monospace;" placeholder='{
-  "input_path": "C:\\Users\\xxx\\Documents\\xwechat_files\\wxid_xxx",
-  "key": "解密密钥",
-  "output_path": "C:\\decrypted",
-  "api_base": "http://localhost:8000",
+                        <label for="taskSummaryConfig">目标群聊 (JSON)</label>
+                        <textarea id="taskSummaryConfig" style="min-height: 120px; font-family: 'Courier New', monospace;" placeholder='{
   "groups": [
     {"group_id": "xxx@chatroom", "group_name": "群聊名称"}
   ]
@@ -1022,7 +1011,6 @@
                         const groupNames = config.groups ? config.groups.map(g => g.group_name).join(', ') : '未配置';
                         messageContent = `<div style="font-size: 12px;">
                             <div><strong>目标群聊:</strong> ${groupNames}</div>
-                            <div><strong>API:</strong> ${config.api_base || '未配置'}</div>
                         </div>`;
                     } catch (e) {
                         messageContent = '<span style="color: #ef4444;">配置解析失败</span>';
@@ -1248,8 +1236,8 @@
                     try {
                         const config = JSON.parse(configText);
                         // 验证必填字段
-                        if (!config.input_path || !config.key || !config.output_path || !config.api_base || !config.groups) {
-                            showMessage('taskFormResultMessage', '配置缺少必填字段 (input_path, key, output_path, api_base, groups)', 'error');
+                        if (!config.groups || !Array.isArray(config.groups) || config.groups.length === 0) {
+                            showMessage('taskFormResultMessage', '配置缺少 groups 字段或 groups 为空', 'error');
                             btn.disabled = false;
                             btnText.textContent = originalText;
                             return;

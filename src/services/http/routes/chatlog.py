@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from config import config
 from ..auth import verify_token
 from ..models import (
-    ChatlogDecryptRequest, ChatlogGroupResponse, ChatlogMessageResponse,
+    ChatlogGroupResponse, ChatlogMessageResponse,
     ChatSummaryRequest, ChatSummaryResponse
 )
 from src.utils.wechat_chatlog import WeChatDBDecryptor, WeChatDBReader, HAS_CRYPTO
@@ -26,23 +26,26 @@ def create_routes():
     """创建路由"""
 
     @router.post("/decrypt", dependencies=[Depends(verify_token)])
-    async def decrypt_database(request: ChatlogDecryptRequest):
-        """解密微信数据库"""
+    async def decrypt_database():
+        """解密微信数据库（使用全局配置）"""
         if not HAS_CRYPTO:
             raise HTTPException(status_code=500, detail="服务器缺少 pycryptodome 依赖")
 
-        if not os.path.isdir(request.input_path):
-            raise HTTPException(status_code=400, detail=f"输入目录不存在: {request.input_path}")
+        if not config.has_wechat_db_config():
+            raise HTTPException(status_code=400, detail="微信数据库配置不完整")
+
+        if not os.path.isdir(config.WECHAT_DB_INPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"输入目录不存在: {config.WECHAT_DB_INPUT_PATH}")
 
         try:
-            decryptor = WeChatDBDecryptor(request.key)
-            count = decryptor.decrypt_directory(request.input_path, request.output_path)
+            decryptor = WeChatDBDecryptor(config.WECHAT_DB_KEY)
+            count = decryptor.decrypt_directory(config.WECHAT_DB_INPUT_PATH, config.WECHAT_DB_OUTPUT_PATH)
             logger.info(f"[HTTP API] 解密完成: {count} 个文件")
             return {
                 "success": True,
                 "message": f"成功解密 {count} 个文件",
                 "count": count,
-                "output_path": request.output_path
+                "output_path": config.WECHAT_DB_OUTPUT_PATH
             }
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
@@ -52,14 +55,16 @@ def create_routes():
 
     @router.get("/groups", response_model=List[ChatlogGroupResponse], dependencies=[Depends(verify_token)])
     async def list_chat_groups(
-        db_path: str = Query(..., description="解密后的数据库目录"),
         limit: int = Query(0, description="限制返回数量，0 表示不限制")
     ):
         """列出所有群聊"""
-        if not os.path.isdir(db_path):
-            raise HTTPException(status_code=400, detail=f"目录不存在: {db_path}")
+        if not config.has_wechat_db_config():
+            raise HTTPException(status_code=400, detail="微信数据库配置不完整")
 
-        reader = WeChatDBReader(db_path)
+        if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
+
+        reader = WeChatDBReader(config.WECHAT_DB_OUTPUT_PATH)
         try:
             groups = reader.list_groups(limit=limit)
             return [
@@ -82,15 +87,17 @@ def create_routes():
 
     @router.get("/messages", response_model=List[ChatlogMessageResponse], dependencies=[Depends(verify_token)])
     async def query_messages(
-        db_path: str = Query(..., description="解密后的数据库目录"),
         group: str = Query(..., description="群聊ID 或个人微信ID"),
         start: Optional[str] = Query(None, description="开始时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         end: Optional[str] = Query(None, description="结束时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         limit: int = Query(100, description="限制返回数量")
     ):
         """查询聊天记录"""
-        if not os.path.isdir(db_path):
-            raise HTTPException(status_code=400, detail=f"目录不存在: {db_path}")
+        if not config.has_wechat_db_config():
+            raise HTTPException(status_code=400, detail="微信数据库配置不完整")
+
+        if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
 
         start_time = end_time = None
         try:
@@ -105,7 +112,7 @@ def create_routes():
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"无效的时间格式: {e}")
 
-        reader = WeChatDBReader(db_path)
+        reader = WeChatDBReader(config.WECHAT_DB_OUTPUT_PATH)
         try:
             messages = reader.get_messages(
                 talker=group,
@@ -142,12 +149,16 @@ def create_routes():
 
         异步启动解密和总结任务。同一时间只允许一个总结任务运行。
         """
-        # 构建配置
+        # 校验必要配置
+        if not config.has_wechat_db_config():
+            raise HTTPException(status_code=400, detail="微信数据库配置不完整")
+
+        # 构建配置（使用全局 config 中的路径）
         summary_config = SummaryConfig(
-            input_path=request.input_path,
-            key=request.key,
-            output_path=request.output_path,
-            api_base=request.api_base,
+            input_path=config.WECHAT_DB_INPUT_PATH,
+            key=config.WECHAT_DB_KEY,
+            output_path=config.WECHAT_DB_OUTPUT_PATH,
+            api_base=config.HTTP_API_BASE_URL,
             groups=[SummaryGroup(group_id=g.group_id, group_name=g.group_name) for g in request.groups],
             token=config.HTTP_API_TOKEN or None
         )

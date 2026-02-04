@@ -73,22 +73,6 @@ class ScheduledTaskResponse(BaseModel):
 # 聊天记录相关
 # ============================================================
 
-class ChatlogDecryptRequest(BaseModel):
-    """解密数据库请求"""
-    input_path: str
-    key: str
-    output_path: str
-
-
-class ChatlogQueryRequest(BaseModel):
-    """查询聊天记录请求"""
-    db_path: str
-    group: str
-    start: Optional[str] = None
-    end: Optional[str] = None
-    limit: int = 100
-
-
 class ChatlogGroupResponse(BaseModel):
     """群聊信息响应"""
     username: str
@@ -118,10 +102,6 @@ class ChatSummaryGroup(BaseModel):
 
 class ChatSummaryRequest(BaseModel):
     """发送群聊总结请求"""
-    input_path: str
-    key: str
-    output_path: str
-    api_base: str
     groups: List[ChatSummaryGroup]
 
 
