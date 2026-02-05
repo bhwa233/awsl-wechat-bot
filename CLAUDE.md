@@ -90,7 +90,7 @@ cp .env.example .env
 - `TRIGGER_COOLDOWN: 3` - 群级冷却秒数
 - `MAX_CONCURRENT_TASKS: 5` - 线程池大小
 - `GLOBAL_SEND_INTERVAL: 10.0` - 全局发送间隔秒数
-- `BOT_NAME` - 机器人名称（@触发）
+- `BOT_NAMES` - 机器人名称列表（@触发，逗号分隔）
 - `HTTP_API_TOKEN` - Bearer Token 认证
 - `HTTP_API_BASE_URL` - 内部回调地址
 - `WECHAT_DB_*` - 微信数据库解密配置

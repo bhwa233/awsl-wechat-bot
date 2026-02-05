@@ -23,12 +23,15 @@ class TriggerMatcher:
         content = text.strip()
 
         # @BOT_NAME 触发 -> 转换为 TRIGGER_KEYWORD + 空格 + 内容，走统一匹配流程
-        if config.BOT_NAME:
-            at_pattern = f"@{config.BOT_NAME}"
+        for bot_name in config.BOT_NAMES:
+            if not bot_name:
+                continue
+            at_pattern = f"@{bot_name}"
             if content.lower().startswith(at_pattern.lower()):
                 after_at = content[len(at_pattern):].strip()
                 # 转换为 "a xxx" 格式，继续走后续匹配逻辑
                 content = f"a {after_at}"
+                break
 
         content_lower = content.lower()
         keyword_lower = config.TRIGGER_KEYWORD.lower()

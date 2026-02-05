@@ -61,8 +61,8 @@ class Config(BaseSettings):
     HTTP_API_TOKEN: str = ""  # Bearer Token 认证，为空则不启用认证
     HTTP_API_BASE_URL: str = "http://localhost:8000"  # 内部回调地址
 
-    # 机器人名称（@BOT_NAME 触发，替换为 "a " + 文本）
-    BOT_NAME: str = ""
+    # 机器人名称列表（@名称 触发，替换为 "a " + 文本，支持多个名称，逗号分隔）
+    BOT_NAMES: list[str] = []
 
     # 微信数据库解密/总结配置
     WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
