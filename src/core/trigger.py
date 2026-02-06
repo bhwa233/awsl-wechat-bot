@@ -22,7 +22,7 @@ class TriggerMatcher:
 
         content = text.strip()
 
-        # @BOT_NAME 触发 -> 转换为 TRIGGER_KEYWORD + 空格 + 内容，走统一匹配流程
+        # @BOT_NAMES 触发 -> 转换为 TRIGGER_KEYWORD + 空格 + 内容，走统一匹配流程
         for bot_name in config.BOT_NAMES:
             if not bot_name:
                 continue
