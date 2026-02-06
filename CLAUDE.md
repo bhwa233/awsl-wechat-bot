@@ -56,7 +56,7 @@ cp .env.example .env
 - `src/core/detector.py` - 消息检测器，每群一个线程
 - `src/core/dispatcher.py` - 任务分发器，ThreadPoolExecutor 并发处理
 - `src/core/sender.py` - 消息发送器，全局限速
-- `src/core/trigger.py` - 触发词匹配逻辑（支持 @BOT_NAME 和关键词触发）
+- `src/core/trigger.py` - 触发词匹配逻辑（支持 @BOT_NAMES 和关键词触发）
 - `src/models/tasks.py` - 数据模型 (SendTask, MessageTask, TriggerType)
 - `src/storage/message_db.py` - SQLite 消息去重，sha256 哈希
 
