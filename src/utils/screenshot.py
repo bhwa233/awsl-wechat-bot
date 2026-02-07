@@ -4,7 +4,7 @@
 
 import subprocess
 import time
-from config import Config
+from config import config
 
 
 def get_window_info(process_name: str = "WeChat") -> dict:
@@ -20,9 +20,9 @@ def get_window_info(process_name: str = "WeChat") -> dict:
     end tell
     '''
     try:
-        result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=Config.APPLESCRIPT_TIMEOUT_SHORT)
+        result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=config.APPLESCRIPT_TIMEOUT_SHORT)
     except subprocess.TimeoutExpired:
-        print(f"获取窗口信息超时（{Config.APPLESCRIPT_TIMEOUT_SHORT}秒）")
+        print(f"获取窗口信息超时（{config.APPLESCRIPT_TIMEOUT_SHORT}秒）")
         return None
 
     if result.returncode == 0:
@@ -43,10 +43,10 @@ def capture_screen_region(x: int, y: int, w: int, h: int, output_path: str):
 
 def calc_screenshot_region(win: dict) -> tuple:
     """根据窗口信息计算截图区域"""
-    x = win['x'] + int(win['w'] * Config.SCREENSHOT_LEFT_RATIO)
-    y = win['y'] + int(win['h'] * Config.SCREENSHOT_TOP_RATIO)
-    w = int(win['w'] * Config.SCREENSHOT_WIDTH_RATIO)
-    h = int(win['h'] * Config.SCREENSHOT_HEIGHT_RATIO)
+    x = win['x'] + int(win['w'] * config.SCREENSHOT_LEFT_RATIO)
+    y = win['y'] + int(win['h'] * config.SCREENSHOT_TOP_RATIO)
+    w = int(win['w'] * config.SCREENSHOT_WIDTH_RATIO)
+    h = int(win['h'] * config.SCREENSHOT_HEIGHT_RATIO)
     return x, y, w, h
 
 

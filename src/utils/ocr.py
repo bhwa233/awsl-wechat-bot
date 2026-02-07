@@ -9,8 +9,8 @@ import tempfile
 from Foundation import NSURL
 import Vision
 
-from config import Config
-from utils_screenshot import get_window_info, capture_screen_region, calc_screenshot_region
+from config import config
+from src.utils.screenshot import get_window_info, capture_screen_region, calc_screenshot_region
 
 
 def ocr_image(image_path: str) -> list:
@@ -30,7 +30,7 @@ def ocr_image(image_path: str) -> list:
     request.setRecognitionLanguages_(['zh-Hans', 'zh-Hant', 'en'])
     request.setAutomaticallyDetectsLanguage_(True)
     request.setMinimumTextHeight_(0.01)
-    request.setCustomWords_(Config.OCR_CUSTOM_WORDS)
+    request.setCustomWords_(config.OCR_CUSTOM_WORDS)
 
     success, error = handler.performRequests_error_([request], None)
     if not success:

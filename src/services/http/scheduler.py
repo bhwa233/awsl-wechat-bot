@@ -129,7 +129,7 @@ class TaskScheduler:
             request = ChatSummaryRequest(**config_dict)
 
             # 从全局配置读取数据库相关参数
-            if not app_config.wechat_db_configured:
+            if not app_config.has_wechat_db_config():
                 logger.error("[Scheduler] 总结任务失败: WECHAT_DB_* 环境变量未配置")
                 self._cleanup_executing_task(task_id)
                 return

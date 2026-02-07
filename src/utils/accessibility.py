@@ -21,10 +21,12 @@ def get_messages_via_accessibility(process_name: str = "WeChat") -> list:
     Returns:
         list: 消息文本列表 ['消息1', '消息2', ...]
     """
-    script_path = os.path.join(
+    script_path = os.path.abspath(os.path.join(
         os.path.dirname(__file__),
+        '..',
+        'scripts',
         'get_messages.applescript'
-    )
+    ))
 
     if not os.path.exists(script_path):
         logger.error(f"找不到 AppleScript 文件: {script_path}")
