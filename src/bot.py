@@ -150,11 +150,12 @@ class AWSlBot:
 
         # 主循环
         try:
-            while True:
+            while self.running:
                 time.sleep(1)
                 alive_threads = [t for t in self._group_threads.values() if t.is_alive()]
                 if not alive_threads:
                     logger.warning("所有检测线程已退出")
+                    self._shutdown()
                     break
         except KeyboardInterrupt:
             logger.info("收到停止信号")
