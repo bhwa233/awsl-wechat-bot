@@ -66,13 +66,17 @@ class MessageSender:
                 self._wait_for_rate_limit()
 
                 # 发送消息
+                send_ok = False
                 if task.is_image:
-                    self.wechat.send_image_to_window(window, task.content)
+                    send_ok = self.wechat.send_image_to_window(window, task.content)
                 else:
-                    self.wechat.send_text_to_window(window, task.content)
+                    send_ok = self.wechat.send_text_to_window(window, task.content)
 
-                self._last_send_time = time.time()
-                logger.info(f"[{task.group_name}] 消息已发送")
+                if send_ok:
+                    self._last_send_time = time.time()
+                    logger.info(f"[{task.group_name}] 消息已发送")
+                else:
+                    logger.warning(f"[{task.group_name}] 消息发送失败")
 
             except Exception as e:
                 logger.error(f"发送消息出错: {e}", exc_info=True)
