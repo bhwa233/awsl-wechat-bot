@@ -25,7 +25,7 @@ class Config(BaseSettings):
     COMMAND_API_BASE_URL: str = "https://your-api-domain.com/api"
 
     # 检查消息间隔（秒）
-    CHECK_INTERVAL: int = 3
+    CHECK_INTERVAL: int = 1
 
     # 触发冷却时间（秒）- 群级冷却
     TRIGGER_COOLDOWN: int = 3

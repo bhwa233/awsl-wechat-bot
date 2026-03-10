@@ -24,6 +24,7 @@ class MessageDetector:
         message_queue: queue.Queue,
         db: MessageDatabase,
         trigger_matcher: TriggerMatcher,
+        webhook_service=None,
     ):
         self.group_name = group_name
         self.window = window
@@ -31,6 +32,7 @@ class MessageDetector:
         self.message_queue = message_queue
         self.db = db
         self.trigger_matcher = trigger_matcher
+        self.webhook_service = webhook_service
         self._running = False
         self._check_count = 0
 
@@ -123,6 +125,10 @@ class MessageDetector:
                 if config.DEBUG:
                     logger.debug(f"[{self.group_name}] 非最新消息，跳过触发: {msg[:30]}...")
                 continue
+
+            # 对最后一条新消息触发 webhook（fire 内部异步发送）
+            if self.webhook_service:
+                self.webhook_service.fire(self.group_name, msg)
 
             trigger_type, content = self.trigger_matcher.match(msg)
             if trigger_type:

@@ -49,6 +49,7 @@ class AWSlBot:
         )
         self._group_threads: dict[str, Any] = {}  # {group_name: thread} 内部使用
         self.http_thread = None
+        self.webhook_service = None  # 由 HTTPServer 初始化后注入
 
         logger.info("AWSL Bot 初始化完成")
 
@@ -123,6 +124,9 @@ class AWSlBot:
         # 启动分发线程
         self.dispatcher.start()
 
+        # 启动 HTTP API 服务（需在创建检测线程之前，以便注入 webhook_service）
+        self._start_http_server()
+
         # 为每个群创建检测线程
         for group_name, window in self.group_windows.items():
             detector = MessageDetector(
@@ -132,6 +136,7 @@ class AWSlBot:
                 message_queue=self.message_queue,
                 db=self.db,
                 trigger_matcher=self.trigger_matcher,
+                webhook_service=self.webhook_service,
             )
             thread = threading.Thread(
                 target=detector.run,
@@ -142,10 +147,7 @@ class AWSlBot:
             self._group_threads[group_name] = thread
             logger.info(f"已启动检测线程: {group_name}")
 
-        # 启动 HTTP API 服务
-        self._start_http_server()
-
-        print(f"\n✓ 正在监听 {len(self.group_windows)} 个群...")
+        print(f"\n正在监听 {len(self.group_windows)} 个群...")
         print("按 Ctrl+C 停止监听\n")
 
         # 主循环
@@ -184,4 +186,6 @@ class AWSlBot:
         self.running = False
         self.dispatcher.stop()
         self.sender.stop()
+        if self.webhook_service:
+            self.webhook_service.close()
         self.db.close()

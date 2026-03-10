@@ -30,46 +30,6 @@ class GroupInfo(BaseModel):
 
 
 # ============================================================
-# 定时任务相关
-# ============================================================
-
-class ScheduledTaskCreate(BaseModel):
-    """创建定时任务请求"""
-    name: str
-    cron_expression: str
-    message: Optional[str] = ""
-    message_type: str = "text"
-    image_base64: Optional[str] = ""
-    target_groups: List[str] = []
-
-
-class ScheduledTaskUpdate(BaseModel):
-    """更新定时任务请求"""
-    name: Optional[str] = None
-    cron_expression: Optional[str] = None
-    message: Optional[str] = None
-    message_type: Optional[str] = None
-    image_base64: Optional[str] = None
-    target_groups: Optional[List[str]] = None
-    enabled: Optional[bool] = None
-
-
-class ScheduledTaskResponse(BaseModel):
-    """定时任务响应"""
-    id: int
-    name: str
-    cron_expression: str
-    message: str
-    message_type: str
-    image_base64: str
-    target_groups: List[str]
-    enabled: bool
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    last_run: Optional[str] = None
-
-
-# ============================================================
 # 聊天记录相关
 # ============================================================
 

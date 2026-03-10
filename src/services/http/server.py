@@ -9,8 +9,9 @@ from fastapi import FastAPI
 import uvicorn
 
 from ..scheduled_task import ScheduledTaskService
+from ..webhook import WebhookService
 from .scheduler import TaskScheduler
-from .routes import health, groups, messages, tasks, chatlog
+from .routes import health, groups, messages, tasks, chatlog, webhooks
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,17 @@ class HTTPServer:
         )
 
         # 初始化定时任务服务
-        db_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
-            'scheduled_tasks.db'
-        )
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+        db_path = os.path.join(project_root, 'scheduled_tasks.db')
         self.task_service = ScheduledTaskService(db_path)
+
+        # 初始化 Webhook 服务
+        webhook_db_path = os.path.join(project_root, 'webhooks.db')
+        self.webhook_service = WebhookService(webhook_db_path)
+
+        # 将 webhook_service 挂到 bot 实例上，供 detector 使用
+        if bot_instance:
+            bot_instance.webhook_service = self.webhook_service
 
         # 初始化调度器
         self.scheduler = TaskScheduler(self.task_service, bot_instance)
@@ -54,6 +61,9 @@ class HTTPServer:
 
         # 聊天记录路由
         self.app.include_router(chatlog.create_routes())
+
+        # Webhook 路由
+        self.app.include_router(webhooks.create_routes(self.webhook_service))
 
     def run(self, host: str = "0.0.0.0", port: int = 8000):
         """运行 HTTP 服务器"""
