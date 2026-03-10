@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWSL Daemon Controller</title>
+    <style>
+        /* ===== Theme Variables ===== */
+        :root {
+            --bg-gradient-start: #e8edf5;
+            --bg-gradient-end: #dce2ee;
+            --card-bg: rgba(255, 255, 255, 0.95);
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.10);
+            --header-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+            --text-primary: #333;
+            --text-secondary: #666;
+            --stat-bg: #f8fafc;
+            --input-border: #e5e7eb;
+            --input-bg: #fff;
+            --auth-bg: #fef3c7;
+            --auth-border: #f59e0b;
+            --auth-label: #92400e;
+            --auth-ok-bg: #d1fae5;
+            --auth-ok-border: #10b981;
+            --auth-ok-label: #065f46;
+            --status-running-bg: #d1fae5;
+            --status-stopped-bg: #fee2e2;
+            --update-output-bg: #f8fafc;
+            --update-output-border: #e2e8f0;
+            --health-ok-bg: #f0fdf4;
+            --health-fail-bg: #fef2f2;
+        }
+
+        [data-theme="dark"] {
+            --bg-gradient-start: #1e3a5f;
+            --bg-gradient-end: #0f2027;
+            --card-bg: rgba(30, 42, 60, 0.95);
+            --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+            --header-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --stat-bg: rgba(255, 255, 255, 0.06);
+            --input-border: #475569;
+            --input-bg: #1e293b;
+            --auth-bg: #422006;
+            --auth-border: #b45309;
+            --auth-label: #fbbf24;
+            --auth-ok-bg: #064e3b;
+            --auth-ok-border: #059669;
+            --auth-ok-label: #6ee7b7;
+            --status-running-bg: #064e3b;
+            --status-stopped-bg: #450a0a;
+            --update-output-bg: #1e293b;
+            --update-output-border: #334155;
+            --health-ok-bg: #064e3b;
+            --health-fail-bg: #450a0a;
+        }
+
+        /* ===== Base Reset ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+            background: linear-gradient(135deg, var(--bg-gradient-start) 0%, var(--bg-gradient-end) 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--text-primary);
+            transition: background 0.3s;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        /* ===== Header ===== */
+        .header {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: var(--header-shadow);
+            position: relative;
+        }
+
+        .header h1 {
+            color: var(--text-primary);
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* ===== Theme Toggle ===== */
+        .theme-toggle {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--input-border);
+            border-radius: 10px;
+            background: var(--stat-bg);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            color: var(--text-primary);
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        .theme-toggle:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .theme-toggle:active {
+            transform: translateY(0);
+        }
+
+        .theme-toggle .icon-sun,
+        .theme-toggle .icon-moon {
+            display: none;
+        }
+
+        [data-theme="light"] .theme-toggle .icon-moon {
+            display: block;
+        }
+
+        [data-theme="dark"] .theme-toggle .icon-sun {
+            display: block;
+        }
+
+        /* ===== Auth Section ===== */
+        .auth-section {
+            background: var(--auth-bg);
+            border: 2px solid var(--auth-border);
+            border-radius: 12px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+
+        .auth-section.authenticated {
+            background: var(--auth-ok-bg);
+            border-color: var(--auth-ok-border);
+        }
+
+        .auth-section label {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--auth-label);
+            margin-bottom: 8px;
+        }
+
+        .auth-section.authenticated label {
+            color: var(--auth-ok-label);
+        }
+
+        .auth-input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .auth-input-group input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 2px solid var(--input-border);
+            border-radius: 8px;
+            font-size: 14px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+        }
+
+        /* ===== Card ===== */
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: var(--card-shadow);
+        }
+
+        .card h2 {
+            color: var(--text-primary);
+            margin-bottom: 16px;
+            font-size: 20px;
+        }
+
+        /* ===== Status Bar ===== */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+        }
+
+        .status-bar.running {
+            background: var(--status-running-bg);
+            border: 2px solid #10b981;
+        }
+
+        .status-bar.stopped {
+            background: var(--status-stopped-bg);
+            border: 2px solid #ef4444;
+        }
+
+        .status-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .status-bar.running .status-dot {
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+
+        .status-bar.stopped .status-dot {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        .status-info {
+            flex: 1;
+        }
+
+        .status-info .label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .status-info .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* ===== Status Grid ===== */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .stat-item {
+            background: var(--stat-bg);
+            border-radius: 10px;
+            padding: 14px;
+            text-align: center;
+        }
+
+        .stat-item .stat-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .stat-item .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* ===== Buttons (colors unchanged across themes) ===== */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-start {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-stop {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn-restart {
+            background: #f59e0b;
+            color: white;
+        }
+
+        .btn-update {
+            background: #6366f1;
+            color: white;
+        }
+
+        .btn-refresh {
+            background: #0ea5e9;
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 6px 14px;
+            font-size: 13px;
+        }
+
+        /* ===== Log Section ===== */
+        .log-container {
+            position: relative;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .log-header h2 {
+            margin-bottom: 0;
+        }
+
+        .log-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .log-controls label {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .log-controls input[type="number"] {
+            width: 70px;
+            padding: 5px 8px;
+            border: 2px solid var(--input-border);
+            border-radius: 6px;
+            font-size: 13px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+        }
+
+        .log-controls input[type="checkbox"] {
+            margin-right: 2px;
+        }
+
+        /* log-box stays dark in both themes */
+        .log-box {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 10px;
+            padding: 16px;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-box:empty::after {
+            content: '暂无日志';
+            color: #666;
+        }
+
+        /* ===== Toast (colors unchanged) ===== */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 10px;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 1000;
+            opacity: 0;
+            transform: translateX(100px);
+            transition: all 0.3s;
+            max-width: 400px;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast.success {
+            background: #10b981;
+        }
+
+        .toast.error {
+            background: #ef4444;
+        }
+
+        .toast.info {
+            background: #0ea5e9;
+        }
+
+        /* ===== Update Output ===== */
+        .update-output {
+            background: var(--update-output-bg);
+            border: 1px solid var(--update-output-border);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+            color: var(--text-primary);
+        }
+
+        /* ===== Spinner ===== */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="切换主题">
+                <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            <h1>AWSL Daemon Controller</h1>
+            <div class="subtitle">Bot 进程管理 &middot; 远程控制 &middot; 代码更新</div>
+
+            <div class="auth-section" id="authSection">
+                <label>Bearer Token</label>
+                <div class="auth-input-group">
+                    <input type="password" id="tokenInput" placeholder="输入 API Token" />
+                    <button class="btn btn-refresh btn-sm" onclick="saveToken()">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Bot 状态</h2>
+            <div class="status-bar stopped" id="statusBar">
+                <div class="status-dot"></div>
+                <div class="status-info">
+                    <div class="label">当前状态</div>
+                    <div class="value" id="statusText">获取中...</div>
+                </div>
+            </div>
+
+            <div class="status-grid">
+                <div class="stat-item">
+                    <div class="stat-label">PID</div>
+                    <div class="stat-value" id="pidValue">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">运行时间</div>
+                    <div class="stat-value" id="uptimeValue">-</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">重启次数</div>
+                    <div class="stat-value" id="restartCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">自动重启</div>
+                    <div class="stat-value" id="autoRestart">-</div>
+                </div>
+                <div class="stat-item" id="healthItem">
+                    <div class="stat-label">Health Check</div>
+                    <div class="stat-value" id="healthValue">-</div>
+                </div>
+            </div>
+
+            <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;" id="lastReason"></div>
+
+            <div class="btn-group">
+                <button class="btn btn-start" id="btnStart" onclick="doAction('start')">启动</button>
+                <button class="btn btn-stop" id="btnStop" onclick="doAction('stop')">停止</button>
+                <button class="btn btn-restart" id="btnRestart" onclick="doAction('restart')">重启</button>
+                <button class="btn btn-update" id="btnUpdate" onclick="doUpdate()">更新代码</button>
+                <button class="btn btn-refresh btn-sm" onclick="refreshStatus()">刷新</button>
+            </div>
+
+            <div class="update-output" id="updateOutput"></div>
+        </div>
+
+        <div class="card log-container">
+            <div class="log-header">
+                <h2>Bot 日志</h2>
+                <div class="log-controls">
+                    <label>
+                        <input type="checkbox" id="autoRefreshLog" checked />
+                        自动刷新
+                    </label>
+                    <label>行数</label>
+                    <input type="number" id="logLines" value="200" min="1" max="10000" />
+                    <button class="btn btn-refresh btn-sm" onclick="refreshLogs()">刷新</button>
+                </div>
+            </div>
+            <div class="log-box" id="logBox"></div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const $ = id => document.getElementById(id);
+
+        // Token 管理
+        function getToken() {
+            return localStorage.getItem('daemon_token') || '';
+        }
+
+        function saveToken() {
+            const token = $('tokenInput').value.trim();
+            localStorage.setItem('daemon_token', token);
+            updateAuthUI();
+            refreshStatus();
+            showToast('Token 已保存', 'success');
+        }
+
+        function updateAuthUI() {
+            const section = $('authSection');
+            const token = getToken();
+            if (token) {
+                section.classList.add('authenticated');
+                section.querySelector('label').textContent = 'Token 已配置';
+            } else {
+                section.classList.remove('authenticated');
+                section.querySelector('label').textContent = 'Bearer Token';
+            }
+        }
+
+        // API 请求
+        async function api(method, path, opts = {}) {
+            const token = getToken();
+            const headers = {};
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+            if (opts.json) headers['Content-Type'] = 'application/json';
+
+            const res = await fetch(path, {
+                method,
+                headers,
+                body: opts.json ? JSON.stringify(opts.json) : undefined,
+            });
+
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`${res.status}: ${text}`);
+            }
+
+            if (opts.text) return res.text();
+            return res.json();
+        }
+
+        // Toast
+        function showToast(msg, type = 'info') {
+            const toast = $('toast');
+            toast.textContent = msg;
+            toast.className = `toast ${type} show`;
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+
+        // 格式化运行时间
+        function formatUptime(seconds) {
+            if (!seconds) return '-';
+            const d = Math.floor(seconds / 86400);
+            const h = Math.floor((seconds % 86400) / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (d > 0) return `${d}d ${h}h ${m}m`;
+            if (h > 0) return `${h}h ${m}m ${s}s`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+        }
+
+        // 刷新状态
+        async function refreshStatus() {
+            try {
+                const data = await api('GET', '/status');
+                const bar = $('statusBar');
+                const running = data.running;
+
+                bar.className = `status-bar ${running ? 'running' : 'stopped'}`;
+                $('statusText').textContent = running ? '运行中' : '已停止';
+                $('pidValue').textContent = data.pid || '-';
+                $('uptimeValue').textContent = formatUptime(data.uptime_seconds);
+                $('restartCount').textContent = data.restart_count;
+                $('autoRestart').textContent = data.auto_restart ? '开启' : '关闭';
+
+                // Health check 状态
+                const hf = data.health_failures || 0;
+                const healthEl = $('healthValue');
+                const healthItem = $('healthItem');
+                if (!running) {
+                    healthEl.textContent = '-';
+                    healthEl.style.color = '';
+                    healthItem.style.background = '';
+                } else if (hf === 0) {
+                    healthEl.textContent = '正常';
+                    healthEl.style.color = '#10b981';
+                    healthItem.style.background = 'var(--health-ok-bg)';
+                } else {
+                    healthEl.textContent = `异常 (${hf}/3)`;
+                    healthEl.style.color = '#ef4444';
+                    healthItem.style.background = 'var(--health-fail-bg)';
+                }
+
+                if (data.last_restart_reason) {
+                    $('lastReason').textContent = `上次原因: ${data.last_restart_reason}`;
+                } else {
+                    $('lastReason').textContent = '';
+                }
+
+                $('btnStart').disabled = running;
+                $('btnStop').disabled = !running;
+            } catch (e) {
+                $('statusText').textContent = '连接失败';
+                showToast(e.message, 'error');
+            }
+        }
+
+        // 操作按钮
+        async function doAction(action) {
+            const btn = $(`btn${action.charAt(0).toUpperCase() + action.slice(1)}`);
+            const origText = btn.textContent;
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner"></span>${origText}`;
+
+            try {
+                const data = await api('POST', `/${action}`);
+                showToast(data.message, data.ok ? 'success' : 'error');
+            } catch (e) {
+                showToast(e.message, 'error');
+            } finally {
+                btn.textContent = origText;
+                btn.disabled = false;
+                setTimeout(refreshStatus, 500);
+            }
+        }
+
+        // 更新代码
+        async function doUpdate() {
+            const btn = $('btnUpdate');
+            const output = $('updateOutput');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>更新中...';
+            output.style.display = 'block';
+            output.textContent = '正在执行: git pull + pip install ...\n';
+
+            try {
+                const data = await api('POST', '/update');
+                let text = '';
+                if (data.git_pull) {
+                    text += '=== git pull ===\n';
+                    text += data.git_pull.stdout || '';
+                    if (data.git_pull.stderr) text += data.git_pull.stderr;
+                    text += '\n';
+                }
+                if (data.pip_install) {
+                    text += '=== pip install ===\n';
+                    text += data.pip_install.stdout || '';
+                    if (data.pip_install.stderr) text += data.pip_install.stderr;
+                    text += '\n';
+                }
+                text += `\n${data.message || ''}`;
+                if (data.daemon_updated) {
+                    text += '\n\ndaemon.py 已更新，页面将在数秒后自动刷新...';
+                    setTimeout(() => location.reload(), 5000);
+                }
+                output.textContent = text;
+                showToast(data.message, 'success');
+            } catch (e) {
+                output.textContent = `错误: ${e.message}`;
+                showToast(e.message, 'error');
+            } finally {
+                btn.textContent = '更新代码';
+                btn.disabled = false;
+                setTimeout(refreshStatus, 1000);
+            }
+        }
+
+        // 刷新日志
+        async function refreshLogs() {
+            const lines = $('logLines').value || 200;
+            try {
+                const text = await api('GET', `/logs?lines=${lines}`, { text: true });
+                const box = $('logBox');
+                const wasAtBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+                box.textContent = text;
+                if (wasAtBottom) box.scrollTop = box.scrollHeight;
+            } catch (e) {
+                // 静默失败
+            }
+        }
+
+        // 自动刷新
+        let statusTimer, logTimer;
+
+        function startAutoRefresh() {
+            statusTimer = setInterval(refreshStatus, 5000);
+            logTimer = setInterval(() => {
+                if ($('autoRefreshLog').checked) refreshLogs();
+            }, 3000);
+        }
+
+        // 主题管理
+        function getSystemTheme() {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+
+        function initTheme() {
+            const saved = localStorage.getItem('daemon_theme');
+            const theme = saved || getSystemTheme();
+            applyTheme(theme);
+            // 监听系统主题变化（仅在未手动设置时跟随）
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+                if (!localStorage.getItem('daemon_theme')) {
+                    applyTheme(e.matches ? 'dark' : 'light');
+                }
+            });
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'dark' ? 'light' : 'dark';
+            applyTheme(next);
+            localStorage.setItem('daemon_theme', next);
+        }
+
+        // 初始化
+        function init() {
+            initTheme();
+            const saved = getToken();
+            if (saved) $('tokenInput').value = saved;
+            updateAuthUI();
+            refreshStatus();
+            refreshLogs();
+            startAutoRefresh();
+        }
+
+        init();
+    </script>
+</body>
+</html>

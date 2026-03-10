@@ -64,6 +64,13 @@ class Config(BaseSettings):
     # 机器人名称列表（@名称 触发，替换为 "a " + 文本，支持多个名称，逗号分隔）
     BOT_NAMES: list[str] = []
 
+    # Daemon 控制器配置
+    DAEMON_PORT: int = 8001
+    DAEMON_HOST: str = "0.0.0.0"
+    DAEMON_RESTART_DELAY: int = 5
+    DAEMON_MAX_RETRIES: int = 10
+    DAEMON_LOG_BUFFER_LINES: int = 5000
+
     # 微信数据库解密/总结配置
     WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
     WECHAT_DB_OUTPUT_PATH: str = ""  # 解密后输出目录

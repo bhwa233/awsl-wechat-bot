@@ -8,7 +8,7 @@
 
 - **跨平台支持**：支持 macOS 和 Windows 10/11 平台
 - **原生消息读取**：
-  - macOS: 使用 Accessibility API 直接读取微信消息（100% 准确）
+  - macOS: 使用 Accessibility API（暂不可用，无法正常读取消息）
   - Windows: 使用 UI Automation 直接读取控件（100% 准确）
 - **多群并发处理**：每群独立检测线程 + ThreadPoolExecutor 并发任务处理
 - **HTTP API 服务**：提供 RESTful API 接口和 Web 管理后台
@@ -233,6 +233,7 @@ curl -H "Authorization: Bearer your-token" http://localhost:8000/api/groups
 ```
 awsl-wechat-bot/
 ├── main.py                    # 主程序入口
+├── daemon.py                  # Daemon 控制器（管理 bot 子进程）
 ├── config.py                  # 配置文件（Pydantic Settings）
 ├── src/
 │   ├── bot.py                 # 机器人主类
@@ -262,6 +263,63 @@ awsl-wechat-bot/
 │   └── inspect_wechat.py      # 微信窗口检查工具
 ├── .env.example               # 环境变量配置模板
 └── requirements.txt           # Python 依赖
+```
+
+## Daemon 控制器
+
+Daemon 是一个独立的 HTTP 服务，用于远程管理 bot 的启停和代码更新。由 Servy 注册为 Windows 服务，保证 daemon 常驻、崩溃自动重启。
+
+```
+Servy (Windows Service)
+  └─ daemon.py (port 8001, 常驻 HTTP API)
+       └─ main.py (bot 子进程, port 8000)
+```
+
+### 直接运行
+
+```bash
+./venv/Scripts/python daemon.py
+```
+
+### Servy 注册为 Windows 服务
+
+```powershell
+servy-cli install `
+  --name "awsl-daemon" `
+  --path "C:\path\to\venv\Scripts\python.exe" `
+  --args "daemon.py" `
+  --dir "C:\path\to\awsl-wechat-bot" `
+  --startupType "Automatic" `
+  --enableHealth `
+  --heartbeatInterval 30 `
+  --maxFailedChecks 3 `
+  --recoveryAction "RestartProcess" `
+  --maxRestartAttempts 10
+```
+
+### Daemon API 端点
+
+所有端点需要 Bearer Token 认证（复用 `HTTP_API_TOKEN`）。
+
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| GET | `/status` | bot 运行状态、PID、uptime、重启次数 |
+| POST | `/start` | 启动 bot |
+| POST | `/stop` | 停止 bot |
+| POST | `/restart` | 重启 bot |
+| POST | `/update` | git pull + pip install + 重启 bot |
+| GET | `/logs?lines=100` | 读取 bot.log 最后 N 行 |
+
+### Daemon 配置
+
+在 `.env` 中添加（均有默认值，可选）：
+
+```env
+DAEMON_PORT=8001
+DAEMON_HOST=0.0.0.0
+DAEMON_RESTART_DELAY=5
+DAEMON_MAX_RETRIES=10
+DAEMON_LOG_BUFFER_LINES=5000
 ```
 
 ## 注意事项

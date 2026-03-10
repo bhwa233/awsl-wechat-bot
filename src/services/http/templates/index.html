@@ -4,530 +4,610 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AWSL WeChat Bot</title>
+    <script>
+        // Apply saved theme immediately to prevent flash of wrong theme
+        (function() {
+            var saved = localStorage.getItem('bot_theme');
+            if (saved) document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        /* Light theme (default) */
+        :root {
+            --bg: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 50%, #f0f4f8 100%);
+            --card: rgba(255, 255, 255, 0.9);
+            --card-border: rgba(148, 163, 184, 0.25);
+            --card-hover: rgba(241, 245, 249, 0.95);
+            --accent: #818cf8;
+            --accent-hover: #6366f1;
+            --accent-glow: rgba(129, 140, 248, 0.25);
+            --green: #16a34a;
+            --green-bg: rgba(22, 163, 74, 0.1);
+            --red: #dc2626;
+            --red-bg: rgba(220, 38, 38, 0.08);
+            --yellow: #ca8a04;
+            --yellow-bg: rgba(202, 138, 4, 0.08);
+            --text: #1e293b;
+            --text-dim: #475569;
+            --text-muted: #94a3b8;
+            --input-bg: rgba(241, 245, 249, 0.8);
+            --input-border: rgba(148, 163, 184, 0.4);
+            --radius: 14px;
+            --terminal-bg: rgba(15, 23, 42, 0.9);
+            --terminal-text: #e2e8f0;
+            --terminal-text-dim: #94a3b8;
+            --terminal-border: rgba(148, 163, 184, 0.1);
         }
+
+        /* Dark theme */
+        [data-theme="dark"] {
+            --bg: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            --card: rgba(30, 41, 59, 0.85);
+            --card-border: rgba(148, 163, 184, 0.1);
+            --card-hover: rgba(51, 65, 85, 0.9);
+            --accent: #818cf8;
+            --accent-hover: #a5b4fc;
+            --accent-glow: rgba(129, 140, 248, 0.25);
+            --green: #34d399;
+            --green-bg: rgba(52, 211, 153, 0.12);
+            --red: #f87171;
+            --red-bg: rgba(248, 113, 113, 0.12);
+            --yellow: #fbbf24;
+            --yellow-bg: rgba(251, 191, 36, 0.12);
+            --text: #e2e8f0;
+            --text-dim: #94a3b8;
+            --text-muted: #64748b;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(148, 163, 184, 0.2);
+            --terminal-bg: rgba(15, 23, 42, 0.9);
+            --terminal-text: #e2e8f0;
+            --terminal-text-dim: #94a3b8;
+            --terminal-border: rgba(148, 163, 184, 0.1);
+        }
+
+        /* Auto dark mode when no manual preference */
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --bg: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+                --card: rgba(30, 41, 59, 0.85);
+                --card-border: rgba(148, 163, 184, 0.1);
+                --card-hover: rgba(51, 65, 85, 0.9);
+                --accent: #818cf8;
+                --accent-hover: #a5b4fc;
+                --accent-glow: rgba(129, 140, 248, 0.25);
+                --green: #34d399;
+                --green-bg: rgba(52, 211, 153, 0.12);
+                --red: #f87171;
+                --red-bg: rgba(248, 113, 113, 0.12);
+                --yellow: #fbbf24;
+                --yellow-bg: rgba(251, 191, 36, 0.12);
+                --text: #e2e8f0;
+                --text-dim: #94a3b8;
+                --text-muted: #64748b;
+                --input-bg: rgba(15, 23, 42, 0.6);
+                --input-border: rgba(148, 163, 184, 0.2);
+                --terminal-bg: rgba(15, 23, 42, 0.9);
+                --terminal-text: #e2e8f0;
+                --terminal-text-dim: #94a3b8;
+                --terminal-border: rgba(148, 163, 184, 0.1);
+            }
+        }
+
+        /* Theme toggle button */
+        .theme-toggle {
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 10px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-dim);
+            transition: all 0.25s;
+            flex-shrink: 0;
+        }
+
+        .theme-toggle:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .theme-toggle svg { width: 20px; height: 20px; }
+
+        .theme-toggle .icon-sun { display: none; }
+        .theme-toggle .icon-moon { display: block; }
+
+        [data-theme="dark"] .theme-toggle .icon-sun { display: block; }
+        [data-theme="dark"] .theme-toggle .icon-moon { display: none; }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) .theme-toggle .icon-sun { display: block; }
+            :root:not([data-theme="light"]) .theme-toggle .icon-moon { display: none; }
+        }
+
+        /* Terminal-style areas stay dark in both themes */
+        .task-info-value {
+            background: var(--terminal-bg) !important;
+            color: var(--terminal-text-dim) !important;
+            border-color: var(--terminal-border) !important;
+        }
+
+        .cron-example {
+            background: rgba(0, 0, 0, 0.15) !important;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+            background: var(--bg);
+            background-attachment: fixed;
             min-height: 100vh;
-            padding: 20px;
+            padding: 24px;
+            color: var(--text);
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        .container { max-width: 960px; margin: 0 auto; }
 
+        /* Header */
         .header {
-            background: rgba(255, 255, 255, 0.95);
+            background: var(--card);
+            border: 1px solid var(--card-border);
             border-radius: 20px;
-            padding: 30px;
+            padding: 32px;
             margin-bottom: 20px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(20px);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
         }
 
         .header h1 {
-            color: #333;
-            margin-bottom: 10px;
-            font-size: 32px;
+            font-size: 26px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            background: linear-gradient(135deg, #6366f1, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        [data-theme="dark"] .header h1 {
+            background: linear-gradient(135deg, #c7d2fe, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) .header h1 {
+                background: linear-gradient(135deg, #c7d2fe, #818cf8);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+            }
+        }
+
+        .header .subtitle { color: var(--text-dim); font-size: 13px; }
+
+        .status-row {
             display: flex;
             align-items: center;
             gap: 10px;
-        }
-
-        .header .subtitle {
-            color: #666;
-            font-size: 14px;
-        }
-
-        .status {
-            background: #f0f9ff;
-            border: 2px solid #0ea5e9;
-            border-radius: 12px;
-            padding: 15px;
-            margin-top: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            margin-top: 18px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            background: var(--green-bg);
+            border: 1px solid rgba(52, 211, 153, 0.2);
         }
 
         .status-dot {
-            width: 12px;
-            height: 12px;
-            background: #10b981;
+            width: 10px; height: 10px;
+            background: var(--green);
             border-radius: 50%;
             animation: pulse 2s infinite;
         }
 
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .status-row span { font-size: 13px; color: var(--green); font-weight: 500; }
+
+        /* Auth */
         .auth-section {
-            background: #fef3c7;
-            border: 2px solid #f59e0b;
-            border-radius: 12px;
-            padding: 15px;
-            margin-top: 15px;
+            margin-top: 14px;
+            padding: 14px;
+            border-radius: 10px;
+            background: var(--yellow-bg);
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            display: none;
         }
 
         .auth-section.authenticated {
-            background: #d1fae5;
-            border-color: #10b981;
+            background: var(--green-bg);
+            border-color: rgba(52, 211, 153, 0.2);
         }
 
-        .auth-section label {
-            font-size: 14px;
+        .auth-section .auth-label {
+            font-size: 12px;
             font-weight: 600;
-            color: #92400e;
+            color: var(--yellow);
             margin-bottom: 8px;
+            display: block;
         }
 
-        .auth-section.authenticated label {
-            color: #065f46;
-        }
+        .auth-section.authenticated .auth-label { color: var(--green); }
 
-        .auth-input-group {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
+        .auth-input-group { display: flex; gap: 8px; align-items: center; }
 
         .auth-input-group input {
             flex: 1;
-            padding: 10px 12px;
-            border: 2px solid #e5e7eb;
+            padding: 8px 12px;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
             border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .auth-input-group input:focus {
+            color: var(--text);
+            font-size: 13px;
             outline: none;
-            border-color: #f59e0b;
         }
 
-        .auth-section.authenticated .auth-input-group input:focus {
-            border-color: #10b981;
-        }
+        .auth-input-group input:focus { border-color: var(--accent); }
 
-        .btn-auth {
-            padding: 10px 16px;
-            background: #f59e0b;
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            white-space: nowrap;
-        }
+        .auth-status { font-size: 11px; margin-top: 6px; color: var(--text-muted); }
 
-        .btn-auth:hover {
-            background: #d97706;
-        }
-
-        .auth-status {
-            font-size: 12px;
-            margin-top: 8px;
-            color: #92400e;
-        }
-
-        .auth-section.authenticated .auth-status {
-            color: #065f46;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
+        /* Tabs */
         .tabs {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 10px;
-            margin-bottom: 20px;
             display: flex;
-            gap: 10px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            gap: 6px;
+            padding: 6px;
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(20px);
         }
 
         .tab {
             flex: 1;
-            padding: 15px;
+            padding: 12px;
             background: transparent;
             border: none;
-            border-radius: 12px;
-            font-size: 16px;
+            border-radius: 10px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
-            color: #666;
+            color: var(--text-muted);
+            transition: all 0.25s;
         }
+
+        .tab:hover:not(.active) { color: var(--text-dim); background: var(--accent-glow); }
 
         .tab.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--accent);
             color: white;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 4px 16px var(--accent-glow);
         }
 
-        .tab:hover:not(.active) {
-            background: rgba(102, 126, 234, 0.1);
-        }
-
-        .content-panel {
-            display: none;
-        }
-
-        .content-panel.active {
-            display: block;
-        }
+        /* Panels */
+        .content-panel { display: none; }
+        .content-panel.active { display: block; }
 
         .panel {
-            background: rgba(255, 255, 255, 0.95);
-            border-radius: 20px;
-            padding: 30px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            background: var(--card);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 28px;
             margin-bottom: 20px;
+            backdrop-filter: blur(20px);
         }
 
         .panel-title {
-            font-size: 20px;
+            font-size: 18px;
             font-weight: 600;
             margin-bottom: 20px;
-            color: #333;
+            color: var(--text);
         }
 
-        .form-group {
-            margin-bottom: 20px;
-        }
+        /* Forms */
+        .form-group { margin-bottom: 18px; }
 
-        label {
+        .form-group > label {
             display: block;
-            margin-bottom: 8px;
-            color: #374151;
+            margin-bottom: 6px;
+            color: var(--text-dim);
             font-weight: 500;
-            font-size: 14px;
+            font-size: 13px;
         }
 
         input, select, textarea {
             width: 100%;
-            padding: 12px;
-            border: 2px solid #e5e7eb;
+            padding: 10px 14px;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
             border-radius: 8px;
+            color: var(--text);
             font-size: 14px;
-            transition: border-color 0.3s;
             font-family: inherit;
-        }
-
-        input:focus, select:focus, textarea:focus {
+            transition: border-color 0.2s;
             outline: none;
-            border-color: #667eea;
         }
 
-        textarea {
-            resize: vertical;
-            min-height: 100px;
+        input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394a3b8'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 32px;
         }
 
-        .checkbox-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 10px;
-        }
+        textarea { resize: vertical; min-height: 100px; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
         .checkbox-item {
             display: flex;
             align-items: center;
-            gap: 5px;
-            background: #f3f4f6;
-            padding: 8px 12px;
+            gap: 6px;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            padding: 6px 12px;
             border-radius: 8px;
+            font-size: 13px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.2s;
         }
 
-        .checkbox-item:hover {
-            background: #e5e7eb;
-        }
+        .checkbox-item:hover { border-color: var(--accent); }
+        .checkbox-item input[type="checkbox"] { width: auto; margin: 0; accent-color: var(--accent); }
 
-        .checkbox-item input[type="checkbox"] {
-            width: auto;
-            margin: 0;
-        }
-
+        /* Buttons */
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            padding: 10px 22px;
             border: none;
-            padding: 14px 28px;
-            border-radius: 8px;
-            font-size: 16px;
+            border-radius: 10px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: all 0.2s;
+            color: white;
+            background: var(--accent);
         }
 
         .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px var(--accent-glow);
+            background: var(--accent-hover);
         }
 
-        .btn:active {
-            transform: translateY(0);
-        }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
 
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
+        .btn-secondary { background: var(--text-muted); }
+        .btn-secondary:hover { background: #7c8ba0; box-shadow: none; }
 
-        .btn-secondary {
-            background: #6b7280;
-        }
+        .btn-danger { background: var(--red); }
+        .btn-danger:hover { background: #fca5a5; box-shadow: 0 6px 20px rgba(248,113,113,0.2); }
 
-        .btn-secondary:hover {
-            box-shadow: 0 10px 20px rgba(107, 114, 128, 0.3);
-        }
-
-        .btn-danger {
-            background: #ef4444;
-        }
-
-        .btn-danger:hover {
-            box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);
-        }
-
-        .btn-small {
-            padding: 8px 16px;
-            font-size: 14px;
-        }
-
-        .message {
-            margin-top: 20px;
-            padding: 12px;
+        .btn-auth {
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
             border-radius: 8px;
-            font-size: 14px;
+            cursor: pointer;
+            color: white;
+            background: var(--accent);
+            transition: all 0.2s;
+        }
+
+        .btn-auth:hover { background: var(--accent-hover); }
+
+        .btn-small { padding: 7px 14px; font-size: 13px; }
+
+        /* Messages */
+        .message {
+            margin-top: 16px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 13px;
             display: none;
         }
 
-        .message.success {
-            background: #d1fae5;
-            color: #065f46;
-            border: 1px solid #10b981;
-        }
-
-        .message.error {
-            background: #fee2e2;
-            color: #991b1b;
-            border: 1px solid #ef4444;
-        }
+        .message.success { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+        .message.error { background: var(--red-bg); color: var(--red); border: 1px solid rgba(248,113,113,0.2); }
 
         .loading {
             display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid #ffffff;
+            width: 14px; height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
             border-radius: 50%;
-            border-top-color: transparent;
             animation: spin 0.8s linear infinite;
+            vertical-align: middle;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
 
-        .tasks-list {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
+        /* Tasks */
+        .tasks-list { display: flex; flex-direction: column; gap: 14px; }
 
         .task-item {
-            background: #f9fafb;
-            border: 2px solid #e5e7eb;
+            background: var(--input-bg);
+            border: 1px solid var(--card-border);
             border-radius: 12px;
             padding: 20px;
-            transition: all 0.3s;
+            transition: all 0.25s;
         }
 
         .task-item:hover {
-            border-color: #667eea;
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.1);
+            border-color: rgba(129, 140, 248, 0.3);
+            box-shadow: 0 0 20px rgba(129, 140, 248, 0.06);
         }
 
         .task-header {
             display: flex;
             justify-content: space-between;
             align-items: start;
-            margin-bottom: 15px;
+            margin-bottom: 14px;
         }
 
-        .task-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 5px;
-        }
+        .task-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
 
         .task-status {
             display: inline-block;
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 12px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
             font-weight: 600;
         }
 
-        .task-status.enabled {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .task-status.disabled {
-            background: #fee2e2;
-            color: #991b1b;
-        }
+        .task-status.enabled { background: var(--green-bg); color: var(--green); }
+        .task-status.disabled { background: var(--red-bg); color: var(--red); }
 
         .task-info {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-bottom: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 14px;
         }
 
-        .task-info-item {
-            display: flex;
-            flex-direction: column;
-            gap: 5px;
-        }
+        .task-info-item { display: flex; flex-direction: column; gap: 4px; }
 
-        .task-info-label {
-            font-size: 12px;
-            color: #6b7280;
-            font-weight: 500;
-        }
+        .task-info-label { font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; }
 
         .task-info-value {
-            font-size: 14px;
-            color: #333;
-            font-family: 'Courier New', monospace;
-            background: white;
-            padding: 8px;
+            font-size: 13px;
+            color: var(--text-dim);
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+            background: var(--input-bg);
+            padding: 8px 10px;
             border-radius: 6px;
+            border: 1px solid var(--card-border);
         }
 
-        .task-actions {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
+        .task-actions { display: flex; gap: 8px; margin-top: 14px; }
 
+        /* Cron help */
         .cron-help {
-            background: #fffbeb;
-            border: 2px solid #fbbf24;
+            background: var(--yellow-bg);
+            border: 1px solid rgba(251, 191, 36, 0.2);
             border-radius: 12px;
-            padding: 15px;
+            padding: 16px;
             margin-bottom: 20px;
         }
 
-        .cron-help-title {
-            font-weight: 600;
-            color: #92400e;
-            margin-bottom: 10px;
-        }
+        .cron-help-title { font-weight: 600; color: var(--yellow); margin-bottom: 10px; font-size: 14px; }
 
         .cron-examples {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 10px;
-            font-size: 13px;
-            color: #78350f;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 8px;
+            font-size: 12px;
+            color: var(--yellow);
         }
 
         .cron-example {
-            background: white;
-            padding: 8px;
+            background: rgba(0,0,0,0.15);
+            padding: 6px 10px;
             border-radius: 6px;
         }
 
         .cron-example code {
-            background: #fef3c7;
-            padding: 2px 6px;
+            background: rgba(251, 191, 36, 0.15);
+            padding: 1px 5px;
             border-radius: 4px;
-            font-family: 'Courier New', monospace;
+            font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
         }
 
-        .empty-state {
-            text-align: center;
-            padding: 60px 20px;
-            color: #6b7280;
-        }
+        /* Empty state */
+        .empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
+        .empty-state-icon { font-size: 48px; margin-bottom: 14px; opacity: 0.5; }
 
-        .empty-state-icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-
+        /* Footer */
         .footer {
             text-align: center;
-            color: rgba(255, 255, 255, 0.8);
+            color: var(--text-muted);
             font-size: 12px;
-            margin-top: 30px;
+            margin-top: 24px;
         }
 
-        .footer a {
-            color: white;
-            text-decoration: none;
-            font-weight: 600;
+        .footer a { color: var(--accent); text-decoration: none; }
+        .footer a:hover { color: var(--accent-hover); }
+
+        /* Image preview */
+        .img-preview {
+            margin-top: 10px;
+            display: none;
         }
 
-        .form-row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
+        .img-preview img {
+            max-width: 100%;
+            max-height: 280px;
+            border-radius: 10px;
+            border: 1px solid var(--card-border);
         }
 
+        /* Responsive */
         @media (max-width: 768px) {
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-
-            .task-info {
-                grid-template-columns: 1fr;
-            }
-
-            .cron-examples {
-                grid-template-columns: 1fr;
-            }
+            body { padding: 12px; }
+            .form-row { grid-template-columns: 1fr; }
+            .task-info { grid-template-columns: 1fr; }
+            .cron-examples { grid-template-columns: 1fr; }
+            .header { padding: 20px; }
+            .panel { padding: 20px; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 AWSL WeChat Bot</h1>
-            <p class="subtitle">微信机器人控制中心 · 消息推送 & 定时任务管理</p>
-            <div class="status">
+            <div class="header-top">
+                <div>
+                    <h1>AWSL WeChat Bot</h1>
+                    <p class="subtitle">微信机器人控制中心 &middot; 消息推送 & 定时任务管理</p>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
+                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="5"></circle>
+                        <line x1="12" y1="1" x2="12" y2="3"></line>
+                        <line x1="12" y1="21" x2="12" y2="23"></line>
+                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+                        <line x1="1" y1="12" x2="3" y2="12"></line>
+                        <line x1="21" y1="12" x2="23" y2="12"></line>
+                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+                    </svg>
+                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="status-row">
                 <div class="status-dot"></div>
                 <span id="statusText">加载中...</span>
             </div>
 
-            <div id="authSection" class="auth-section" style="display: none;">
-                <label>🔐 API 认证 Token</label>
+            <div id="authSection" class="auth-section">
+                <span class="auth-label">API Token</span>
                 <div class="auth-input-group">
                     <input type="password" id="authToken" placeholder="输入 Bearer Token...">
                     <button type="button" class="btn-auth" onclick="saveToken()">保存</button>
-                    <button type="button" class="btn-auth" onclick="clearToken()" style="background: #6b7280;">清除</button>
+                    <button type="button" class="btn-auth" onclick="clearToken()" style="background: var(--text-muted);">清除</button>
                 </div>
                 <div id="authStatus" class="auth-status"></div>
             </div>
         </div>
 
         <div class="tabs">
-            <button class="tab active" data-tab="send">💬 发送消息</button>
-            <button class="tab" data-tab="tasks">⏰ 定时任务</button>
+            <button class="tab active" data-tab="send">发送消息</button>
+            <button class="tab" data-tab="tasks">定时任务</button>
         </div>
 
         <!-- 发送消息面板 -->
@@ -552,17 +632,14 @@
 
                     <div class="form-group" id="sendTextGroup">
                         <label for="messageText">消息内容</label>
-                        <textarea
-                            id="messageText"
-                            placeholder="输入要发送的消息..."
-                        ></textarea>
+                        <textarea id="messageText" placeholder="输入要发送的消息..."></textarea>
                     </div>
 
                     <div class="form-group" id="sendImageGroup" style="display: none;">
                         <label for="sendImageInput">选择图片</label>
                         <input type="file" id="sendImageInput" accept="image/*" onchange="previewSendImage(event)">
-                        <div id="sendImagePreview" style="margin-top: 10px; display: none;">
-                            <img id="sendImagePreviewImg" style="max-width: 100%; max-height: 300px; border-radius: 8px;">
+                        <div id="sendImagePreview" class="img-preview">
+                            <img id="sendImagePreviewImg">
                         </div>
                     </div>
 
@@ -580,12 +657,12 @@
             <div class="panel">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
                     <h2 class="panel-title" style="margin: 0;">定时任务列表</h2>
-                    <button class="btn btn-small" onclick="showTaskForm()">➕ 新建任务</button>
+                    <button class="btn btn-small" onclick="showTaskForm()">+ 新建任务</button>
                 </div>
 
                 <div id="tasksList" class="tasks-list">
                     <div class="empty-state">
-                        <div class="empty-state-icon">⏰</div>
+                        <div class="empty-state-icon">&#9201;</div>
                         <p>暂无定时任务</p>
                     </div>
                 </div>
@@ -596,7 +673,7 @@
                 <h2 class="panel-title" id="taskFormTitle">新建定时任务</h2>
 
                 <div class="cron-help">
-                    <div class="cron-help-title">📝 Cron 表达式格式说明</div>
+                    <div class="cron-help-title">Cron 表达式格式</div>
                     <div class="cron-examples">
                         <div class="cron-example"><code>* * * * *</code> 每分钟</div>
                         <div class="cron-example"><code>0 * * * *</code> 每小时</div>
@@ -605,11 +682,11 @@
                         <div class="cron-example"><code>0 9 1 * *</code> 每月1号 9:00</div>
                         <div class="cron-example"><code>*/30 * * * *</code> 每30分钟</div>
                     </div>
-                    <p style="margin-top: 10px; font-size: 12px; color: #92400e;">
-                        格式: <code style="background: #fef3c7; padding: 2px 6px; border-radius: 4px;">分 时 日 月 星期</code>
+                    <p style="margin-top: 10px; font-size: 11px; color: var(--yellow);">
+                        格式: <code style="background: rgba(251,191,36,0.15); padding: 1px 5px; border-radius: 4px;">分 时 日 月 星期</code>
                     </p>
-                    <p id="timezoneInfo" style="margin-top: 10px; font-size: 12px; color: #92400e; font-weight: 600;">
-                        ⏰ 时区: 加载中...
+                    <p id="timezoneInfo" style="margin-top: 8px; font-size: 11px; color: var(--yellow); font-weight: 600;">
+                        时区: 加载中...
                     </p>
                 </div>
 
@@ -626,7 +703,6 @@
                             <label for="cronExpression">Cron 表达式</label>
                             <input type="text" id="cronExpression" placeholder="0 9 * * *" required>
                         </div>
-
                         <div class="form-group">
                             <label for="taskEnabled">任务状态</label>
                             <select id="taskEnabled">
@@ -653,23 +729,23 @@
                     <div class="form-group" id="taskImageGroup" style="display: none;">
                         <label for="taskImageInput">选择图片</label>
                         <input type="file" id="taskImageInput" accept="image/*" onchange="previewTaskImage(event)">
-                        <div id="taskImagePreview" style="margin-top: 10px; display: none;">
-                            <img id="taskImagePreviewImg" style="max-width: 100%; max-height: 300px; border-radius: 8px;">
+                        <div id="taskImagePreview" class="img-preview">
+                            <img id="taskImagePreviewImg">
                         </div>
                     </div>
 
                     <div class="form-group" id="taskSummaryGroup" style="display: none;">
-                        <div class="cron-help" style="margin-bottom: 15px;">
-                            <div class="cron-help-title">📊 群聊总结配置说明</div>
-                            <p style="font-size: 13px; color: #78350f; margin-bottom: 10px;">
+                        <div class="cron-help" style="margin-bottom: 14px;">
+                            <div class="cron-help-title">群聊总结配置说明</div>
+                            <p style="font-size: 12px; color: var(--yellow); margin-bottom: 8px;">
                                 群聊总结会自动解密数据库、获取聊天记录、生成 AI 总结并发送图片到群聊。
                             </p>
-                            <p style="font-size: 12px; color: #92400e;">
+                            <p style="font-size: 11px; color: var(--yellow);">
                                 数据库路径和密钥使用服务器环境变量配置 (WECHAT_DB_*)，此处只需配置目标群聊。
                             </p>
                         </div>
                         <label for="taskSummaryConfig">目标群聊 (JSON)</label>
-                        <textarea id="taskSummaryConfig" style="min-height: 120px; font-family: 'Courier New', monospace;" placeholder='{
+                        <textarea id="taskSummaryConfig" style="min-height: 120px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace;" placeholder='{
   "groups": [
     {"group_id": "xxx@chatroom", "group_name": "群聊名称"}
   ]
@@ -678,9 +754,7 @@
 
                     <div class="form-group" id="taskTargetGroupsGroup">
                         <label>目标群组（不选择则发送到所有群）</label>
-                        <div id="targetGroupsCheckboxes" class="checkbox-group">
-                            <!-- 动态生成复选框 -->
-                        </div>
+                        <div id="targetGroupsCheckboxes" class="checkbox-group"></div>
                     </div>
 
                     <div style="display: flex; gap: 10px;">
@@ -696,7 +770,7 @@
         </div>
 
         <div class="footer">
-            <p>API 文档: <a href="/docs" target="_blank">/docs</a> · Powered by FastAPI + AWSL Bot</p>
+            <p>API 文档: <a href="/docs" target="_blank">/docs</a> &middot; Powered by FastAPI + AWSL Bot</p>
         </div>
     </div>
 
@@ -706,12 +780,9 @@
         let editingTaskId = null;
         let authEnabled = false;
 
-        // ==================== 工具函数 ====================
-
-        // 获取 DOM 元素
         const $ = id => document.getElementById(id);
 
-        // Token 管理
+        // ==================== Token 管理 ====================
         function getToken() {
             return localStorage.getItem('awsl_api_token') || '';
         }
@@ -741,18 +812,18 @@
                 authSection.style.display = 'block';
                 if (token) {
                     authSection.classList.add('authenticated');
-                    authStatus.textContent = '✓ Token 已保存，将在请求时使用';
+                    authStatus.textContent = 'Token 已保存';
                     $('authToken').value = token;
                 } else {
                     authSection.classList.remove('authenticated');
-                    authStatus.textContent = '⚠ 服务器已启用认证，请输入 Token';
+                    authStatus.textContent = '服务器已启用认证，请输入 Token';
                 }
             } else {
                 authSection.style.display = 'none';
             }
         }
 
-        // 获取带认证的 headers
+        // ==================== API 请求 ====================
         function getAuthHeaders() {
             const headers = { 'Content-Type': 'application/json' };
             const token = getToken();
@@ -760,19 +831,15 @@
             return headers;
         }
 
-        // 通用 API 请求封装
         async function apiRequest(endpoint, options = {}) {
             const { method = 'GET', body = null, errorMsg = '请求失败' } = options;
             try {
                 const fetchOptions = { method, headers: getAuthHeaders() };
                 if (body) fetchOptions.body = JSON.stringify(body);
-
                 const response = await fetch(`${API_BASE}${endpoint}`, fetchOptions);
-
                 if (response.status === 401) {
                     return { ok: false, error: '认证失败，请检查 Token', status: 401 };
                 }
-
                 const data = await response.json();
                 return { ok: response.ok, data, status: response.status };
             } catch (error) {
@@ -781,7 +848,7 @@
             }
         }
 
-        // 显示提示消息
+        // ==================== UI 工具 ====================
         function showMessage(elementId, text, type) {
             const msgEl = $(elementId);
             msgEl.textContent = text;
@@ -790,18 +857,15 @@
             setTimeout(() => { msgEl.style.display = 'none'; }, 5000);
         }
 
-        // 通用消息类型切换
         function toggleMessageType(typeSelectId, textGroupId, imageGroupId) {
             const messageType = $(typeSelectId).value;
             $(textGroupId).style.display = messageType === 'image' ? 'none' : 'block';
             $(imageGroupId).style.display = messageType === 'image' ? 'block' : 'none';
         }
 
-        // 通用图片预览
         function previewImage(event, base64Setter, previewImgId, previewContainerId) {
             const file = event.target.files[0];
             if (!file) return;
-
             const reader = new FileReader();
             reader.onload = function(e) {
                 base64Setter(e.target.result.split(',')[1]);
@@ -811,11 +875,9 @@
             reader.readAsDataURL(file);
         }
 
-        // ==================== 全局变量 ====================
         let sendImageBase64 = '';
         let taskImageBase64 = '';
 
-        // ==================== 消息类型切换 ====================
         function toggleSendMessageType() {
             toggleMessageType('sendMessageType', 'sendTextGroup', 'sendImageGroup');
         }
@@ -828,7 +890,6 @@
             $('taskTargetGroupsGroup').style.display = messageType === 'summary' ? 'none' : 'block';
         }
 
-        // ==================== 图片预览 ====================
         function previewSendImage(event) {
             previewImage(event, v => sendImageBase64 = v, 'sendImagePreviewImg', 'sendImagePreview');
         }
@@ -845,7 +906,6 @@
                 tab.classList.add('active');
                 document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
                 $(`${targetTab}-panel`).classList.add('active');
-
                 if (targetTab === 'tasks') {
                     loadTasks();
                     loadServerInfo();
@@ -866,10 +926,10 @@
                     const serverTime = new Date(info.server_time);
                     const timeStr = serverTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
                     $('timezoneInfo').textContent =
-                        `⏰ 服务器时区: ${info.timezone} (UTC${info.timezone_offset}) · 当前服务器时间: ${timeStr}`;
+                        `服务器时区: ${info.timezone} (UTC${info.timezone_offset}) · 当前服务器时间: ${timeStr}`;
                 }
             } else {
-                $('timezoneInfo').textContent = '⏰ 时区: 服务器本地时区（所有时间基于服务器时区）';
+                $('timezoneInfo').textContent = '时区: 服务器本地时区（所有时间基于服务器时区）';
             }
         }
 
@@ -901,7 +961,7 @@
             allGroups.forEach(group => {
                 const option = document.createElement('option');
                 option.value = group.name;
-                option.textContent = `${group.name} ${group.active ? '✓' : '✗ 已关闭'}`;
+                option.textContent = `${group.name} ${group.active ? '' : '(已关闭)'}`;
                 option.disabled = !group.active;
                 select.appendChild(option);
             });
@@ -913,16 +973,13 @@
         function updateTargetGroupsCheckboxes() {
             const container = $('targetGroupsCheckboxes');
             container.innerHTML = '';
-
             allGroups.forEach(group => {
                 const label = document.createElement('label');
                 label.className = 'checkbox-item';
-
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.value = group.name;
                 checkbox.name = 'targetGroups';
-
                 label.appendChild(checkbox);
                 label.appendChild(document.createTextNode(group.name));
                 container.appendChild(label);
@@ -933,7 +990,6 @@
         async function sendMessage(groupName, message, imageBase64 = null) {
             const btn = $('sendBtn');
             const btnText = $('btnText');
-
             btn.disabled = true;
             btnText.innerHTML = '<span class="loading"></span> 发送中...';
 
@@ -952,15 +1008,14 @@
                 });
 
                 if (result.ok) {
-                    showMessage('sendResultMessage', '✓ 消息发送成功！', 'success');
-                    // 清空表单
+                    showMessage('sendResultMessage', '消息发送成功', 'success');
                     const messageTextEl = $('messageText');
                     if (messageTextEl) messageTextEl.value = '';
                     const sendImagePreviewEl = $('sendImagePreview');
                     if (sendImagePreviewEl) sendImagePreviewEl.style.display = 'none';
                     sendImageBase64 = '';
                 } else {
-                    showMessage('sendResultMessage', `✗ ${result.data?.detail || result.error || '发送失败'}`, 'error');
+                    showMessage('sendResultMessage', result.data?.detail || result.error || '发送失败', 'error');
                 }
             } finally {
                 btn.disabled = false;
@@ -988,32 +1043,30 @@
             if (tasks.length === 0) {
                 container.innerHTML = `
                     <div class="empty-state">
-                        <div class="empty-state-icon">⏰</div>
-                        <p>暂无定时任务，点击"新建任务"创建第一个定时任务</p>
+                        <div class="empty-state-icon">&#9201;</div>
+                        <p>暂无定时任务，点击"新建任务"创建</p>
                     </div>
                 `;
                 return;
             }
 
             container.innerHTML = tasks.map(task => {
-                let messageTypeDisplay = '💬 文本';
+                let messageTypeDisplay = '文本';
                 let messageContent = task.message;
 
                 if (task.message_type === 'image') {
-                    messageTypeDisplay = '📷 图片';
+                    messageTypeDisplay = '图片';
                     messageContent = task.image_base64
                         ? '<img src="data:image/png;base64,' + task.image_base64 + '" style="max-width: 200px; max-height: 100px; border-radius: 4px;">'
                         : '无图片';
                 } else if (task.message_type === 'summary') {
-                    messageTypeDisplay = '📊 群聊总结';
+                    messageTypeDisplay = '群聊总结';
                     try {
                         const config = JSON.parse(task.message);
                         const groupNames = config.groups ? config.groups.map(g => g.group_name).join(', ') : '未配置';
-                        messageContent = `<div style="font-size: 12px;">
-                            <div><strong>目标群聊:</strong> ${groupNames}</div>
-                        </div>`;
+                        messageContent = `<div style="font-size: 12px;"><strong>目标群聊:</strong> ${groupNames}</div>`;
                     } catch (e) {
-                        messageContent = '<span style="color: #ef4444;">配置解析失败</span>';
+                        messageContent = '<span style="color: var(--red);">配置解析失败</span>';
                     }
                 }
 
@@ -1023,7 +1076,7 @@
                         <div>
                             <div class="task-title">${task.name}</div>
                             <span class="task-status ${task.enabled ? 'enabled' : 'disabled'}">
-                                ${task.enabled ? '✓ 已启用' : '✗ 已禁用'}
+                                ${task.enabled ? '已启用' : '已禁用'}
                             </span>
                         </div>
                     </div>
@@ -1070,13 +1123,11 @@
             $('taskFormTitle').textContent = '新建定时任务';
             $('taskFormBtnText').textContent = '创建任务';
             $('taskForm').reset();
-
             taskImageBase64 = '';
             $('taskImagePreview').style.display = 'none';
             $('taskMessageType').value = 'text';
             $('taskSummaryConfig').value = '';
             toggleTaskMessageType();
-
             $('taskFormPanel').style.display = 'block';
             $('taskFormPanel').scrollIntoView({ behavior: 'smooth' });
         }
@@ -1084,17 +1135,14 @@
         function hideTaskForm() {
             $('taskFormPanel').style.display = 'none';
             $('taskForm').reset();
-
             taskImageBase64 = '';
             $('taskImagePreview').style.display = 'none';
             $('taskSummaryConfig').value = '';
-
             editingTaskId = null;
         }
 
         async function editTask(taskId) {
             const result = await apiRequest(`/api/tasks/${taskId}`, { errorMsg: '加载任务详情失败' });
-
             if (!result.ok) {
                 showMessage('taskFormResultMessage', '加载任务详情失败', 'error');
                 return;
@@ -1104,16 +1152,13 @@
             editingTaskId = taskId;
             $('taskFormTitle').textContent = '编辑定时任务';
             $('taskFormBtnText').textContent = '保存修改';
-
             $('taskId').value = task.id;
             $('taskName').value = task.name;
             $('cronExpression').value = task.cron_expression;
             $('taskEnabled').value = task.enabled.toString();
-
             $('taskMessageType').value = task.message_type || 'text';
             toggleTaskMessageType();
 
-            // 根据类型填充内容
             if (task.message_type === 'summary') {
                 $('taskSummaryConfig').value = task.message;
                 $('taskMessage').value = '';
@@ -1138,17 +1183,12 @@
 
         async function deleteTask(taskId) {
             if (!confirm('确定要删除这个任务吗？')) return;
-
-            const result = await apiRequest(`/api/tasks/${taskId}`, {
-                method: 'DELETE',
-                errorMsg: '删除任务失败'
-            });
-
+            const result = await apiRequest(`/api/tasks/${taskId}`, { method: 'DELETE', errorMsg: '删除任务失败' });
             if (result.ok) {
-                showMessage('taskFormResultMessage', '✓ 任务已删除', 'success');
+                showMessage('taskFormResultMessage', '任务已删除', 'success');
                 loadTasks();
             } else {
-                showMessage('taskFormResultMessage', '✗ 删除失败', 'error');
+                showMessage('taskFormResultMessage', '删除失败', 'error');
             }
         }
 
@@ -1158,26 +1198,22 @@
                 body: { enabled: !currentEnabled },
                 errorMsg: '切换任务状态失败'
             });
-
             if (result.ok) {
                 loadTasks();
             } else {
-                showMessage('taskFormResultMessage', '✗ 操作失败', 'error');
+                showMessage('taskFormResultMessage', '操作失败', 'error');
             }
         }
 
-        // ==================== 表单提交处理 ====================
+        // ==================== 表单提交 ====================
         $('sendForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const groupName = $('groupSelect').value;
             const messageType = $('sendMessageType').value;
-
             if (!groupName) {
                 showMessage('sendResultMessage', '请选择群聊', 'error');
                 return;
             }
-
             if (messageType === 'text') {
                 const message = $('messageText').value.trim();
                 if (!message) {
@@ -1196,18 +1232,15 @@
 
         $('taskForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-
             const btn = $('taskFormBtn');
             const btnText = $('taskFormBtnText');
             const originalText = btnText.textContent;
-
             btn.disabled = true;
             btnText.innerHTML = '<span class="loading"></span> 处理中...';
 
             try {
                 const targetGroups = Array.from(document.querySelectorAll('input[name="targetGroups"]:checked'))
                     .map(cb => cb.value);
-
                 const messageType = $('taskMessageType').value;
 
                 const data = {
@@ -1225,7 +1258,6 @@
                     data.message = '';
                     data.image_base64 = taskImageBase64;
                 } else if (messageType === 'summary') {
-                    // 验证 JSON 格式
                     const configText = $('taskSummaryConfig').value.trim();
                     if (!configText) {
                         showMessage('taskFormResultMessage', '请输入总结配置', 'error');
@@ -1235,7 +1267,6 @@
                     }
                     try {
                         const config = JSON.parse(configText);
-                        // 验证必填字段
                         if (!config.groups || !Array.isArray(config.groups) || config.groups.length === 0) {
                             showMessage('taskFormResultMessage', '配置缺少 groups 字段或 groups 为空', 'error');
                             btn.disabled = false;
@@ -1250,26 +1281,23 @@
                         return;
                     }
                     data.image_base64 = '';
-                    data.target_groups = [];  // summary 类型不使用 target_groups
+                    data.target_groups = [];
                 }
 
                 const url = editingTaskId ? `/api/tasks/${editingTaskId}` : '/api/tasks';
                 const method = editingTaskId ? 'PUT' : 'POST';
-
                 const result = await apiRequest(url, { method, body: data, errorMsg: '提交任务失败' });
 
                 if (result.ok) {
-                    showMessage('taskFormResultMessage', `✓ ${editingTaskId ? '任务已更新' : '任务已创建'}`, 'success');
+                    showMessage('taskFormResultMessage', editingTaskId ? '任务已更新' : '任务已创建', 'success');
                     hideTaskForm();
-
                     taskImageBase64 = '';
                     $('taskImagePreview').style.display = 'none';
-
                     setTimeout(() => {
                         $('tasksList').scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }, 100);
                 } else {
-                    showMessage('taskFormResultMessage', `✗ ${result.data?.detail || result.error || '操作失败'}`, 'error');
+                    showMessage('taskFormResultMessage', result.data?.detail || result.error || '操作失败', 'error');
                 }
             } finally {
                 await loadTasks();
@@ -1277,6 +1305,38 @@
                 btnText.textContent = originalText;
             }
         });
+
+        // ==================== 主题切换 ====================
+        function getEffectiveTheme() {
+            const saved = localStorage.getItem('bot_theme');
+            if (saved === 'dark' || saved === 'light') return saved;
+            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+        }
+
+        function toggleTheme() {
+            const current = getEffectiveTheme();
+            const next = current === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('bot_theme', next);
+            applyTheme(next);
+        }
+
+        // Apply saved theme immediately
+        (function() {
+            const saved = localStorage.getItem('bot_theme');
+            if (saved) {
+                applyTheme(saved);
+            }
+            // Listen for system theme changes when no manual preference
+            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+                if (!localStorage.getItem('bot_theme')) {
+                    // No manual preference, system change handled by CSS media queries
+                }
+            });
+        })();
 
         // ==================== 初始化 ====================
         loadGroups();

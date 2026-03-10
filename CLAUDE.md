@@ -19,6 +19,9 @@ cp .env.example .env
 ./venv/bin/python main.py  # macOS
 ./venv/Scripts/python main.py  # Windows
 
+# Daemon (Windows, 管理 bot 子进程)
+./venv/Scripts/python daemon.py  # 启动 daemon (port 8001)
+
 # Tools
 ./venv/bin/python tools/chat_summary.py --help  # 群聊总结工具
 ./venv/bin/python tools/wechat_decrypt.py       # 微信数据库解密
@@ -109,6 +112,20 @@ cp .env.example .env
 - `GET /api/chatlog/groups` - 群聊列表
 - `GET /api/chatlog/messages` - 查询消息
 - `POST /api/chatlog/summary` - 发送群聊总结
+
+## Daemon 控制器
+
+`daemon.py` - 独立 HTTP 服务 (port 8001)，管理 bot 子进程的启停和代码更新。由 Servy 注册为 Windows 服务。
+
+配置: `DAEMON_PORT`, `DAEMON_HOST`, `DAEMON_RESTART_DELAY`, `DAEMON_MAX_RETRIES`, `DAEMON_LOG_MAX_LINES`
+
+API 端点 (需要 Bearer Token 认证):
+- `GET /status` - bot 运行状态、PID、uptime、重启次数
+- `POST /start` - 启动 bot
+- `POST /stop` - 停止 bot
+- `POST /restart` - 重启 bot
+- `POST /update` - git pull + pip install + 重启 (daemon.py 自身更新则 exit(0))
+- `GET /logs?lines=100` - 读取 bot.log 最后 N 行
 
 ## Platform Notes
 
