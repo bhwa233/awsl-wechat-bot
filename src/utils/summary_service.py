@@ -358,6 +358,13 @@ class SummaryService:
                 except Exception as e:
                     logger.warning(f"[Summary] 文本消息发送失败 [{group.group_name}]: {e}")
 
+                # 发送完成后清理图片文件
+                try:
+                    os.remove(output_image)
+                    logger.debug(f"[Summary] 已清理图片: {output_image}")
+                except OSError:
+                    pass
+
                 group_result["success"] = True
                 group_result["message"] = "成功"
                 results["groups"][group.group_id] = group_result
