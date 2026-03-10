@@ -206,17 +206,17 @@ class BotProcessManager:
 
     def _pipe_reader(self, process: subprocess.Popen):
         """从子进程 PIPE 逐行读取，写入内存 buffer"""
-        try:
-            for line in iter(process.stdout.readline, b""):
-                if not line:
-                    break
+        for line in iter(process.stdout.readline, b""):
+            if not line:
+                break
+            try:
                 decoded = line.decode("utf-8", errors="replace")
                 sys.stdout.write(decoded)
                 sys.stdout.flush()
                 with self._lock:
                     self._log_buffer.append(decoded)
-        except Exception:
-            pass
+            except Exception:
+                pass
         finally:
             try:
                 process.stdout.close()
