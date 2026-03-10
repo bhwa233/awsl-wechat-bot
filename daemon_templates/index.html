@@ -559,12 +559,15 @@
         const $ = id => document.getElementById(id);
 
         // Token 管理
+        let authEnabled = false;
+
         function getToken() {
             return localStorage.getItem('daemon_token') || '';
         }
 
         function saveToken() {
             const token = $('tokenInput').value.trim();
+            if (!token) return;
             localStorage.setItem('daemon_token', token);
             updateAuthUI();
             refreshStatus();
@@ -574,12 +577,17 @@
         function updateAuthUI() {
             const section = $('authSection');
             const token = getToken();
+            if (!authEnabled) {
+                section.style.display = 'none';
+                return;
+            }
+            section.style.display = '';
             if (token) {
                 section.classList.add('authenticated');
                 section.querySelector('label').textContent = 'Token 已配置';
             } else {
                 section.classList.remove('authenticated');
-                section.querySelector('label').textContent = 'Bearer Token';
+                section.querySelector('label').textContent = 'Bearer Token（必填）';
             }
         }
 
@@ -785,8 +793,16 @@
         }
 
         // 初始化
-        function init() {
+        async function init() {
             initTheme();
+            // 检查是否需要认证
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+                if (data.auth_enabled !== undefined) {
+                    authEnabled = data.auth_enabled;
+                }
+            } catch (e) {}
             const saved = getToken();
             if (saved) $('tokenInput').value = saved;
             updateAuthUI();

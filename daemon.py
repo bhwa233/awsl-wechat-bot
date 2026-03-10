@@ -345,7 +345,7 @@ def index():
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "auth_enabled": bool(HTTP_API_TOKEN)}
 
 
 @app.get("/status", dependencies=[Depends(verify_token)])
