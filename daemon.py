@@ -49,7 +49,6 @@ BOT_HEALTH_URL = f"http://127.0.0.1:{config.HTTP_API_PORT}/api/health"
 PROJECT_DIR = Path(__file__).parent.resolve()
 PYTHON = sys.executable  # 复用启动 daemon 的同一个 Python 解释器
 BOT_ENTRY = PROJECT_DIR / "main.py"
-BOT_LOG_FILE = PROJECT_DIR / "bot.log"
 DAEMON_HTML = PROJECT_DIR / "daemon_templates" / "index.html"
 
 # ---------------------------------------------------------------------------
@@ -154,16 +153,6 @@ class BotProcessManager:
             buf = list(self._log_buffer)
         return "".join(buf[-lines:])
 
-    def flush_log_to_file(self):
-        """把 buffer 内容覆盖写入 bot.log 备份"""
-        with self._lock:
-            buf = list(self._log_buffer)
-        try:
-            with open(BOT_LOG_FILE, "w", encoding="utf-8") as f:
-                f.writelines(buf)
-        except Exception:
-            pass
-
     def enable_auto_restart(self):
         self._auto_restart = True
 
@@ -173,7 +162,6 @@ class BotProcessManager:
         with self._lock:
             self._auto_restart = False
             self._terminate()
-        self.flush_log_to_file()
 
     # -- 内部方法 --
 
@@ -220,6 +208,7 @@ class BotProcessManager:
                 if not line:
                     break
                 decoded = line.decode("utf-8", errors="replace")
+                sys.stdout.write(decoded)
                 with self._lock:
                     self._log_buffer.append(decoded)
         except Exception:
@@ -258,7 +247,6 @@ class BotProcessManager:
             pass
         self._process = None
         self._start_time = None
-        self.flush_log_to_file()
         return {"ok": True, "message": f"bot 已停止 (pid={pid})"}
 
     def _monitor_loop(self):
@@ -326,8 +314,6 @@ class BotProcessManager:
                         self._last_restart_reason = reason
                         self._launch(reason)
 
-            # 每分钟顺便把 buffer 刷到文件备份
-            self.flush_log_to_file()
 
     def _ping_health(self) -> bool:
         try:
@@ -356,6 +342,11 @@ app = FastAPI(title="AWSL Daemon Controller", version="1.0.0", lifespan=lifespan
 @app.get("/", response_class=HTMLResponse)
 def index():
     return DAEMON_HTML.read_text(encoding="utf-8")
+
+
+@app.get("/health")
+def health():
+    return {"ok": True}
 
 
 @app.get("/status", dependencies=[Depends(verify_token)])
