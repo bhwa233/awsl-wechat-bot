@@ -211,11 +211,8 @@ class BotProcessManager:
                 if not line:
                     break
                 decoded = line.decode("utf-8", errors="replace")
-                try:
-                    sys.stdout.write(decoded)
-                    sys.stdout.flush()
-                except (UnicodeEncodeError, UnicodeDecodeError):
-                    pass
+                sys.stdout.write(decoded)
+                sys.stdout.flush()
                 with self._lock:
                     self._log_buffer.append(decoded)
         except Exception:
