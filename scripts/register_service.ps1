@@ -34,7 +34,7 @@ Write-Host "  工作目录: $ProjectDir"
 
 servy-cli install --name "$ServiceName" `
     --path "$PythonExe" `
-    --params "-u `"$DaemonScript`"" `
+    --params="-u `"$DaemonScript`"" `
     --startupDir "$ProjectDir" `
     --startupType Automatic `
     --description "AWSL WeChat Bot Daemon Controller"
