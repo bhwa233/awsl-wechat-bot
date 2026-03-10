@@ -166,10 +166,13 @@ class BotProcessManager:
     # -- 内部方法 --
 
     def _launch(self, reason: str):
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
         popen_kwargs = dict(
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=str(PROJECT_DIR),
+            env=env,
         )
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -208,8 +211,11 @@ class BotProcessManager:
                 if not line:
                     break
                 decoded = line.decode("utf-8", errors="replace")
-                sys.stdout.buffer.write(line)
-                sys.stdout.buffer.flush()
+                try:
+                    sys.stdout.write(decoded)
+                    sys.stdout.flush()
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    pass
                 with self._lock:
                     self._log_buffer.append(decoded)
         except Exception:
@@ -460,6 +466,9 @@ def logs(lines: int = Query(default=100, ge=1, le=10000)):
 # 入口
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    # Windows 下强制 stdout 使用 UTF-8
+    if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logger.info(f"daemon 启动中 (host={DAEMON_HOST}, port={DAEMON_PORT})")
     manager.start_bot(reason="daemon startup")
     uvicorn.run(app, host=DAEMON_HOST, port=DAEMON_PORT)
