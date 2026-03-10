@@ -267,34 +267,17 @@ awsl-wechat-bot/
 
 ## Daemon 控制器
 
-Daemon 是一个独立的 HTTP 服务，用于远程管理 bot 的启停和代码更新。由 Servy 注册为 Windows 服务，保证 daemon 常驻、崩溃自动重启。
+Daemon 是一个独立的 HTTP 服务，用于远程管理 bot 的启停和代码更新。
 
 ```
-Servy (Windows Service)
-  └─ daemon.py (port 8001, 常驻 HTTP API)
-       └─ main.py (bot 子进程, port 8000)
+daemon.py (port 8001, 常驻 HTTP API)
+  └─ main.py (bot 子进程, port 8000)
 ```
 
-### 直接运行
+### 运行
 
 ```bash
 ./venv/Scripts/python daemon.py
-```
-
-### Servy 注册为 Windows 服务
-
-```powershell
-servy-cli install `
-  --name "awsl-daemon" `
-  --path "C:\path\to\venv\Scripts\python.exe" `
-  --args "daemon.py" `
-  --dir "C:\path\to\awsl-wechat-bot" `
-  --startupType "Automatic" `
-  --enableHealth `
-  --heartbeatInterval 30 `
-  --maxFailedChecks 3 `
-  --recoveryAction "RestartProcess" `
-  --maxRestartAttempts 10
 ```
 
 ### Daemon API 端点

@@ -2,12 +2,10 @@
 """
 AWSL WeChat Bot - Daemon 控制器
 管理 bot 子进程，提供远程控制 HTTP API。
-由 Servy (Windows 服务管理器) 管理 daemon 进程本身。
 
 架构:
-    Servy (Windows Service)
-      └─ daemon.py (port 8001, 常驻 HTTP API)
-           └─ main.py (bot 子进程, port 8000)
+    daemon.py (port 8001, 常驻 HTTP API)
+      └─ main.py (bot 子进程, port 8000)
 """
 
 import hmac
@@ -430,8 +428,8 @@ def update():
     results["daemon_updated"] = daemon_updated
 
     if daemon_updated:
-        results["message"] = "daemon.py 已更新，daemon 将退出并由 Servy 重启"
-        logger.info("daemon.py 自身被更新，即将退出让 Servy 重启")
+        results["message"] = "daemon.py 已更新，daemon 将退出，请手动重启"
+        logger.info("daemon.py 自身被更新，即将退出")
 
         def _delayed_exit():
             time.sleep(1)
@@ -460,6 +458,14 @@ def logs(lines: int = Query(default=100, ge=1, le=10000)):
 if __name__ == "__main__":
     if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    # 过滤 health check access log
+    class _HealthFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage()
+            return "/health" not in msg
+
+    logging.getLogger("uvicorn.access").addFilter(_HealthFilter())
+
     logger.info(f"daemon 启动中 (host={DAEMON_HOST}, port={DAEMON_PORT})")
     manager.start_bot(reason="daemon startup")
     uvicorn.run(app, host=DAEMON_HOST, port=DAEMON_PORT)

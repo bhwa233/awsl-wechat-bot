@@ -115,7 +115,7 @@ cp .env.example .env
 
 ## Daemon 控制器
 
-`daemon.py` - 独立 HTTP 服务 (port 8001)，管理 bot 子进程的启停和代码更新。由 Servy 注册为 Windows 服务。
+`daemon.py` - 独立 HTTP 服务 (port 8001)，管理 bot 子进程的启停和代码更新。
 
 配置: `DAEMON_PORT`, `DAEMON_HOST`, `DAEMON_RESTART_DELAY`, `DAEMON_MAX_RETRIES`, `DAEMON_LOG_MAX_LINES`
 

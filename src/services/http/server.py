@@ -67,6 +67,14 @@ class HTTPServer:
 
     def run(self, host: str = "0.0.0.0", port: int = 8000):
         """运行 HTTP 服务器"""
+        # 过滤 health check access log
+        class _HealthFilter(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:
+                msg = record.getMessage()
+                return "/health" not in msg
+
+        logging.getLogger("uvicorn.access").addFilter(_HealthFilter())
+
         self.scheduler.start()
         logger.info(f"启动 HTTP API 服务器: http://{host}:{port}")
         uvicorn.run(self.app, host=host, port=port, log_level="info")
