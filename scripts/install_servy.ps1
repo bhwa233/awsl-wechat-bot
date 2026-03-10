@@ -2,7 +2,7 @@
 # 需要管理员权限运行
 
 Write-Host "正在安装 Servy..."
-winget install aelassas.Servy --accept-package-agreements --accept-source-agreements
+winget install --id aelassas.Servy --accept-package-agreements --accept-source-agreements
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Servy 安装成功"
