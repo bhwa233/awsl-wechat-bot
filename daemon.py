@@ -208,7 +208,8 @@ class BotProcessManager:
                 if not line:
                     break
                 decoded = line.decode("utf-8", errors="replace")
-                sys.stdout.write(decoded)
+                sys.stdout.buffer.write(line)
+                sys.stdout.buffer.flush()
                 with self._lock:
                     self._log_buffer.append(decoded)
         except Exception:
