@@ -33,7 +33,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from config import config
 
 # ---------------------------------------------------------------------------
-# 配置 (复用 config.py，daemon 专属配置从环境变量读取)
+# 配置
 # ---------------------------------------------------------------------------
 DAEMON_PORT = config.DAEMON_PORT
 DAEMON_HOST = config.DAEMON_HOST
@@ -41,18 +41,18 @@ HTTP_API_TOKEN = config.HTTP_API_TOKEN
 AUTO_RESTART_DELAY = config.DAEMON_RESTART_DELAY
 MAX_RESTART_RETRIES = config.DAEMON_MAX_RETRIES
 LOG_BUFFER_LINES = config.DAEMON_LOG_BUFFER_LINES
-HEALTH_CHECK_INTERVAL = 60  # 每 60 秒检查一次
-HEALTH_CHECK_TIMEOUT = 10   # 请求超时秒数
-HEALTH_CHECK_MAX_FAILURES = 3  # 连续失败几次判定不健康
+HEALTH_CHECK_INTERVAL = 60
+HEALTH_CHECK_TIMEOUT = 10
+HEALTH_CHECK_MAX_FAILURES = 3
 BOT_HEALTH_URL = f"http://127.0.0.1:{config.HTTP_API_PORT}/api/health"
 
 PROJECT_DIR = Path(__file__).parent.resolve()
-PYTHON = sys.executable  # 复用启动 daemon 的同一个 Python 解释器
+PYTHON = sys.executable
 BOT_ENTRY = PROJECT_DIR / "main.py"
 DAEMON_HTML = PROJECT_DIR / "daemon_templates" / "index.html"
 
 # ---------------------------------------------------------------------------
-# Logging (daemon 自身日志，仅输出到 stdout)
+# Logging
 # ---------------------------------------------------------------------------
 logger = logging.getLogger("daemon")
 logger.setLevel(logging.INFO)
@@ -62,7 +62,7 @@ _stream_handler.setFormatter(_formatter)
 logger.addHandler(_stream_handler)
 
 # ---------------------------------------------------------------------------
-# Auth (内联复制，不导入 src/)
+# Auth
 # ---------------------------------------------------------------------------
 security = HTTPBearer(auto_error=False)
 
@@ -127,7 +127,6 @@ class BotProcessManager:
             self._terminate()
             self._launch(reason)
             self._restart_count += 1
-            self._last_restart_reason = reason
             logger.info(f"bot 已重启 (pid={self._process.pid}, reason={reason})")
             return {"ok": True, "message": "bot 已重启", "pid": self._process.pid}
 
@@ -180,7 +179,6 @@ class BotProcessManager:
             [PYTHON, "-u", str(BOT_ENTRY)],
             **popen_kwargs,
         )
-        # 日志读取线程：从 PIPE 读，写入内存 buffer
         threading.Thread(
             target=self._pipe_reader,
             args=(self._process,),
@@ -205,18 +203,19 @@ class BotProcessManager:
             self._health_thread.start()
 
     def _pipe_reader(self, process: subprocess.Popen):
-        """从子进程 PIPE 逐行读取，写入内存 buffer"""
-        for line in iter(process.stdout.readline, b""):
-            if not line:
-                break
-            try:
-                decoded = line.decode("utf-8", errors="replace")
-                sys.stdout.write(decoded)
-                sys.stdout.flush()
-                with self._lock:
-                    self._log_buffer.append(decoded)
-            except Exception:
-                pass
+        """从子进程 PIPE 逐行读取，转发到 stdout 并写入内存 buffer"""
+        try:
+            for line in iter(process.stdout.readline, b""):
+                if not line:
+                    break
+                try:
+                    decoded = line.decode("utf-8", errors="replace")
+                    sys.stdout.write(decoded)
+                    sys.stdout.flush()
+                    with self._lock:
+                        self._log_buffer.append(decoded)
+                except Exception:
+                    pass
         finally:
             try:
                 process.stdout.close()
@@ -229,29 +228,36 @@ class BotProcessManager:
         pid = self._process.pid
         try:
             if sys.platform == "win32":
-                # 阶梯式停止: CTRL_BREAK -> terminate -> kill
-                try:
-                    os.kill(self._process.pid, signal.CTRL_BREAK_EVENT)
-                    self._process.wait(timeout=5)
-                except (subprocess.TimeoutExpired, OSError):
-                    self._process.terminate()
-                    try:
-                        self._process.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
-                        self._process.kill()
-                        self._process.wait(timeout=3)
+                self._kill_win32()
             else:
-                self._process.terminate()
-                try:
-                    self._process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    self._process.kill()
-                    self._process.wait(timeout=3)
+                self._kill_posix()
         except Exception:
             pass
         self._process = None
         self._start_time = None
         return {"ok": True, "message": f"bot 已停止 (pid={pid})"}
+
+    def _kill_win32(self):
+        """Windows: CTRL_BREAK -> terminate -> kill"""
+        try:
+            os.kill(self._process.pid, signal.CTRL_BREAK_EVENT)
+            self._process.wait(timeout=5)
+        except (subprocess.TimeoutExpired, OSError):
+            self._process.terminate()
+            try:
+                self._process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self._process.kill()
+                self._process.wait(timeout=3)
+
+    def _kill_posix(self):
+        """POSIX: terminate -> kill"""
+        self._process.terminate()
+        try:
+            self._process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
+            self._process.wait(timeout=3)
 
     def _monitor_loop(self):
         consecutive_failures = 0
@@ -260,15 +266,11 @@ class BotProcessManager:
             if self._stop_event.is_set():
                 break
             with self._lock:
-                if not self._auto_restart:
-                    continue
-                if self._process is None:
+                if not self._auto_restart or self._process is None:
                     continue
                 if self._process.poll() is None:
-                    # 进程还活着，重置失败计数
                     consecutive_failures = 0
                     continue
-                # 进程已退出
                 exit_code = self._process.returncode
                 if consecutive_failures >= MAX_RESTART_RETRIES:
                     self._auto_restart = False
@@ -279,7 +281,6 @@ class BotProcessManager:
                 reason = f"崩溃自动重启 (exit_code={exit_code}, attempt={consecutive_failures})"
                 self._last_restart_reason = reason
                 logger.warning(f"bot 进程退出 (exit_code={exit_code})，{AUTO_RESTART_DELAY}s 后重启 (attempt={consecutive_failures}/{MAX_RESTART_RETRIES})")
-                # 等一下再重启
             time.sleep(AUTO_RESTART_DELAY)
             with self._lock:
                 if not self._auto_restart or self._stop_event.is_set():
@@ -287,7 +288,6 @@ class BotProcessManager:
                 self._launch(reason)
 
     def _health_check_loop(self):
-        # 启动后等一会儿再开始检查，给 bot 启动时间
         self._stop_event.wait(timeout=30)
         while not self._stop_event.is_set():
             self._stop_event.wait(timeout=HEALTH_CHECK_INTERVAL)
@@ -298,7 +298,6 @@ class BotProcessManager:
                     continue
                 if self._process is None or self._process.poll() is not None:
                     continue
-            # 在锁外面做 HTTP 请求，避免阻塞其他操作
             healthy = self._ping_health()
             with self._lock:
                 if not self._auto_restart or self._process is None:
@@ -318,14 +317,12 @@ class BotProcessManager:
                         self._last_restart_reason = reason
                         self._launch(reason)
 
-
     def _ping_health(self) -> bool:
         try:
             resp = httpx.get(BOT_HEALTH_URL, timeout=HEALTH_CHECK_TIMEOUT)
             return resp.status_code == 200
         except Exception:
             return False
-
 
 
 # ---------------------------------------------------------------------------
@@ -376,13 +373,12 @@ def restart():
 
 @app.post("/update", dependencies=[Depends(verify_token)])
 def update():
-    # 1. 停止 bot
     logger.info("开始执行 /update: 停止 bot, git pull, pip install")
     manager.stop_bot()
 
     results = {}
 
-    # 2. git pull
+    # git pull
     try:
         git_result = subprocess.run(
             ["git", "pull"],
@@ -399,7 +395,7 @@ def update():
     except Exception as e:
         results["git_pull"] = {"error": str(e)}
 
-    # 3. pip install
+    # pip install
     try:
         pip_result = subprocess.run(
             [PYTHON, "-m", "pip", "install", "-r", "requirements.txt"],
@@ -416,7 +412,7 @@ def update():
     except Exception as e:
         results["pip_install"] = {"error": str(e)}
 
-    # 4. 检查 daemon.py 自身是否被更新
+    # 检查 daemon.py 自身是否被更新
     daemon_updated = False
     try:
         diff_result = subprocess.run(
@@ -434,7 +430,6 @@ def update():
     results["daemon_updated"] = daemon_updated
 
     if daemon_updated:
-        # daemon.py 自身被更新，需要退出让 Servy 重启
         results["message"] = "daemon.py 已更新，daemon 将退出并由 Servy 重启"
         logger.info("daemon.py 自身被更新，即将退出让 Servy 重启")
 
@@ -445,7 +440,7 @@ def update():
         threading.Thread(target=_delayed_exit, daemon=True).start()
         return results
 
-    # 5. 重新启动 bot
+    # 重新启动 bot
     manager.enable_auto_restart()
     start_result = manager.start_bot(reason="API /update")
     results["bot_start"] = start_result
@@ -463,7 +458,6 @@ def logs(lines: int = Query(default=100, ge=1, le=10000)):
 # 入口
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Windows 下强制 stdout 使用 UTF-8
     if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logger.info(f"daemon 启动中 (host={DAEMON_HOST}, port={DAEMON_PORT})")
