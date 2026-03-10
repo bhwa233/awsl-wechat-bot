@@ -21,9 +21,9 @@ if (-not (Test-Path $DaemonScript)) {
 }
 
 # 检查 Servy
-$ServyExe = Get-Command servy -ErrorAction SilentlyContinue
+$ServyExe = Get-Command servy-cli -ErrorAction SilentlyContinue
 if (-not $ServyExe) {
-    Write-Host "未找到 Servy，请先运行 .\scripts\install_servy.ps1" -ForegroundColor Red
+    Write-Host "未找到 servy-cli，请先运行 .\scripts\install_servy.ps1" -ForegroundColor Red
     exit 1
 }
 
@@ -32,25 +32,24 @@ Write-Host "  Python: $PythonExe"
 Write-Host "  Script: $DaemonScript"
 Write-Host "  工作目录: $ProjectDir"
 
-servy install --name "$ServiceName" `
-    --command "$PythonExe" `
-    --args "-u `"$DaemonScript`"" `
-    --working-dir "$ProjectDir" `
-    --start-type auto `
-    --enableHealth `
-    --heartbeatInterval 60 `
-    --maxFailedChecks 3 `
-    --recoveryAction RestartService `
-    --healthCheckUrl "http://localhost:8001/health"
+servy-cli install --name "$ServiceName" `
+    --path "$PythonExe" `
+    --params "-u `"$DaemonScript`"" `
+    --startupDir "$ProjectDir" `
+    --startupType Automatic `
+    --description "AWSL WeChat Bot Daemon Controller"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "服务注册成功" -ForegroundColor Green
     Write-Host ""
     Write-Host "管理命令:"
-    Write-Host "  servy start $ServiceName    # 启动服务"
-    Write-Host "  servy stop $ServiceName     # 停止服务"
-    Write-Host "  servy status $ServiceName   # 查看状态"
-    Write-Host "  servy uninstall $ServiceName # 卸载服务"
+    Write-Host "  servy-cli start --name $ServiceName"
+    Write-Host "  servy-cli stop --name $ServiceName"
+    Write-Host "  servy-cli status --name $ServiceName"
+    Write-Host "  servy-cli uninstall --name $ServiceName"
+    Write-Host ""
+    Write-Host "健康检查请通过 Servy Manager GUI 配置:"
+    Write-Host "  URL: http://localhost:8001/health"
 } else {
     Write-Host "服务注册失败" -ForegroundColor Red
     exit 1
