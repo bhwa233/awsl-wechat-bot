@@ -32,12 +32,15 @@ Write-Host "  Python: $PythonExe"
 Write-Host "  Script: $DaemonScript"
 Write-Host "  工作目录: $ProjectDir"
 
+$StdoutLog = Join-Path $ProjectDir "daemon_stdout.log"
+
 servy-cli install --name "$ServiceName" `
     --path "$PythonExe" `
     --params="-u `"$DaemonScript`"" `
     --startupDir "$ProjectDir" `
     --startupType Automatic `
-    --description "AWSL WeChat Bot Daemon Controller"
+    --description "AWSL WeChat Bot Daemon Controller" `
+    --stdout "$StdoutLog"
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "服务注册成功" -ForegroundColor Green
