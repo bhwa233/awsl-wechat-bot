@@ -72,10 +72,12 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
         )
+        # pgrep 和 Quartz 可能返回不同的进程名（"WeChat" vs "微信"）
+        wechat_names = {"WeChat", "微信", "Weixin"}
         result = {}
         for win in window_list:
             owner = win.get(Quartz.kCGWindowOwnerName, "")
-            if owner != self.process_name:
+            if owner not in wechat_names:
                 continue
             title = win.get(Quartz.kCGWindowName, "")
             wid = win.get(Quartz.kCGWindowNumber, 0)
