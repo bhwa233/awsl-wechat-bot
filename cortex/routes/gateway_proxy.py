@@ -30,4 +30,15 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> APIRouter:
         resp = await client.post("/api/send", json=body)
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
+    @router.get("/api/chatlog/groups", dependencies=[Depends(verify_token)])
+    async def proxy_chatlog_groups():
+        resp = await client.get("/api/chatlog/groups")
+        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+
+    @router.post("/api/chatlog/summary", dependencies=[Depends(verify_token)])
+    async def proxy_chatlog_summary(request: Request):
+        body = await request.json()
+        resp = await client.post("/api/chatlog/summary", json=body, timeout=300)
+        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+
     return router
