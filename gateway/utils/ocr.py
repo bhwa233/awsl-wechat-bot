@@ -57,10 +57,13 @@ def ocr_image(cg_image) -> list:
 
 def get_others_messages(ocr_results: list) -> list:
     """
-    从 OCR 结果中提取他人消息（左侧消息），自动跳过昵称行。
+    从 OCR 结果中提取他人消息（左侧消息），合并同一行碎片和多行消息。
 
-    群聊中昵称在消息上方，OCR 结果按 y 从上到下排列（y 递减）。
-    昵称与消息的区分条件：y 差值 < OCR_NICKNAME_Y_GAP 且 x 差值 > OCR_NICKNAME_X_DIFF。
+    处理流程：
+    1. 筛选左侧文本
+    2. 合并同一行的 OCR 碎片（y 差值 < OCR_SAME_LINE_Y_GAP，按 x 排序拼接）
+    3. 标记昵称行（y 差值 < OCR_NICKNAME_Y_GAP 且 x 差值 > OCR_NICKNAME_X_DIFF）
+    4. 按 y 间距分组合并多行消息（间距 > OCR_MESSAGE_GAP 或遇到昵称则分隔）
 
     Args:
         ocr_results: ocr_image 返回的结果列表（已按 y 降序排列）
@@ -68,26 +71,70 @@ def get_others_messages(ocr_results: list) -> list:
     Returns:
         list: 消息文本列表 ['消息1', '消息2', ...]
     """
-    # 先筛选左侧文本
+    # 1. 筛选左侧文本
     left_items = [r for r in ocr_results if r['x'] < config.OCR_LEFT_THRESHOLD]
 
-    # 标记昵称行：昵称在消息上方（y 差值小）且 x 比消息小（缩进更少）
+    # 2. 合并同一行的 OCR 碎片（y 几乎相同的多个识别结果）
+    lines = []
+    for item in left_items:
+        if lines and abs(lines[-1][0]['y'] - item['y']) < config.OCR_SAME_LINE_Y_GAP:
+            lines[-1].append(item)
+        else:
+            lines.append([item])
+
+    merged_lines = []
+    for group in lines:
+        group.sort(key=lambda r: r['x'])
+        text = ''.join(r['text'] for r in group)
+        merged_lines.append({
+            'text': text,
+            'y': group[0]['y'],
+            'x': min(r['x'] for r in group),
+            'confidence': max(r['confidence'] for r in group),
+        })
+
+    # 3. 标记昵称行
     nickname_indices = set()
-    for i in range(len(left_items) - 1):
-        y_gap = left_items[i]['y'] - left_items[i + 1]['y']
-        x_diff = left_items[i + 1]['x'] - left_items[i]['x']
+    for i in range(len(merged_lines) - 1):
+        y_gap = merged_lines[i]['y'] - merged_lines[i + 1]['y']
+        x_diff = merged_lines[i + 1]['x'] - merged_lines[i]['x']
         if 0 < y_gap < config.OCR_NICKNAME_Y_GAP and x_diff > config.OCR_NICKNAME_X_DIFF:
             nickname_indices.add(i)
 
+    # 4. 按 y 间距分组合并多行消息
     messages = []
-    for i, r in enumerate(left_items):
+    current_lines = []
+    prev_y = None
+
+    for i, line in enumerate(merged_lines):
         if i in nickname_indices:
+            if current_lines:
+                messages.append('\n'.join(current_lines))
+                current_lines = []
+            prev_y = line['y']
             continue
-        if r['confidence'] < config.OCR_CONFIDENCE_THRESHOLD:
+
+        if line['confidence'] < config.OCR_CONFIDENCE_THRESHOLD:
+            prev_y = line['y']
             continue
-        text = r['text'].strip()
-        if len(text) >= config.OCR_MIN_TEXT_LENGTH:
-            messages.append(text)
+
+        text = line['text'].strip()
+        if len(text) < config.OCR_MIN_TEXT_LENGTH:
+            prev_y = line['y']
+            continue
+
+        # y 间距大于阈值或遇到昵称后的第一行 → 新消息
+        if prev_y is not None and prev_y - line['y'] > config.OCR_MESSAGE_GAP:
+            if current_lines:
+                messages.append('\n'.join(current_lines))
+                current_lines = []
+
+        current_lines.append(text)
+        prev_y = line['y']
+
+    if current_lines:
+        messages.append('\n'.join(current_lines))
+
     return messages
 
 

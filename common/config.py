@@ -42,7 +42,7 @@ class Config(BaseSettings):
 
     # OCR 截图区域参数（弹出窗口只用 TOP/HEIGHT，主窗口全用）
     SCREENSHOT_LEFT_RATIO: float = 0.30
-    SCREENSHOT_TOP_RATIO: float = 0.06
+    SCREENSHOT_TOP_RATIO: float = 0.10
     SCREENSHOT_WIDTH_RATIO: float = 0.65
     SCREENSHOT_HEIGHT_RATIO: float = 0.75
 
@@ -53,9 +53,11 @@ class Config(BaseSettings):
 
     # OCR 消息过滤参数
     OCR_LEFT_THRESHOLD: float = 0.2        # x < 此值判定为他人消息
-    OCR_CONFIDENCE_THRESHOLD: float = 0.4  # 置信度阈值
+    OCR_CONFIDENCE_THRESHOLD: float = 0.3  # 置信度阈值
     OCR_NICKNAME_Y_GAP: float = 0.06       # 昵称与消息的 y 差值上限
     OCR_NICKNAME_X_DIFF: float = 0.005     # 昵称与消息的 x 差值下限
+    OCR_SAME_LINE_Y_GAP: float = 0.005    # 同一行 OCR 碎片的 y 差值阈值
+    OCR_MESSAGE_GAP: float = 0.05          # 不同消息之间的 y 间距阈值
 
     # OpenAI 配置（从环境变量读取）
     OPENAI_API_KEY: str = ""
