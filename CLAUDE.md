@@ -9,24 +9,28 @@ AWSL WeChat Bot - 跨平台微信群聊机器人，采用 Gateway + Cortex 微�
 ## Development Commands
 
 ```bash
-# Setup
-python3 -m venv venv
-./venv/bin/python -m pip install -r requirements.txt  # macOS
-./venv/Scripts/python -m pip install -r requirements.txt  # Windows
+# Setup (uv)
+uv sync                    # 安装核心依赖
+uv sync --all-extras       # 安装全部依赖（含 decrypt/summary 可选组）
 cp .env.example .env
 
 # Run (Gateway :8000 + Cortex :7999)
-./venv/bin/python main.py  # macOS
-./venv/Scripts/python main.py  # Windows
+uv run main.py
 
 # Run individually
-./venv/bin/python -m gateway.main  # Gateway only (:8000)
-./venv/bin/python -m cortex.main   # Cortex only (:7999)
-./venv/bin/python run_daemon.py    # Daemon (:8001)
+uv run -m gateway.main     # Gateway only (:8000)
+uv run -m cortex.main      # Cortex only (:7999)
+uv run run_daemon.py       # Daemon (:8001)
 
 # Tools
-./venv/bin/python tools/inspect_wechat.py   # 微信窗口检查
-./venv/bin/python tools/wechat_decrypt.py   # 微信数据库解密
+uv run tools/inspect_wechat.py   # 微信窗口检查
+uv run tools/wechat_decrypt.py   # 微信数据库解密
+
+# 依赖管理
+uv add <package>           # 添加依赖
+uv add --optional decrypt <package>  # 添加到 decrypt 可选组
+uv remove <package>        # 移除依赖
+uv lock                    # 重新生成 lock 文件
 ```
 
 ## Architecture

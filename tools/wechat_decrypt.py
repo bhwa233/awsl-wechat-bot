@@ -7,7 +7,7 @@ WeChat Database Key Dumper
 需要以管理员身份运行。
 
 依赖:
-    pip install psutil
+    uv add psutil
 
 使用方法:
     python wechat_decrypt.py
@@ -24,7 +24,7 @@ from typing import Optional, Tuple, List
 try:
     import psutil
 except ImportError:
-    print("请安装 psutil: pip install psutil")
+    print("请安装 psutil: uv add psutil")
     sys.exit(1)
 
 

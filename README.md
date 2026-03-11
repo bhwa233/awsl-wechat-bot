@@ -74,13 +74,9 @@
 ```bash
 cd awsl-wechat-bot
 
-# macOS
-python3 -m venv venv
-./venv/bin/python -m pip install -r requirements.txt
-
-# Windows
-python -m venv venv
-./venv/Scripts/python -m pip install -r requirements.txt
+# 安装依赖（需要 uv: https://docs.astral.sh/uv/）
+uv sync                    # 核心依赖
+uv sync --all-extras       # 全部依赖（含解密/总结可选组）
 
 cp .env.example .env  # 编辑配置
 ```
@@ -111,12 +107,12 @@ CORTEX_HTTP_PORT=7999
 
 ```bash
 # 一体启动（Gateway + Cortex）
-./venv/bin/python main.py
+uv run main.py
 
 # 独立启动
-./venv/bin/python -m gateway.main  # Gateway only (:8000)
-./venv/bin/python -m cortex.main   # Cortex only (:7999)
-./venv/bin/python run_daemon.py    # Daemon (:8001)
+uv run -m gateway.main     # Gateway only (:8000)
+uv run -m cortex.main      # Cortex only (:7999)
+uv run run_daemon.py       # Daemon (:8001)
 ```
 
 ### 触发方式
@@ -157,7 +153,7 @@ GET/POST/PUT/DELETE /api/webhooks     # Webhook 管理
 ```
 GET  /status              # 运行状态
 POST /start|stop|restart  # 启停控制
-POST /update              # git pull + pip install + 重启
+POST /update              # git pull + uv sync + 重启
 GET  /logs?lines=100      # 日志
 ```
 

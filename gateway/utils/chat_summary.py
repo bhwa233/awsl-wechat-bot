@@ -500,13 +500,13 @@ def render_to_image(
     try:
         from html2image import Html2Image
     except ImportError:
-        print("错误: 需要安装 html2image: pip install html2image")
+        print("错误: 需要安装 html2image: uv add html2image")
         return False
 
     try:
         from PIL import Image
     except ImportError:
-        print("错误: 需要安装 Pillow: pip install Pillow")
+        print("错误: 需要安装 Pillow: uv add Pillow")
         return False
 
     from string import Template

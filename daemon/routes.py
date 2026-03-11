@@ -3,7 +3,6 @@
 import logging
 import os
 import subprocess
-import sys
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -19,7 +18,6 @@ from .manager import BotProcessManager
 logger = logging.getLogger("daemon")
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PYTHON = sys.executable
 DAEMON_HTML = Path(__file__).parent / "templates" / "index.html"
 
 manager = BotProcessManager()
@@ -68,7 +66,7 @@ def restart():
 
 @app.post("/update", dependencies=[Depends(verify_token)])
 def update():
-    logger.info("开始执行 /update: 停止 bot, git pull, pip install")
+    logger.info("开始执行 /update: 停止 bot, git pull, uv sync")
     manager.stop_bot()
 
     results = {}
@@ -90,20 +88,20 @@ def update():
         results["git_pull"] = {"error": str(e)}
 
     try:
-        pip_result = subprocess.run(
-            [PYTHON, "-m", "pip", "install", "-r", "requirements.txt"],
+        uv_result = subprocess.run(
+            ["uv", "sync"],
             cwd=str(PROJECT_DIR),
             capture_output=True,
             text=True,
             timeout=300,
         )
-        results["pip_install"] = {
-            "stdout": pip_result.stdout,
-            "stderr": pip_result.stderr,
-            "returncode": pip_result.returncode,
+        results["uv_sync"] = {
+            "stdout": uv_result.stdout,
+            "stderr": uv_result.stderr,
+            "returncode": uv_result.returncode,
         }
     except Exception as e:
-        results["pip_install"] = {"error": str(e)}
+        results["uv_sync"] = {"error": str(e)}
 
     daemon_updated = False
     try:

@@ -133,7 +133,7 @@ class WeChatDBDecryptor:
 
     def __init__(self, key_hex: str):
         if not HAS_CRYPTO:
-            raise ImportError("需要 pycryptodome: pip install pycryptodome")
+            raise ImportError("需要 pycryptodome: uv add pycryptodome")
         self.key = bytes.fromhex(key_hex)
         if len(self.key) != KEY_SIZE:
             raise ValueError(f"密钥长度必须是 {KEY_SIZE} 字节 ({KEY_SIZE * 2} 个十六进制字符)")
@@ -553,7 +553,7 @@ class WeChatDBReader:
 def cmd_decrypt(args) -> int:
     """解密命令"""
     if not HAS_CRYPTO:
-        print("缺少依赖: pip install pycryptodome")
+        print("缺少依赖: uv add pycryptodome")
         return 1
     if not os.path.isdir(args.input):
         print(f"错误: 目录不存在: {args.input}")

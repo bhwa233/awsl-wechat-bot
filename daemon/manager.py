@@ -19,7 +19,6 @@ from common.config import config
 logger = logging.getLogger("daemon")
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
-PYTHON = sys.executable
 BOT_ENTRY = PROJECT_DIR / "main.py"
 BOT_HEALTH_URL = f"http://127.0.0.1:{config.HTTP_API_PORT}/api/health"
 
@@ -112,7 +111,7 @@ class BotProcessManager:
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         self._process = subprocess.Popen(
-            [PYTHON, "-u", str(BOT_ENTRY)],
+            ["uv", "run", "python", "-u", str(BOT_ENTRY)],
             **popen_kwargs,
         )
         threading.Thread(
