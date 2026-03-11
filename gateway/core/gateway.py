@@ -32,8 +32,9 @@ class Gateway:
         self._thread: threading.Thread | None = None
 
     def start(self):
-        """启动队列消费线程"""
+        """启动 sender + 队列消费线程"""
         self._running = True
+        self.sender.start()
         self._thread = threading.Thread(target=self._consume_loop, daemon=True)
         self._thread.start()
         logger.info("Gateway 队列消费线程启动")
@@ -41,6 +42,7 @@ class Gateway:
     def stop(self):
         """停止"""
         self._running = False
+        self.sender.stop()
         if self._thread:
             self._thread.join(timeout=2)
 
