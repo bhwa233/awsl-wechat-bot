@@ -146,7 +146,7 @@
             background: var(--bg);
             background-attachment: fixed;
             min-height: 100vh;
-            padding: 24px;
+            padding: 12px;
             color: var(--text);
         }
 
@@ -156,8 +156,8 @@
         .header {
             background: var(--card);
             border: 1px solid var(--card-border);
-            border-radius: 20px;
-            padding: 32px;
+            border-radius: 14px;
+            padding: 20px;
             margin-bottom: 20px;
             backdrop-filter: blur(20px);
         }
@@ -169,7 +169,7 @@
         }
 
         .header h1 {
-            font-size: 26px;
+            font-size: 20px;
             font-weight: 700;
             margin-bottom: 6px;
             background: linear-gradient(135deg, #6366f1, #818cf8);
@@ -264,18 +264,18 @@
             padding: 6px;
             background: var(--card);
             border: 1px solid var(--card-border);
-            border-radius: 16px;
+            border-radius: 12px;
             margin-bottom: 20px;
             backdrop-filter: blur(20px);
         }
 
         .tab {
             flex: 1;
-            padding: 12px;
+            padding: 10px;
             background: transparent;
             border: none;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             color: var(--text-muted);
@@ -298,13 +298,13 @@
             background: var(--card);
             border: 1px solid var(--card-border);
             border-radius: var(--radius);
-            padding: 28px;
+            padding: 18px;
             margin-bottom: 20px;
             backdrop-filter: blur(20px);
         }
 
         .panel-title {
-            font-size: 18px;
+            font-size: 15px;
             font-weight: 600;
             margin-bottom: 20px;
             color: var(--text);
@@ -368,10 +368,10 @@
 
         /* Buttons */
         .btn {
-            padding: 10px 22px;
+            padding: 8px 16px;
             border: none;
             border-radius: 10px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
@@ -561,6 +561,18 @@
             .cron-examples { grid-template-columns: 1fr; }
             .header { padding: 20px; }
             .panel { padding: 20px; }
+        }
+        @media (max-width: 640px) {
+            body { padding: 8px; }
+            .header { padding: 16px; }
+            .header h1 { font-size: 18px; }
+            .panel { padding: 14px; }
+            .tabs { gap: 4px; padding: 4px; }
+            .tab { padding: 8px; font-size: 12px; }
+            .btn { padding: 8px 14px; font-size: 12px; }
+            .btn-small { padding: 4px 10px; font-size: 11px; }
+            .auth-input-group { flex-wrap: wrap; }
+            .form-group textarea { min-height: 80px; }
         }
     </style>
 </head>
