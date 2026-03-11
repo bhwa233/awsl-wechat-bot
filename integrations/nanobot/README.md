@@ -5,7 +5,8 @@ NanoBot (Python) 作为 WS 客户端连接 Gateway，处理 AI 对话。
 ## 安装
 
 ```bash
-pip install nanobot-ai websockets
+cd integrations/nanobot
+uv sync
 ```
 
 ## 配置
@@ -21,7 +22,7 @@ pip install nanobot-ai websockets
 
 ```bash
 cd integrations/nanobot
-python run.py
+uv run main.py
 ```
 
 ## 与 Cortex 共存
@@ -29,4 +30,4 @@ python run.py
 NanoBot 和 Cortex 作为独立 WS 客户端并行运行：
 - NanoBot 处理 AI 对话（通过 `message_filter` 分流）
 - Cortex 保留命令、定时任务、Webhook 功能
-- 如需 NanoBot 完全替代 Cortex AI，可设置 `AI_ENABLED=False`
+- 如需 NanoBot 完全替代 Cortex AI，可将 `TRIGGER_KEYWORD` 设为空

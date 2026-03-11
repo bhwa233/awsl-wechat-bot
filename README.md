@@ -187,7 +187,7 @@ Gateway 的 WS 协议支持任意客户端接入。`integrations/` 目录提供�
 
 | Agent | 语言 | 启动 |
 |-------|------|------|
-| NanoBot | Python | `pip install nanobot-ai websockets && python integrations/nanobot/run.py` |
+| NanoBot | Python | `cd integrations/nanobot && uv sync && uv run main.py` |
 | OpenClaw | Node.js | `cd integrations/openclaw && npm install && openclaw --config openclaw.json` |
 
 它们与 Cortex 并行运行，通过 `message_filter` 正则分流消息。详见 [integrations/README.md](integrations/README.md)。

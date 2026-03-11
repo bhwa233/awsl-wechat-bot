@@ -1,0 +1,10 @@
+[project]
+name = "awsl-nanobot"
+version = "0.1.0"
+description = "NanoBot integration for AWSL Gateway"
+requires-python = ">=3.11"
+dependencies = [
+    "nanobot-ai>=0.1.0",
+    "websockets>=12.0",
+]
+

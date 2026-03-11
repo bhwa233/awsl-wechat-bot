@@ -19,9 +19,8 @@ Detector (n) -> Gateway WS Server (:8000)
 Python 同栈、轻量、BaseChannel 简洁。详见 [nanobot/README.md](nanobot/README.md)。
 
 ```bash
-pip install nanobot-ai websockets
 cd integrations/nanobot
-python run.py
+uv sync && uv run main.py
 ```
 
 ## OpenClaw (可选)
