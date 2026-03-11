@@ -53,7 +53,7 @@ per group                              │ 广播
 |---------|------|------|
 | Gateway | 8000 | WS 消息网关 + REST API + 微信窗口交互 |
 | Daemon  | 8001 | Bot 子进程管理（启停/更新） |
-| Cortex  | 7999 | 业务逻辑（AI/命令/触发/Webhook/定时任务） |
+| Cortex  | 7999 | 业务逻辑（AI/命令/触发/Webhook/定时任务）+ Gateway API 代理 |
 
 ### Key Components
 
@@ -66,18 +66,18 @@ per group                              │ 广播
 **gateway/** - Gateway 服务
 - `runtime.py` - GatewayRuntime：自动窗口发现（5s 扫描），管理 detectors/sender/gateway
 - `asgi.py` - FastAPI app 工厂，lifespan 管理生命周期
-- `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播
+- `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播 + subscribe regex 校验
 - `core/detector.py` - MessageDetector：per-group 消息检测线程，SHA256 上下文哈希去重
 - `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
 - `adapters/base.py` - BaseWeChatAdapter 抽象基类 (4 个方法)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
-- `adapters/windows.py` - Windows: uiautomation 控件遍历
+- `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，发送 _send_lock 串行
 - `storage/message_db.py` - SQLModel ORM 消息去重 (SQLite)
 - `routes/` - REST (health, groups, messages, chatlog) + WS 端点
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
-- `runtime.py` - CortexRuntime (MessageListener)：滑动窗口限速/触发匹配(同步) + ThreadPoolExecutor 处理 AI/命令(异步)
+- `runtime.py` - CortexRuntime (MessageListener)：先 trigger 匹配再滑动窗口限速 + ThreadPoolExecutor 处理 AI/命令
 - `asgi.py` - FastAPI app 工厂，组装 listener 注册 + scheduler + lifespan
 - `gateway_client.py` - GatewayClient：纯 WS 客户端，连接/重连/订阅/收发，add_listener 注册 MessageListener
 - `scheduler.py` - TaskScheduler：轮询定时任务，通过 GatewayClient WS 发消息，HTTP 仅用于 groups/summary 查询
@@ -86,7 +86,7 @@ per group                              │ 广播
 - `services/trigger.py` - TriggerMatcher 正则匹配（AI/命令/文本/图片触发）
 - `services/webhook.py` - WebhookService (MessageListener)：SQLModel ORM + ThreadPoolExecutor fire-and-forget
 - `services/scheduled_task.py` - ScheduledTaskService：SQLModel ORM CRUD + cron 调度
-- `routes/` - tasks, webhooks, health
+- `routes/` - tasks, webhooks, health, gateway_proxy（代理 Gateway 的 /api/groups 和 /api/send）
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
@@ -98,10 +98,13 @@ per group                              │ 广播
 - **非阻塞 listener**: listener 回调在 GatewayClient async 线程中执行，禁止阻塞调用。CortexRuntime 用 `ThreadPoolExecutor` 处理 AI/命令，WebhookService 用 `ThreadPoolExecutor` 发 HTTP
 - **纯 WS 客户端**: GatewayClient 只管连接/重连/订阅/收发，不持有业务逻辑。指数退避重连 (1s → 30s)，asyncio.Event 优雅停止
 - **Gateway/Cortex 通信**: 所有消息收发走 WS 协议。Scheduler 发消息也通过 GatewayClient WS，不走 HTTP self-call
+- **Cortex Gateway 代理**: Cortex 前端通过后端代理访问 Gateway API（/api/groups, /api/send），避免跨端口直连
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
+- **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
-- **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 10s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口）
+- **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
+- **WS 认证**: `hmac.compare_digest` 常量时间比较，REST 和 WS 统一防 timing attack
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池
 
@@ -109,18 +112,18 @@ per group                              │ 广播
 
 Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws?token=<token>`, chatlog 系列
 
-Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`
+Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `GET /api/groups`(代理), `POST /api/send`(代理)
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 
-认证: `Authorization: Bearer <HTTP_API_TOKEN>`，WS 认证: `ws://host:8000/ws?token=<token>`
+认证: `Authorization: Bearer <HTTP_API_TOKEN>`，WS 认证: `ws://host:8000/ws?token=<token>`(hmac.compare_digest)
 
 ## WS Protocol
 
 连接: `ws://host:8000/ws?token=<bearer_token>`
 
 Client → Server:
-- `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}`
+- `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}` — 无效 regex 返回 error
 - `{"type": "unsubscribe"}`
 - `{"type": "send_message", "group_name": "...", "message": "...", "image_base64": "..."}`
 
@@ -132,13 +135,14 @@ Server → Client:
 
 ## Threading Model
 
-- **Gateway 线程**: scan_loop(窗口发现) + detector(per-group OCR) + sender(串行发送) + consume_loop(队列广播)，各自独立线程
+- **Gateway 线程**: scan_loop(窗口发现) + detector(per-group, 读取无锁并行) + sender(串行发送) + consume_loop(队列广播)
 - **GatewayClient 线程**: 独立 asyncio 事件循环，只做 WS 收发 + listener 分发（listener 回调必须非阻塞）
 - **Cortex ThreadPoolExecutor(4)**: AI/命令等阻塞操作从 listener 回调提交到此线程池
 - **Webhook ThreadPoolExecutor(3)**: HTTP POST fire-and-forget
 - **Scheduler 线程**: 5s 轮询定时任务，阻塞操作在此线程内（不影响消息处理）
+- **main.py**: asyncio.gather 运行双 server，异常时通知对方退出
 
 ## Platform Notes
 
 - **macOS**: 需要辅助功能权限（发送）+ 屏幕录制权限（截图）
-- **Windows**: 建议管理员权限运行
+- **Windows**: 建议管理员权限运行，UIA 使用 UIAutomationInitializerInThread per-thread 初始化
