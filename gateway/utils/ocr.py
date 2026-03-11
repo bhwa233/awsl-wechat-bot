@@ -27,9 +27,9 @@ def ocr_image(cg_image) -> list:
 
     request = Vision.VNRecognizeTextRequest.alloc().init()
     request.setRecognitionLevel_(Vision.VNRequestTextRecognitionLevelAccurate)
-    request.setRecognitionLanguages_(['zh-Hans', 'zh-Hant', 'en'])
+    request.setRecognitionLanguages_(config.OCR_LANGUAGES)
     request.setAutomaticallyDetectsLanguage_(True)
-    request.setMinimumTextHeight_(0.01)
+    request.setMinimumTextHeight_(config.OCR_MIN_TEXT_HEIGHT)
     request.setCustomWords_(config.OCR_CUSTOM_WORDS)
 
     success, error = handler.performRequests_error_([request], None)
@@ -86,7 +86,7 @@ def get_others_messages(ocr_results: list) -> list:
         if r['confidence'] < config.OCR_CONFIDENCE_THRESHOLD:
             continue
         text = r['text'].strip()
-        if len(text) >= 2:
+        if len(text) >= config.OCR_MIN_TEXT_LENGTH:
             messages.append(text)
     return messages
 

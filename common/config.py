@@ -46,6 +46,11 @@ class Config(BaseSettings):
     SCREENSHOT_WIDTH_RATIO: float = 0.65
     SCREENSHOT_HEIGHT_RATIO: float = 0.75
 
+    # OCR 识别参数
+    OCR_LANGUAGES: list[str] = ["zh-Hans", "zh-Hant", "en"]  # Vision 识别语言
+    OCR_MIN_TEXT_HEIGHT: float = 0.01      # Vision minimumTextHeight
+    OCR_MIN_TEXT_LENGTH: int = 2           # 消息最小字符数
+
     # OCR 消息过滤参数
     OCR_LEFT_THRESHOLD: float = 0.2        # x < 此值判定为他人消息
     OCR_CONFIDENCE_THRESHOLD: float = 0.4  # 置信度阈值
