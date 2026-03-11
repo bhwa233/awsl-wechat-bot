@@ -8,9 +8,18 @@ from common.config import config
 
 logger = logging.getLogger(__name__)
 
+
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     def __init__(self):
         self._ui_lock = threading.RLock()
+        self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
+
+    def _ensure_uia(self):
+        """确保当前线程已初始化 UIA（内部处理 COM 初始化，控件须在同一线程创建和使用）"""
+        tid = threading.get_ident()
+        if tid not in self._thread_inits:
+            self._thread_inits[tid] = auto.UIAutomationInitializerInThread()
+            logger.debug(f"线程 {tid} UIA 初始化完成")
 
     def _set_clipboard_text_windows_api(self, text: str):
         """使用 win32 API 安全设置文本剪贴板。"""
@@ -50,6 +59,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 - window: WindowControl 对象
                 - class: 窗口类名
         """
+        self._ensure_uia()
         logger.debug("正在扫描所有微信窗口...")
         all_windows = []
 
@@ -136,6 +146,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         Returns:
             list[str]: 消息列表
         """
+        self._ensure_uia()
         with self._ui_lock:
             self.activate_specific_window(window)
 
@@ -191,6 +202,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         Returns:
             bool: 是否发送成功
         """
+        self._ensure_uia()
         with self._ui_lock:
             logger.debug(f"[send_text_to_window] 向窗口 {window.Name} 发送: {text[:20]}...")
 
@@ -246,6 +258,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         import struct
         import win32clipboard
 
+        self._ensure_uia()
         with self._ui_lock:
             logger.debug(f"[send_image_to_window] 向窗口 {window.Name} 发送图片...")
 
