@@ -7,53 +7,53 @@
     <style>
         /* ===== Theme Variables ===== */
         :root {
-            --bg-gradient-start: #e8edf5;
-            --bg-gradient-end: #dce2ee;
-            --card-bg: rgba(255, 255, 255, 0.95);
+            --bg-gradient-start: #f0f5f0;
+            --bg-gradient-end: #e2ebe2;
+            --card-bg: rgba(255, 255, 255, 0.92);
             --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.10);
             --header-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
-            --text-primary: #333;
-            --text-secondary: #666;
-            --stat-bg: #f8fafc;
-            --input-border: #e5e7eb;
-            --input-bg: #fff;
-            --auth-bg: #fef3c7;
-            --auth-border: #f59e0b;
+            --text-primary: #1a1a1a;
+            --text-secondary: #404040;
+            --stat-bg: rgba(245, 250, 245, 0.8);
+            --input-border: rgba(120, 140, 120, 0.3);
+            --input-bg: rgba(245, 250, 245, 0.8);
+            --auth-bg: rgba(202, 138, 4, 0.08);
+            --auth-border: #ca8a04;
             --auth-label: #92400e;
-            --auth-ok-bg: #d1fae5;
-            --auth-ok-border: #10b981;
+            --auth-ok-bg: rgba(22, 163, 74, 0.1);
+            --auth-ok-border: #16a34a;
             --auth-ok-label: #065f46;
-            --status-running-bg: #d1fae5;
-            --status-stopped-bg: #fee2e2;
-            --update-output-bg: #f8fafc;
-            --update-output-border: #e2e8f0;
-            --health-ok-bg: #f0fdf4;
-            --health-fail-bg: #fef2f2;
+            --status-running-bg: rgba(22, 163, 74, 0.1);
+            --status-stopped-bg: rgba(220, 38, 38, 0.08);
+            --update-output-bg: rgba(245, 250, 245, 0.8);
+            --update-output-border: rgba(120, 140, 120, 0.2);
+            --health-ok-bg: rgba(22, 163, 74, 0.08);
+            --health-fail-bg: rgba(220, 38, 38, 0.06);
         }
 
         [data-theme="dark"] {
-            --bg-gradient-start: #1e3a5f;
-            --bg-gradient-end: #0f2027;
-            --card-bg: rgba(30, 42, 60, 0.95);
+            --bg-gradient-start: #0a0a0a;
+            --bg-gradient-end: #141414;
+            --card-bg: rgba(22, 22, 22, 0.9);
             --card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
             --header-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
+            --text-primary: #e5e5e5;
+            --text-secondary: #a3a3a3;
             --stat-bg: rgba(255, 255, 255, 0.06);
-            --input-border: #475569;
-            --input-bg: #1e293b;
-            --auth-bg: #422006;
+            --input-border: rgba(60, 60, 60, 0.5);
+            --input-bg: rgba(10, 10, 10, 0.6);
+            --auth-bg: rgba(251, 191, 36, 0.1);
             --auth-border: #b45309;
             --auth-label: #fbbf24;
-            --auth-ok-bg: #064e3b;
-            --auth-ok-border: #059669;
-            --auth-ok-label: #6ee7b7;
-            --status-running-bg: #064e3b;
-            --status-stopped-bg: #450a0a;
-            --update-output-bg: #1e293b;
-            --update-output-border: #334155;
-            --health-ok-bg: #064e3b;
-            --health-fail-bg: #450a0a;
+            --auth-ok-bg: rgba(74, 222, 128, 0.1);
+            --auth-ok-border: #22c55e;
+            --auth-ok-label: #4ade80;
+            --status-running-bg: rgba(74, 222, 128, 0.1);
+            --status-stopped-bg: rgba(248, 113, 113, 0.1);
+            --update-output-bg: rgba(10, 10, 10, 0.6);
+            --update-output-border: rgba(60, 60, 60, 0.3);
+            --health-ok-bg: rgba(74, 222, 128, 0.08);
+            --health-fail-bg: rgba(248, 113, 113, 0.08);
         }
 
         /* ===== Base Reset ===== */
@@ -328,12 +328,12 @@
         }
 
         .btn-update {
-            background: #6366f1;
+            background: #22c55e;
             color: white;
         }
 
         .btn-refresh {
-            background: #0ea5e9;
+            background: #16a34a;
             color: white;
         }
 
@@ -434,7 +434,7 @@
         }
 
         .toast.info {
-            background: #0ea5e9;
+            background: #22c55e;
         }
 
         /* ===== Update Output ===== */
