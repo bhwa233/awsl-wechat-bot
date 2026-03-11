@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     def __init__(self):
-        self._ui_lock = threading.RLock()
+        self._send_lock = threading.Lock()  # 仅发送需要锁（激活窗口+剪贴板+按键）
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
 
     def _ensure_uia(self):
@@ -107,35 +107,29 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         return popup_windows
 
     def activate_specific_window(self, window):
-        """激活指定的微信窗口
+        """激活指定的微信窗口（调用方须持有 _send_lock）
 
         Args:
             window: WindowControl 对象
         """
-        with self._ui_lock:
-            logger.debug(f"正在激活窗口: {window.Name}")
+        logger.debug(f"正在激活窗口: {window.Name}")
+        try:
             try:
-                # 尝试多种方法恢复最小化的窗口
-                try:
-                    # 方法1：使用 ShowWindow
-                    if hasattr(window, "ShowWindow"):
-                        window.ShowWindow(1)  # SW_SHOWNORMAL
-                except:
-                    pass
+                if hasattr(window, "ShowWindow"):
+                    window.ShowWindow(1)  # SW_SHOWNORMAL
+            except Exception:
+                pass
+            try:
+                if hasattr(window, "Restore"):
+                    window.Restore()
+            except Exception:
+                pass
 
-                try:
-                    # 方法2：使用 Restore
-                    if hasattr(window, "Restore"):
-                        window.Restore()
-                except:
-                    pass
-
-                # 激活窗口
-                window.SetForeground()
-                time.sleep(0.5)
-                logger.debug(f"窗口已激活: {window.Name}")
-            except Exception as e:
-                logger.debug(f"激活窗口时出现警告: {e}")
+            window.SetForeground()
+            time.sleep(0.5)
+            logger.debug(f"窗口已激活: {window.Name}")
+        except Exception as e:
+            logger.debug(f"激活窗口时出现警告: {e}")
 
     def get_messages_from_window(self, window) -> list[str]:
         """从指定窗口获取消息
@@ -147,48 +141,48 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             list[str]: 消息列表
         """
         self._ensure_uia()
-        with self._ui_lock:
-            logger.debug("正在查找消息列表...")
-            # 方案1：通过名称查找
-            msg_list = window.ListControl(Name="消息")
-            if not msg_list.Exists(0.5):
-                logger.debug("未找到名为'消息'的列表，尝试查找任意 ListControl...")
-                # 方案2：查找第一个 ListControl
-                msg_list = window.ListControl()
+        # 读取不需要锁：每个线程有独立 UIA/COM 上下文，读不同窗口可并行
+        logger.debug("正在查找消息列表...")
+        # 方案1：通过名称查找
+        msg_list = window.ListControl(Name="消息")
+        if not msg_list.Exists(0.5):
+            logger.debug("未找到名为'消息'的列表，尝试查找任意 ListControl...")
+            # 方案2：查找第一个 ListControl
+            msg_list = window.ListControl()
 
-            if not msg_list.Exists(0):
-                logger.warning("在当前窗口中未找到任何消息列表控件。")
-                return []
+        if not msg_list.Exists(0):
+            logger.warning("在当前窗口中未找到任何消息列表控件。")
+            return []
 
-            logger.debug("成功定位消息列表，正在提取消息...")
-            messages = []
-            try:
-                # 遍历消息列表的子项
-                for item in msg_list.GetChildren():
-                    # 新版微信的消息内容在子控件的 Name 属性里
-                    if item.ControlTypeName == 'ListItemControl':
-                        text_control = item.TextControl()
-                        # 有些消息是图片或表情，没有文本控件
-                        if text_control.Exists(0):
-                             messages.append(text_control.Name)
-                        else: # 尝试直接获取 ListItemControl 的 Name
-                            messages.append(item.Name)
+        logger.debug("成功定位消息列表，正在提取消息...")
+        messages = []
+        try:
+            # 遍历消息列表的子项
+            for item in msg_list.GetChildren():
+                # 新版微信的消息内容在子控件的 Name 属性里
+                if item.ControlTypeName == 'ListItemControl':
+                    text_control = item.TextControl()
+                    # 有些消息是图片或表情，没有文本控件
+                    if text_control.Exists(0):
+                         messages.append(text_control.Name)
+                    else: # 尝试直接获取 ListItemControl 的 Name
+                        messages.append(item.Name)
 
-                # 过滤噪音
-                filtered_messages = []
-                for text in messages:
-                    if not text or len(text) < 2:
-                        continue
-                    if text in ['[图片]', '[表情]', '[视频]', '[文件]', 'Animated Stickers']:
-                        continue
-                    if re.match(r'^[\d:]+$', text):  # 纯时间戳
-                        continue
-                    filtered_messages.append(text)
+            # 过滤噪音
+            filtered_messages = []
+            for text in messages:
+                if not text or len(text) < 2:
+                    continue
+                if text in ['[图片]', '[表情]', '[视频]', '[文件]', 'Animated Stickers']:
+                    continue
+                if re.match(r'^[\d:]+$', text):  # 纯时间戳
+                    continue
+                filtered_messages.append(text)
 
-                return filtered_messages
-            except Exception as e:
-                logger.error(f"提取消息时出错: {e}")
-                return []
+            return filtered_messages
+        except Exception as e:
+            logger.error(f"提取消息时出错: {e}")
+            return []
 
     def send_text_to_window(self, window, text: str) -> bool:
         """向指定窗口发送文本消息
@@ -201,7 +195,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         self._ensure_uia()
-        with self._ui_lock:
+        with self._send_lock:
             logger.debug(f"[send_text_to_window] 向窗口 {window.Name} 发送: {text[:20]}...")
 
             # 激活窗口
@@ -257,7 +251,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         import win32clipboard
 
         self._ensure_uia()
-        with self._ui_lock:
+        with self._send_lock:
             logger.debug(f"[send_image_to_window] 向窗口 {window.Name} 发送图片...")
 
             # 激活窗口
