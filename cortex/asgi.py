@@ -8,7 +8,7 @@ from common.config import config
 from cortex.services.scheduled_task import ScheduledTaskService
 from cortex.services.webhook import WebhookService
 from cortex.scheduler import TaskScheduler
-from cortex.routes import health, tasks, webhooks
+from cortex.routes import health, tasks, webhooks, gateway_proxy
 
 
 def create_app(cortex_app) -> FastAPI:
@@ -44,4 +44,5 @@ def create_app(cortex_app) -> FastAPI:
     app.include_router(health.create_routes())
     app.include_router(tasks.create_routes(task_service))
     app.include_router(webhooks.create_routes(webhook_service))
+    app.include_router(gateway_proxy.create_routes(config.HTTP_API_BASE_URL, config.HTTP_API_TOKEN))
     return app

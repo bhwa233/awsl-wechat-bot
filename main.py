@@ -44,7 +44,13 @@ async def main():
     cortex_server.install_signal_handlers = lambda: None
 
     logger.info("Gateway :%d + Cortex :%d 启动中", config.HTTP_API_PORT, config.CORTEX_HTTP_PORT)
-    await asyncio.gather(gateway_server.serve(), cortex_server.serve())
+    try:
+        await asyncio.gather(gateway_server.serve(), cortex_server.serve())
+    except Exception as e:
+        logger.error(f"服务异常退出: {e}", exc_info=True)
+    finally:
+        gateway_server.should_exit = True
+        cortex_server.should_exit = True
 
 
 if __name__ == "__main__":

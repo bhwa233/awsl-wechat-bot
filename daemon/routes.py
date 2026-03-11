@@ -127,7 +127,7 @@ def update():
 
         def _delayed_exit():
             time.sleep(1)
-            os._exit(0)
+            sys.exit(0)
 
         threading.Thread(target=_delayed_exit, daemon=True).start()
         return results

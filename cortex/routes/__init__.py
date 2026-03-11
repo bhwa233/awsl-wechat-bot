@@ -1,3 +1,3 @@
-from . import health, tasks, webhooks
+from . import health, tasks, webhooks, gateway_proxy
 
-__all__ = ["health", "tasks", "webhooks"]
+__all__ = ["health", "tasks", "webhooks", "gateway_proxy"]

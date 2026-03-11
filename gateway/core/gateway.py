@@ -62,16 +62,20 @@ class Gateway:
             self._ws_clients.pop(ws, None)
         logger.info(f"WS 客户端已断开 (当前 {len(self._ws_clients)} 个)")
 
-    def ws_subscribe(self, ws: WebSocket, group_filter: str, message_filter: str):
-        """设置订阅过滤条件"""
-        sub = WSSubscription(
-            subscribed=True,
-            group_re=re.compile(group_filter) if group_filter else None,
-            message_re=re.compile(message_filter) if message_filter else None,
-        )
+    def ws_subscribe(self, ws: WebSocket, group_filter: str, message_filter: str) -> str | None:
+        """设置订阅过滤条件，返回错误信息或 None"""
+        try:
+            sub = WSSubscription(
+                subscribed=True,
+                group_re=re.compile(group_filter) if group_filter else None,
+                message_re=re.compile(message_filter) if message_filter else None,
+            )
+        except re.error as e:
+            return f"无效的正则表达式: {e}"
         with self._lock:
             if ws in self._ws_clients:
                 self._ws_clients[ws] = sub
+        return None
 
     def ws_unsubscribe(self, ws: WebSocket):
         """清除过滤（不再收消息，但连接保持）"""
@@ -124,7 +128,7 @@ class Gateway:
                     ws.send_text(payload), self._loop
                 )
             except Exception as e:
-                logger.debug(f"WS 发送失败: {e}")
+                logger.warning(f"WS 发送失败: {e}")
 
     @staticmethod
     def _matches(sub: WSSubscription, group_name: str, content: str) -> bool:

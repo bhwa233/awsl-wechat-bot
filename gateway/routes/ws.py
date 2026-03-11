@@ -1,6 +1,7 @@
 """WebSocket 路由"""
 
 import asyncio
+import hmac
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -28,7 +29,7 @@ def create_routes(gateway: Gateway) -> APIRouter:
     async def websocket_endpoint(ws: WebSocket):
         if config.HTTP_API_TOKEN:
             token = ws.query_params.get("token", "")
-            if token != config.HTTP_API_TOKEN:
+            if not hmac.compare_digest(token, config.HTTP_API_TOKEN):
                 await ws.close(code=4001, reason="Unauthorized")
                 return
 
@@ -59,12 +60,15 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
 
     match msg:
         case WSSubscribe():
-            gateway.ws_subscribe(ws, msg.group_filter, msg.message_filter)
-            await ws.send_text(WSSubscribeOk(
-                request_id=msg.request_id,
-                group_filter=msg.group_filter,
-                message_filter=msg.message_filter,
-            ).model_dump_json())
+            err = gateway.ws_subscribe(ws, msg.group_filter, msg.message_filter)
+            if err:
+                await ws.send_text(WSError(request_id=msg.request_id, detail=err).model_dump_json())
+            else:
+                await ws.send_text(WSSubscribeOk(
+                    request_id=msg.request_id,
+                    group_filter=msg.group_filter,
+                    message_filter=msg.message_filter,
+                ).model_dump_json())
 
         case WSUnsubscribe():
             gateway.ws_unsubscribe(ws)

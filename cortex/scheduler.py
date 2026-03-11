@@ -100,11 +100,9 @@ class TaskScheduler:
             for group_name in target_groups:
                 self._send_message(group_name, content, is_image=is_image)
         finally:
-            if task.message_type != "summary":
-                self._cleanup_executing_task(task.id)
+            self._cleanup_executing_task(task.id)
 
     def _execute_summary_task(self, task):
-        task_id = task.id
         try:
             config_dict = json.loads(task.message)
             groups = config_dict.get("groups", [])
@@ -116,8 +114,6 @@ class TaskScheduler:
                 logger.warning(f"[Scheduler] 群聊总结提交失败: {msg}")
         except Exception as e:
             logger.error(f"[Scheduler] 总结任务执行失败: {e}")
-        finally:
-            self._cleanup_executing_task(task_id)
 
     def _get_active_groups(self) -> list[str]:
         try:

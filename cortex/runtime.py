@@ -73,16 +73,14 @@ class CortexRuntime(MessageListener):
         return len(times) >= self._rate_limit
 
     def _handle_message(self, msg: WSMessageBroadcast) -> None:
-        if self._is_rate_limited(msg.group_name):
-            return
-
         trigger_type, content = self.trigger_matcher.match(msg.content)
         if not trigger_type:
             return
 
-        if msg.group_name not in self._trigger_times:
-            self._trigger_times[msg.group_name] = deque()
-        self._trigger_times[msg.group_name].append(time.time())
+        if self._is_rate_limited(msg.group_name):
+            return
+
+        self._trigger_times.setdefault(msg.group_name, deque()).append(time.time())
 
         # 阻塞操作（AI/命令）丢到线程池，不阻塞 GatewayClient 消息接收
         self._executor.submit(self._process_and_reply, trigger_type, content, msg.group_name)
