@@ -21,14 +21,9 @@ dependencies = [
     "uiautomation>=2.0.0; sys_platform == 'win32'",
     "pywin32>=305; sys_platform == 'win32'",
     "Pillow>=9.0.0; sys_platform == 'win32'",
-]
-
-[project.optional-dependencies]
-decrypt = [
+    # 解密 + 总结
     "pycryptodome>=3.19.0",
     "zstandard>=0.22.0",
-]
-summary = [
     "html2image>=2.0.0",
     "Pillow>=9.0.0",
     "markdown>=3.4.0",
