@@ -1,34 +1,54 @@
 #!/usr/bin/env python3
 """
-AWSL 微信机器人 - 支持多平台、多群监听
-监控多个群聊，检测到 "awsl" 消息时自动发送随机图片或AI回复
+AWSL 微信机器人 - 启动 Gateway + Cortex
 """
 
-import sys
+import asyncio
 import logging
 
-from config import config
-from src.bot import AWSlBot
+import uvicorn
 
-# 根据配置设置日志级别
+from common.config import config
+from common.logging import setup_uvicorn_logging
+
 log_level = logging.DEBUG if config.DEBUG else logging.INFO
-
-# 日志配置
-logging.basicConfig(
-    level=log_level,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-def main():
-    try:
-        bot = AWSlBot()
-        bot.run()
-    except Exception as e:
-        logger.error(f"启动失败: {e}", exc_info=True)
-        sys.exit(1)
+async def main():
+    from gateway.runtime import GatewayRuntime
+    from gateway.asgi import create_app as create_gateway_app
+    from cortex.runtime import CortexRuntime
+    from cortex.asgi import create_app as create_cortex_app
+
+    setup_uvicorn_logging()
+
+    gateway_config = uvicorn.Config(
+        create_gateway_app(GatewayRuntime()),
+        host=config.HTTP_API_HOST,
+        port=config.HTTP_API_PORT,
+        log_level="info",
+    )
+    cortex_config = uvicorn.Config(
+        create_cortex_app(CortexRuntime()),
+        host=config.CORTEX_HTTP_HOST,
+        port=config.CORTEX_HTTP_PORT,
+        log_level="info",
+    )
+
+    gateway_server = uvicorn.Server(gateway_config)
+    cortex_server = uvicorn.Server(cortex_config)
+
+    # 只让一个 server 安装信号处理，避免冲突
+    cortex_server.install_signal_handlers = lambda: None
+
+    logger.info("Gateway :%d + Cortex :%d 启动中", config.HTTP_API_PORT, config.CORTEX_HTTP_PORT)
+    await asyncio.gather(gateway_server.serve(), cortex_server.serve())
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("收到停止信号")

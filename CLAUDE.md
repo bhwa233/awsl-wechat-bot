@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AWSL WeChat Bot - 跨平台微信群聊机器人，使用 macOS Accessibility API / Windows UI Automation 读取消息并响应。支持 AI 智能回答、动态命令执行、定时任务和群聊总结。
+AWSL WeChat Bot - 跨平台微信群聊机器人，采用 Gateway + Cortex 微服务架构。Gateway 负责微信窗口交互和 WS 消息广播，Cortex 作为 WS 客户端处理业务逻辑（AI/命令/触发/Webhook）。
 
 ## Development Commands
 
@@ -15,119 +15,130 @@ python3 -m venv venv
 ./venv/Scripts/python -m pip install -r requirements.txt  # Windows
 cp .env.example .env
 
-# Run
+# Run (Gateway :8000 + Cortex :7999)
 ./venv/bin/python main.py  # macOS
 ./venv/Scripts/python main.py  # Windows
 
-# Daemon (Windows, 管理 bot 子进程)
-./venv/Scripts/python daemon.py  # 启动 daemon (port 8001)
+# Run individually
+./venv/bin/python -m gateway.main  # Gateway only (:8000)
+./venv/bin/python -m cortex.main   # Cortex only (:7999)
+./venv/bin/python run_daemon.py    # Daemon (:8001)
 
 # Tools
-./venv/bin/python tools/chat_summary.py --help  # 群聊总结工具
-./venv/bin/python tools/wechat_decrypt.py       # 微信数据库解密
-./venv/bin/python tools/inspect_wechat.py       # 微信窗口检查
+./venv/bin/python tools/inspect_wechat.py   # 微信窗口检查
+./venv/bin/python tools/wechat_decrypt.py   # 微信数据库解密
 ```
 
 ## Architecture
 
 ```
-┌─────────────────┐     ┌─────────────────┐
-│  Detector (n)   │────▶│  Message Queue  │
-│  per group      │     └────────┬────────┘
-└─────────────────┘              │
-                                 ▼
-                    ┌─────────────────────────┐
-                    │  TaskDispatcher         │
-                    │  ThreadPoolExecutor(5)  │
-                    └────────────┬────────────┘
-                                 │
-                                 ▼
-                    ┌─────────────────────────┐
-                    │      Send Queue         │
-                    └────────────┬────────────┘
-                                 │
-                                 ▼
-                    ┌─────────────────────────┐
-                    │  MessageSender          │
-                    │  全局限速 10s            │
-                    └─────────────────────────┘
+Detector (n) ──▶ gateway_queue ──▶ Gateway WS Server (:8000)
+per group                              │ 广播
+                          ┌────────────┼────────────┐
+                          ▼            ▼            ▼
+                    GatewayClient  WS Client A  WS Client B
+                    (Cortex :7999) (外部程序)   (外部程序)
+                          │
+                    ┌─────┴─────┐
+                    ▼           ▼
+              CortexRuntime  WebhookService   ← MessageListener
+              (AI/命令/触发)  (Webhook 转发)
+                    │
+                    └── send_message via WS ──▶ Gateway ──▶ Sender
 ```
-
-### Core Components
-
-- `src/bot.py` - 主机器人类，组件编排
-- `src/core/detector.py` - 消息检测器，每群一个线程
-- `src/core/dispatcher.py` - 任务分发器，ThreadPoolExecutor 并发处理
-- `src/core/sender.py` - 消息发送器，全局限速
-- `src/core/trigger.py` - 触发词匹配逻辑（支持 @BOT_NAMES 和关键词触发）
-- `src/models/tasks.py` - 数据模型 (SendTask, MessageTask, TriggerType)
-- `src/storage/message_db.py` - SQLite 消息去重，sha256 哈希
-
-### Platform Adapters
-
-`src/adapters/` - 平台适配器
-- `base.py` - 抽象基类
-- `macos.py` - macOS Accessibility API 实现
-- `windows.py` - Windows UI Automation 实现
 
 ### Services
 
-- `src/services/ai.py` - OpenAI API 调用
-- `src/services/command.py` - 远程动态命令服务（httpx，300s 超时）
-- `src/services/http/` - FastAPI HTTP 服务
-  - `server.py` - 服务入口
-  - `routes/` - API 路由 (groups, messages, tasks, chatlog, health)
-  - `scheduler.py` - APScheduler 定时任务调度
-  - `templates/index.html` - Web 管理后台
+| Service | Port | Role |
+|---------|------|------|
+| Gateway | 8000 | WS 消息网关 + REST API + 微信窗口交互 |
+| Daemon  | 8001 | Bot 子进程管理（启停/更新） |
+| Cortex  | 7999 | 业务逻辑（AI/命令/触发/Webhook/定时任务） |
 
-### Utilities
+### Key Components
 
-- `src/utils/wechat_chatlog.py` - 微信数据库解密和读取
-- `src/utils/summary_service.py` - 群聊总结服务（异步任务）
+**common/** - 共享模块
+- `config.py` - Pydantic Settings 配置 (全局 `config` 实例，从 .env 读取)
+- `models.py` - WS 协议 Pydantic 模型 (discriminated union 解析, WSType 常量, model_validator 校验)
+- `auth.py` - Bearer Token 验证 (HMAC 常量时间比较)
+- `logging.py` - HealthFilter + setup_uvicorn_logging()
 
-## Key Configuration
+**gateway/** - Gateway 服务
+- `runtime.py` - GatewayRuntime：自动窗口发现（5s 扫描），管理 detectors/sender/gateway
+- `asgi.py` - FastAPI app 工厂，lifespan 管理生命周期
+- `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播
+- `core/detector.py` - MessageDetector：per-group 消息检测线程，SHA256 上下文哈希去重
+- `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
+- `adapters/base.py` - BaseWeChatAdapter 抽象基类 (4 个方法)
+- `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
+- `adapters/windows.py` - Windows: uiautomation 控件遍历
+- `storage/message_db.py` - SQLModel ORM 消息去重 (SQLite)
+- `routes/` - REST (health, groups, messages, chatlog) + WS 端点
 
-配置文件: `.env` (基于 `.env.example`)
+**cortex/** - Cortex 服务
+- `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
+- `runtime.py` - CortexRuntime (MessageListener)：冷却/触发匹配(同步) + ThreadPoolExecutor 处理 AI/命令(异步)
+- `asgi.py` - FastAPI app 工厂，组装 listener 注册 + scheduler + lifespan
+- `gateway_client.py` - GatewayClient：纯 WS 客户端，连接/重连/订阅/收发，add_listener 注册 MessageListener
+- `scheduler.py` - TaskScheduler：轮询定时任务，通过 GatewayClient WS 发消息，HTTP 仅用于 groups/summary 查询
+- `services/ai.py` - httpx.Client 连接池调用 OpenAI API
+- `services/command.py` - httpx.Client 调用命令 API
+- `services/trigger.py` - TriggerMatcher 正则匹配（AI/命令/文本/图片触发）
+- `services/webhook.py` - WebhookService (MessageListener)：SQLModel ORM + ThreadPoolExecutor fire-and-forget
+- `services/scheduled_task.py` - ScheduledTaskService：SQLModel ORM CRUD + cron 调度
+- `routes/` - tasks, webhooks, health
 
-关键参数 (`config.py`):
-- `TRIGGER_COOLDOWN: 3` - 群级冷却秒数
-- `MAX_CONCURRENT_TASKS: 5` - 线程池大小
-- `GLOBAL_SEND_INTERVAL: 10.0` - 全局发送间隔秒数
-- `BOT_NAMES` - 机器人名称列表（@触发，逗号分隔）
-- `HTTP_API_TOKEN` - Bearer Token 认证
-- `HTTP_API_BASE_URL` - 内部回调地址
-- `WECHAT_DB_*` - 微信数据库解密配置
+**daemon/** - Daemon 控制器
+- `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
+- `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs)
+
+## Key Patterns
+
+- **MessageListener 模式**: 抽象基类 `on_message(msg: WSMessageBroadcast)` + `_handle_message()`，异常由基类统一捕获。GatewayClient 通过 `add_listener()` 注册多个 listener（CortexRuntime、WebhookService）
+- **非阻塞 listener**: listener 回调在 GatewayClient async 线程中执行，禁止阻塞调用。CortexRuntime 用 `ThreadPoolExecutor` 处理 AI/命令，WebhookService 用 `ThreadPoolExecutor` 发 HTTP
+- **纯 WS 客户端**: GatewayClient 只管连接/重连/订阅/收发，不持有业务逻辑。指数退避重连 (1s → 30s)，asyncio.Event 优雅停止
+- **Gateway/Cortex 通信**: 所有消息收发走 WS 协议。Scheduler 发消息也通过 GatewayClient WS，不走 HTTP self-call
+- **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
+- **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
+- **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
+- **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 10s），群级冷却 `TRIGGER_COOLDOWN`（默认 1s）
+- **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验
+- **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池
 
 ## HTTP API
 
-- API 文档: http://localhost:8000/docs
-- Web 管理后台: http://localhost:8000
-- 认证: `Authorization: Bearer <token>`
+Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws?token=<token>`, chatlog 系列
 
-主要端点:
-- `GET /api/groups` - 群组列表
-- `POST /api/send` - 发送消息/图片
-- `GET/POST/PUT/DELETE /api/tasks` - 定时任务 CRUD
-- `POST /api/chatlog/decrypt` - 解密微信数据库
-- `GET /api/chatlog/groups` - 群聊列表
-- `GET /api/chatlog/messages` - 查询消息
-- `POST /api/chatlog/summary` - 发送群聊总结
+Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`
 
-## Daemon 控制器
+Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 
-`daemon.py` - 独立 HTTP 服务 (port 8001)，管理 bot 子进程的启停和代码更新。
+认证: `Authorization: Bearer <HTTP_API_TOKEN>`，WS 认证: `ws://host:8000/ws?token=<token>`
 
-配置: `DAEMON_PORT`, `DAEMON_HOST`, `DAEMON_RESTART_DELAY`, `DAEMON_MAX_RETRIES`, `DAEMON_LOG_MAX_LINES`
+## WS Protocol
 
-API 端点 (需要 Bearer Token 认证):
-- `GET /status` - bot 运行状态、PID、uptime、重启次数
-- `POST /start` - 启动 bot
-- `POST /stop` - 停止 bot
-- `POST /restart` - 重启 bot
-- `POST /update` - git pull + pip install + 重启 (daemon.py 自身更新则 exit(0))
-- `GET /logs?lines=100` - 读取 bot.log 最后 N 行
+连接: `ws://host:8000/ws?token=<bearer_token>`
+
+Client → Server:
+- `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}`
+- `{"type": "unsubscribe"}`
+- `{"type": "send_message", "group_name": "...", "message": "...", "image_base64": "..."}`
+
+Server → Client:
+- `{"type": "subscribe_ok", ...}`
+- `{"type": "message", "group_name": "...", "content": "...", "timestamp": ...}`
+- `{"type": "send_ok"}`
+- `{"type": "error", "detail": "..."}`
+
+## Threading Model
+
+- **Gateway 线程**: scan_loop(窗口发现) + detector(per-group OCR) + sender(串行发送) + consume_loop(队列广播)，各自独立线程
+- **GatewayClient 线程**: 独立 asyncio 事件循环，只做 WS 收发 + listener 分发（listener 回调必须非阻塞）
+- **Cortex ThreadPoolExecutor(4)**: AI/命令等阻塞操作从 listener 回调提交到此线程池
+- **Webhook ThreadPoolExecutor(3)**: HTTP POST fire-and-forget
+- **Scheduler 线程**: 5s 轮询定时任务，阻塞操作在此线程内（不影响消息处理）
 
 ## Platform Notes
 
-- **macOS**: 需要 Accessibility 权限 (系统设置 → 隐私与安全性 → 辅助功能)
+- **macOS**: 需要辅助功能权限（发送）+ 屏幕录制权限（截图）
 - **Windows**: 建议管理员权限运行
