@@ -95,7 +95,6 @@ class MessageDetector:
             msg_hash = self.db.hash_message_with_context(
                 messages, idx, self.group_name)
             is_processed = self.db.is_processed(msg_hash, self.group_name)
-            is_last = (i == len(messages_to_check) - 1)
 
             if config.DEBUG:
                 ctx = [
@@ -105,20 +104,14 @@ class MessageDetector:
                 ]
                 logger.debug(
                     f"[{self.group_name}] [{i}] msg={msg[:30]}... ctx={ctx} "
-                    f"hash={msg_hash[-8:]} processed={is_processed} is_last={is_last}"
+                    f"hash={msg_hash[-8:]} processed={is_processed}"
                 )
 
             if not is_processed:
-                new_messages.append((msg, msg_hash, is_last))
+                new_messages.append((msg, msg_hash))
 
-        for msg, msg_hash, can_trigger in new_messages:
+        for msg, msg_hash in new_messages:
             self.db.mark_processed(msg_hash, self.group_name)
-
-            if not can_trigger:
-                if config.DEBUG:
-                    logger.debug(
-                        f"[{self.group_name}] 非最新消息，跳过触发: {msg[:30]}...")
-                continue
 
             try:
                 self.gateway_queue.put_nowait(GatewayMessage(
