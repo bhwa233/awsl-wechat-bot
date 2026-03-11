@@ -1,0 +1,22 @@
+# NanoBot 配置文件
+llm:
+  provider: openai  # 或 anthropic, deepseek 等
+  model: gpt-4o-mini
+  api_key: ${OPENAI_API_KEY}
+  base_url: ${OPENAI_BASE_URL}
+
+channels:
+  awsl-gateway:
+    ws_url: ws://127.0.0.1:8000/ws?token=${HTTP_API_TOKEN}
+    group_filter: ""          # 正则，空=所有群
+    message_filter: "^@bot"   # 只处理 @bot 开头的消息（可选）
+
+# MCP 工具（可选）
+mcp:
+  servers: []
+
+# Agent 配置
+agent:
+  system_prompt: |
+    你是一个微信群聊助手。用简洁友好的中文回答问题。
+  max_tokens: 500

@@ -2,7 +2,10 @@ import time
 import logging
 import re
 import threading
-import uiautomation as auto
+
+logging.getLogger("comtypes").setLevel(logging.WARNING)
+
+import uiautomation as auto  # noqa: E402
 from gateway.adapters.base import BaseWeChatAdapter
 from common.config import config
 

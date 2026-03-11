@@ -36,12 +36,12 @@ class TriggerMatcher:
         content_lower = content.lower()
         keyword_lower = config.TRIGGER_KEYWORD.lower()
 
-        # 刷新命令
-        if content_lower == f"{keyword_lower} hp":
+        # 刷新命令（keyword 为空则跳过）
+        if keyword_lower and content_lower == f"{keyword_lower} hp":
             return (TriggerType.COMMAND_REFRESH, ("hp", ""))
 
-        # AI 触发
-        if content_lower.startswith(keyword_lower):
+        # AI 触发（keyword 为空则跳过）
+        if keyword_lower and content_lower.startswith(keyword_lower):
             after_keyword = content[len(config.TRIGGER_KEYWORD):].strip()
             if after_keyword:
                 return (TriggerType.AI, after_keyword)
