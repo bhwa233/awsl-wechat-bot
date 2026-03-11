@@ -77,7 +77,7 @@ per group                              │ 广播
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
-- `runtime.py` - CortexRuntime (MessageListener)：冷却/触发匹配(同步) + ThreadPoolExecutor 处理 AI/命令(异步)
+- `runtime.py` - CortexRuntime (MessageListener)：滑动窗口限速/触发匹配(同步) + ThreadPoolExecutor 处理 AI/命令(异步)
 - `asgi.py` - FastAPI app 工厂，组装 listener 注册 + scheduler + lifespan
 - `gateway_client.py` - GatewayClient：纯 WS 客户端，连接/重连/订阅/收发，add_listener 注册 MessageListener
 - `scheduler.py` - TaskScheduler：轮询定时任务，通过 GatewayClient WS 发消息，HTTP 仅用于 groups/summary 查询
@@ -101,7 +101,7 @@ per group                              │ 广播
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
-- **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 10s），群级冷却 `TRIGGER_COOLDOWN`（默认 1s）
+- **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 10s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口）
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池
 

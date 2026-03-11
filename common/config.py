@@ -24,8 +24,9 @@ class Config(BaseSettings):
     # 检查消息间隔（秒）
     CHECK_INTERVAL: int = 1
 
-    # 触发冷却时间（秒）- 群级冷却
-    TRIGGER_COOLDOWN: int = 1
+    # 触发限速 - 每个窗口每分钟最多触发次数
+    TRIGGER_RATE_LIMIT: int = 10
+    TRIGGER_RATE_WINDOW: int = 60  # 限速时间窗口（秒）
 
     # 并发处理配置
     MAX_CONCURRENT_TASKS: int = 5       # 线程池大小

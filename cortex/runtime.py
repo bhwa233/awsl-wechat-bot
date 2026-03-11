@@ -1,6 +1,7 @@
 """Cortex 应用 - 业务逻辑中枢"""
 import logging
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 
 from common.config import config
@@ -24,8 +25,9 @@ class CortexRuntime(MessageListener):
         self.command_service = self._init_command_service()
         self.trigger_matcher = TriggerMatcher(self.command_service)
 
-        self._cooldown_seconds = config.TRIGGER_COOLDOWN
-        self._cooldown: dict[str, float] = {}
+        self._rate_limit = config.TRIGGER_RATE_LIMIT
+        self._rate_window = config.TRIGGER_RATE_WINDOW
+        self._trigger_times: dict[str, deque[float]] = {}
         self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cortex")
 
         self.gateway_client = GatewayClient(ws_url=ws_url)
@@ -59,15 +61,28 @@ class CortexRuntime(MessageListener):
         self._executor.shutdown(wait=False)
         logger.info("Cortex 已停止")
 
-    def _handle_message(self, msg: WSMessageBroadcast) -> None:
+    def _is_rate_limited(self, group_name: str) -> bool:
         now = time.time()
-        if now - self._cooldown.get(msg.group_name, 0) < self._cooldown_seconds:
+        times = self._trigger_times.get(group_name)
+        if not times:
+            return False
+        # 清理窗口外的记录
+        cutoff = now - self._rate_window
+        while times and times[0] < cutoff:
+            times.popleft()
+        return len(times) >= self._rate_limit
+
+    def _handle_message(self, msg: WSMessageBroadcast) -> None:
+        if self._is_rate_limited(msg.group_name):
             return
 
         trigger_type, content = self.trigger_matcher.match(msg.content)
         if not trigger_type:
             return
-        self._cooldown[msg.group_name] = now
+
+        if msg.group_name not in self._trigger_times:
+            self._trigger_times[msg.group_name] = deque()
+        self._trigger_times[msg.group_name].append(time.time())
 
         # 阻塞操作（AI/命令）丢到线程池，不阻塞 GatewayClient 消息接收
         self._executor.submit(self._process_and_reply, trigger_type, content, msg.group_name)
