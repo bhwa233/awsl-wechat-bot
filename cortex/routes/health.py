@@ -3,22 +3,31 @@ import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from common.config import config
 
 router = APIRouter()
 
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates')
+
 
 def create_routes():
     @router.get("/", response_class=HTMLResponse)
     async def root():
-        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templates', 'index.html')
         try:
-            with open(template_path, 'r', encoding='utf-8') as f:
+            with open(os.path.join(TEMPLATES_DIR, 'index.html'), 'r', encoding='utf-8') as f:
                 return f.read()
         except FileNotFoundError:
             return "<h1>模板文件未找到</h1>"
+
+    @router.get("/style.css")
+    async def style_css():
+        try:
+            with open(os.path.join(TEMPLATES_DIR, 'style.css'), 'r', encoding='utf-8') as f:
+                return Response(content=f.read(), media_type="text/css")
+        except FileNotFoundError:
+            return Response(status_code=404)
 
     @router.get("/api/health")
     async def health():
