@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 class CortexRuntime(MessageListener):
     def __init__(self, gateway_ws_url: str = None):
         ws_url = gateway_ws_url or f"ws://127.0.0.1:{config.HTTP_API_PORT}/ws"
-        if config.HTTP_API_TOKEN and "?" not in ws_url:
-            ws_url += f"?token={config.HTTP_API_TOKEN}"
 
         self.ai_service = self._init_ai_service()
         self.command_service = self._init_command_service()

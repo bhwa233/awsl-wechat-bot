@@ -115,7 +115,7 @@ per group                              │ 广播
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
-- **WS 认证**: `hmac.compare_digest` 常量时间比较，REST 和 WS 统一防 timing attack
+- **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池
 - **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
@@ -124,24 +124,26 @@ per group                              │ 广播
 
 ## HTTP API
 
-Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws?token=<token>`, chatlog 系列
+Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`, chatlog 系列
 
 Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `GET /api/groups`(代理), `POST /api/send`(代理)
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 
-认证: `Authorization: Bearer <HTTP_API_TOKEN>`，WS 认证: `ws://host:8000/ws?token=<token>`(hmac.compare_digest)
+认证: REST `Authorization: Bearer <HTTP_API_TOKEN>`，WS 首条消息认证 `{"type": "auth", "token": "xxx"}`(hmac.compare_digest)
 
 ## WS Protocol
 
-连接: `ws://host:8000/ws?token=<bearer_token>`
+连接: `ws://host:8000/ws`
 
 Client → Server:
+- `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
 - `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}` — 无效 regex 返回 error
 - `{"type": "unsubscribe"}`
 - `{"type": "send_message", "group_name": "...", "message": "...", "image_base64": "..."}`
 
 Server → Client:
+- `{"type": "auth_ok"}`
 - `{"type": "subscribe_ok", ...}`
 - `{"type": "message", "group_name": "...", "content": "...", "timestamp": ...}`
 - `{"type": "send_ok"}`

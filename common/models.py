@@ -12,10 +12,12 @@ from pydantic import BaseModel, Discriminator, Tag, TypeAdapter, field_validator
 class WSType:
     """WS 消息类型常量"""
     # Client → Server
+    AUTH = "auth"
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
     SEND_MESSAGE = "send_message"
     # Server → Client
+    AUTH_OK = "auth_ok"
     SUBSCRIBE_OK = "subscribe_ok"
     MESSAGE = "message"
     SEND_OK = "send_ok"
@@ -23,6 +25,11 @@ class WSType:
 
 
 # ── Client → Server ──────────────────────────────────────
+
+class WSAuth(BaseModel):
+    type: Literal[WSType.AUTH]
+    token: str
+
 
 class WSSubscribe(BaseModel):
     type: Literal[WSType.SUBSCRIBE]
@@ -60,6 +67,7 @@ class WSSendMessage(BaseModel):
 # Discriminated union: 一步解析客户端消息
 WSClientMessage = Annotated[
     Union[
+        Annotated[WSAuth, Tag(WSType.AUTH)],
         Annotated[WSSubscribe, Tag(WSType.SUBSCRIBE)],
         Annotated[WSUnsubscribe, Tag(WSType.UNSUBSCRIBE)],
         Annotated[WSSendMessage, Tag(WSType.SEND_MESSAGE)],
@@ -69,7 +77,7 @@ WSClientMessage = Annotated[
 _client_message_adapter = TypeAdapter(WSClientMessage)
 
 
-def parse_client_message(raw: str) -> WSSubscribe | WSUnsubscribe | WSSendMessage:
+def parse_client_message(raw: str) -> WSAuth | WSSubscribe | WSUnsubscribe | WSSendMessage:
     """解析客户端 WS 消息（JSON → Pydantic model，含验证）
 
     Raises:
@@ -80,6 +88,10 @@ def parse_client_message(raw: str) -> WSSubscribe | WSUnsubscribe | WSSendMessag
 
 
 # ── Server → Client ──────────────────────────────────────
+
+class WSAuthOk(BaseModel):
+    type: Literal[WSType.AUTH_OK] = WSType.AUTH_OK
+
 
 class WSSubscribeOk(BaseModel):
     type: Literal[WSType.SUBSCRIBE_OK] = WSType.SUBSCRIBE_OK
@@ -109,6 +121,7 @@ class WSError(BaseModel):
 # Discriminated union: 一步解析服务端消息
 WSServerMessage = Annotated[
     Union[
+        Annotated[WSAuthOk, Tag(WSType.AUTH_OK)],
         Annotated[WSSubscribeOk, Tag(WSType.SUBSCRIBE_OK)],
         Annotated[WSMessageBroadcast, Tag(WSType.MESSAGE)],
         Annotated[WSSendOk, Tag(WSType.SEND_OK)],
@@ -119,7 +132,7 @@ WSServerMessage = Annotated[
 _server_message_adapter = TypeAdapter(WSServerMessage)
 
 
-def parse_server_message(raw: str) -> WSSubscribeOk | WSMessageBroadcast | WSSendOk | WSError:
+def parse_server_message(raw: str) -> WSAuthOk | WSSubscribeOk | WSMessageBroadcast | WSSendOk | WSError:
     """解析服务端 WS 消息（JSON → Pydantic model，含验证）
 
     Raises:

@@ -51,7 +51,8 @@ npm install
 {
   "plugins": ["./"],
   "awsl-gateway": {
-    "wsUrl": "ws://127.0.0.1:8000/ws?token=YOUR_TOKEN",
+    "wsUrl": "ws://127.0.0.1:8000/ws",
+    "token": "YOUR_TOKEN",
     "groupFilter": "",
     "messageFilter": ""
   }

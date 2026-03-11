@@ -7,7 +7,8 @@ llm:
 
 channels:
   awsl-gateway:
-    ws_url: ws://127.0.0.1:8000/ws?token=${HTTP_API_TOKEN}
+    ws_url: ws://127.0.0.1:8000/ws
+    token: ${HTTP_API_TOKEN}  # 首条消息认证
     group_filter: ""          # 正则，空=所有群
     message_filter: "^@bot"   # 只处理 @bot 开头的消息（可选）
 

@@ -1,7 +1,8 @@
 {
   "plugins": ["./"],
   "awsl-gateway": {
-    "wsUrl": "ws://127.0.0.1:8000/ws?token=YOUR_TOKEN_HERE",
+    "wsUrl": "ws://127.0.0.1:8000/ws",
+    "token": "YOUR_TOKEN_HERE",
     "groupFilter": "",
     "messageFilter": ""
   }

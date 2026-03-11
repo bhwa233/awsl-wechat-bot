@@ -11,7 +11,9 @@ from enum import Enum
 
 import websockets
 
+from common.config import config
 from common.models import (
+    WSAuth, WSAuthOk,
     WSSubscribe, WSSubscribeOk, WSMessageBroadcast, WSSendMessage, WSError,
     parse_server_message,
 )
@@ -108,6 +110,10 @@ class GatewayClient:
                     self._state = ConnectionState.CONNECTED
                     delay = RECONNECT_BASE_DELAY
 
+                    if not await self._authenticate(ws):
+                        self._ws = None
+                        continue
+
                     if not await self._subscribe(ws):
                         self._ws = None
                         continue
@@ -134,6 +140,23 @@ class GatewayClient:
                 delay = min(delay * RECONNECT_BACKOFF_FACTOR, RECONNECT_MAX_DELAY)
 
         self._state = ConnectionState.DISCONNECTED
+
+    async def _authenticate(self, ws) -> bool:
+        """首条消息认证"""
+        if not config.HTTP_API_TOKEN:
+            return True
+        await ws.send(WSAuth(type="auth", token=config.HTTP_API_TOKEN).model_dump_json())
+        try:
+            raw = await asyncio.wait_for(ws.recv(), timeout=10)
+            msg = parse_server_message(raw)
+            if isinstance(msg, WSAuthOk):
+                return True
+            if isinstance(msg, WSError):
+                logger.warning(f"认证失败: {msg.detail}")
+            return False
+        except asyncio.TimeoutError:
+            logger.warning("认证确认超时")
+            return False
 
     async def _subscribe(self, ws) -> bool:
         await ws.send(WSSubscribe(

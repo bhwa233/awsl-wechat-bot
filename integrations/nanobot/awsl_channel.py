@@ -18,17 +18,27 @@ class AWSlGatewayChannel(BaseChannel):
 
     def __init__(self, config: dict):
         super().__init__(config)
-        self._ws_url = config["ws_url"]  # ws://host:8000/ws?token=xxx
+        self._ws_url = config["ws_url"]  # ws://host:8000/ws
+        self._token = config.get("token", "")
         self._group_filter = config.get("group_filter", "")
         self._message_filter = config.get("message_filter", "")
         self._ws = None
 
     async def start(self):
-        """连接 Gateway WS 并订阅，断线自动重连"""
+        """连接 Gateway WS 并认证+订阅，断线自动重连"""
         while True:
             try:
                 async with websockets.connect(self._ws_url) as ws:
                     self._ws = ws
+
+                    # 首条消息认证
+                    if self._token:
+                        await ws.send(json.dumps({"type": "auth", "token": self._token}))
+                        resp = json.loads(await ws.recv())
+                        if resp.get("type") != "auth_ok":
+                            logger.error(f"认证失败: {resp}")
+                            continue
+
                     await ws.send(json.dumps({
                         "type": "subscribe",
                         "group_filter": self._group_filter,

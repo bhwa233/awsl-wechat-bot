@@ -10,16 +10,20 @@ from pydantic import ValidationError
 from common.config import config
 from gateway.core.gateway import Gateway
 from common.models import (
+    WSAuth,
     WSSubscribe,
     WSUnsubscribe,
     WSSendMessage,
     WSSubscribeOk,
     WSSendOk,
+    WSAuthOk,
     WSError,
     parse_client_message,
 )
 
 logger = logging.getLogger(__name__)
+
+AUTH_TIMEOUT = 10.0
 
 
 def create_routes(gateway: Gateway) -> APIRouter:
@@ -27,13 +31,12 @@ def create_routes(gateway: Gateway) -> APIRouter:
 
     @router.websocket("/ws")
     async def websocket_endpoint(ws: WebSocket):
+        await ws.accept()
+
         if config.HTTP_API_TOKEN:
-            token = ws.query_params.get("token", "")
-            if not hmac.compare_digest(token, config.HTTP_API_TOKEN):
-                await ws.close(code=4001, reason="Unauthorized")
+            if not await _authenticate(ws):
                 return
 
-        await ws.accept()
         gateway.set_event_loop(asyncio.get_running_loop())
         gateway.ws_connect(ws)
         try:
@@ -48,6 +51,25 @@ def create_routes(gateway: Gateway) -> APIRouter:
             gateway.ws_disconnect(ws)
 
     return router
+
+
+async def _authenticate(ws: WebSocket) -> bool:
+    """首条消息认证：客户端必须发送 {"type": "auth", "token": "xxx"}"""
+    try:
+        raw = await asyncio.wait_for(ws.receive_text(), timeout=AUTH_TIMEOUT)
+        msg = parse_client_message(raw)
+        if isinstance(msg, WSAuth) and hmac.compare_digest(msg.token, config.HTTP_API_TOKEN):
+            await ws.send_text(WSAuthOk().model_dump_json())
+            return True
+        await ws.send_text(WSError(detail="认证失败").model_dump_json())
+        await ws.close(code=4001, reason="Unauthorized")
+        return False
+    except asyncio.TimeoutError:
+        await ws.close(code=4001, reason="Auth timeout")
+        return False
+    except Exception:
+        await ws.close(code=4001, reason="Auth error")
+        return False
 
 
 async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
