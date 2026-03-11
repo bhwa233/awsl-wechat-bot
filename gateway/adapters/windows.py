@@ -148,8 +148,6 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         """
         self._ensure_uia()
         with self._ui_lock:
-            self.activate_specific_window(window)
-
             logger.debug("正在查找消息列表...")
             # 方案1：通过名称查找
             msg_list = window.ListControl(Name="消息")
