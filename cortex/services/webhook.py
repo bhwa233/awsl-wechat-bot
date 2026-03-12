@@ -213,7 +213,7 @@ class WebhookService(MessageListener):
             headers = json.loads(headers_str)
 
             resp = self._http_client.post(wh.url, json=body, headers=headers)
-            logger.debug(f"Webhook [{wh.name}] 发送成功: {resp.status_code}")
+            logger.debug(f"Webhook [{wh.name}] 发送成功: {resp.status_code} → {group_name}: {message[:50]}...")
         except Exception as e:
             logger.warning(f"Webhook [{wh.name}] 发送失败: {e}")
 

@@ -231,7 +231,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 # 发送消息
                 window.SendKeys('{ENTER}', waitTime=0.2)
 
-                logger.info(f"✓ 发送成功到 [{window.Name}]: {text[:20]}...")
+                logger.debug(f"✓ 发送成功到 [{window.Name}]: {text[:20]}...")
                 return True
             except Exception as e:
                 logger.error(f"发送消息失败: {e}")
@@ -291,7 +291,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 # 发送
                 window.SendKeys('{ENTER}', waitTime=0.2)
 
-                logger.info(f"✓ 图片发送成功到 [{window.Name}]")
+                logger.debug(f"✓ 图片发送成功到 [{window.Name}]")
                 return True
             except Exception as e:
                 logger.error(f"发送图片失败: {e}")

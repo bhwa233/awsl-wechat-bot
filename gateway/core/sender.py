@@ -63,16 +63,17 @@ class MessageSender:
                 else:
                     send_ok = self.adapter.send_text_to_window(window, task.content)
 
+                preview = "[图片]" if task.is_image else f"{task.content[:50]}..."
                 if send_ok:
                     self._last_send_time = time.time()
                     if not task.is_image:
                         self.sent_store.record(task.group_name, task.content)
-                    logger.info(f"[{task.group_name}] 消息已发送")
+                    logger.info(f"[{task.group_name}] 已发送: {preview}")
                 else:
-                    logger.warning(f"[{task.group_name}] 消息发送失败")
+                    logger.warning(f"[{task.group_name}] 发送失败: {preview}")
 
             except Exception as e:
-                logger.error(f"发送消息出错: {e}", exc_info=True)
+                logger.error(f"[{task.group_name}] 发送出错: {e}", exc_info=True)
             finally:
                 self.send_queue.task_done()
 
