@@ -879,7 +879,7 @@
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span>更新中...';
             output.style.display = 'block';
-            output.textContent = '正在执行: git pull + pip install ...\n';
+            output.textContent = '正在执行: git pull + uv sync ...\n';
 
             try {
                 const data = await api('POST', '/update');
@@ -890,16 +890,15 @@
                     if (data.git_pull.stderr) text += data.git_pull.stderr;
                     text += '\n';
                 }
-                if (data.pip_install) {
-                    text += '=== pip install ===\n';
-                    text += data.pip_install.stdout || '';
-                    if (data.pip_install.stderr) text += data.pip_install.stderr;
+                if (data.uv_sync) {
+                    text += '=== uv sync ===\n';
+                    text += data.uv_sync.stdout || '';
+                    if (data.uv_sync.stderr) text += data.uv_sync.stderr;
                     text += '\n';
                 }
                 text += `\n${data.message || ''}`;
                 if (data.daemon_updated) {
-                    text += '\n\ndaemon.py 已更新，页面将在数秒后自动刷新...';
-                    setTimeout(() => location.reload(), 5000);
+                    text += '\n\ndaemon 已更新，请手动重启 daemon 以加载新代码。';
                 }
                 output.textContent = text;
                 showToast(data.message, 'success');

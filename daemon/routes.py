@@ -2,9 +2,6 @@
 
 import logging
 import subprocess
-import sys
-import threading
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -142,20 +139,15 @@ def update():
 
     results["daemon_updated"] = daemon_updated
 
-    if daemon_updated:
-        results["message"] = "daemon 已更新，daemon 将退出，请手动重启"
-        logger.info("daemon 自身被更新，即将退出")
-
-        def _delayed_exit():
-            time.sleep(1)
-            sys.exit(0)
-
-        threading.Thread(target=_delayed_exit, daemon=True).start()
-        return results
-
     manager.enable_auto_restart()
     start_result = manager.start_bot(reason="API /update")
     results["bot_start"] = start_result
+
+    if daemon_updated:
+        results["message"] = "更新完成，bot 已重新启动；daemon 已更新，请手动重启 daemon 以加载新代码"
+        logger.info("daemon 自身已更新，bot 已重新启动，等待手动重启 daemon")
+        return results
+
     results["message"] = "更新完成，bot 已重新启动"
     logger.info("更新完成，bot 已重新启动")
     return results
