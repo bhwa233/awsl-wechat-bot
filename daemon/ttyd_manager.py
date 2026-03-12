@@ -57,11 +57,8 @@ class TtydProcessManager:
             return install_error
         if not (shell_name := self._resolve_shell_name()):
             return self._shell_not_found_error()
-        shell_command, shell_display, shell_error = self._resolve_ttyd_shell(shell_name)
-        if shell_error:
-            return shell_error
 
-        command = self._build_command(ttyd_bin, shell_command)
+        command = self._build_command(ttyd_bin, shell_name)
         try:
             self._process = subprocess.Popen(command, **self._popen_kwargs())
         except OSError as exc:
@@ -71,13 +68,13 @@ class TtydProcessManager:
         self._start_pipe_reader()
         self._start_time = datetime.now(timezone.utc)
         self._last_start_reason = reason
-        self._shell_command = shell_display
+        self._shell_command = shell_name
         logger.info(
             "ttyd 已启动 (pid=%s, host=%s, port=%s, shell=%s, auth=%s, reason=%s)",
             self._process.pid,
             config.TTYD_HOST,
             config.TTYD_PORT,
-            shell_display,
+            shell_name,
             bool(config.TTYD_CREDENTIALS),
             reason,
         )
@@ -87,7 +84,7 @@ class TtydProcessManager:
             "pid": self._process.pid,
             "host": config.TTYD_HOST,
             "port": config.TTYD_PORT,
-            "shell": shell_display,
+            "shell": shell_name,
             "auth_enabled": bool(config.TTYD_CREDENTIALS),
         }
 
@@ -124,7 +121,7 @@ class TtydProcessManager:
     def _status_payload(self, running: bool) -> dict:
         return {
             "running": running,
-            "installed": self._is_ttyd_ready(),
+            "installed": bool(self._find_ttyd_bin()),
             "auth_enabled": bool(config.TTYD_CREDENTIALS),
             "pid": self._process.pid if running else None,
             "uptime_seconds": (
@@ -141,36 +138,21 @@ class TtydProcessManager:
     def _find_ttyd_bin(self) -> str:
         return shutil.which("ttyd") or ""
 
-    def _is_ttyd_ready(self) -> bool:
-        if not self._find_ttyd_bin():
-            return False
-        return sys.platform != "win32" or bool(self._find_winpty_bin())
-
     def _ensure_ttyd_bin(self) -> tuple[str, Optional[dict]]:
         if ttyd_bin := self._find_ttyd_bin():
             return ttyd_bin, None
         return "", self._ttyd_not_found_error()
 
-    def _resolve_ttyd_shell(self, shell_name: str) -> tuple[list[str], str, Optional[dict]]:
-        if sys.platform != "win32":
-            return [shell_name], shell_name, None
-        if winpty := self._find_winpty_bin():
-            return [winpty, shell_name], f"winpty {shell_name}", None
-        logger.error("Windows 下 ttyd 缺少 winpty，终端可能无法交互")
-        return [], "", {
-            "ok": False,
-            "message": "Windows 下 ttyd 交互输入需要 winpty，请安装 Git for Windows，或确认 C:\\Program Files\\Git\\usr\\bin\\winpty.exe 可用",
-        }
-
-    def _build_command(self, ttyd_bin: str, shell_command: list[str]) -> list[str]:
+    def _build_command(self, ttyd_bin: str, shell_name: str) -> list[str]:
         return [
             ttyd_bin,
             "-i",
             config.TTYD_HOST,
             "-p",
             str(config.TTYD_PORT),
+            "-W",
             *(["-c", config.TTYD_CREDENTIALS] if config.TTYD_CREDENTIALS else []),
-            *shell_command,
+            shell_name,
         ]
 
     def _start_pipe_reader(self):
@@ -215,16 +197,6 @@ class TtydProcessManager:
             return line.decode("utf-8", errors="replace").rstrip()
         except Exception:
             return ""
-
-    def _find_winpty_bin(self) -> str:
-        if winpty := shutil.which("winpty"):
-            return winpty
-        candidates = [
-            Path(os.environ.get("ProgramFiles", "")) / "Git" / "usr" / "bin" / "winpty.exe",
-            Path(os.environ.get("ProgramFiles(x86)", "")) / "Git" / "usr" / "bin" / "winpty.exe",
-            Path.home() / "AppData" / "Local" / "Programs" / "Git" / "usr" / "bin" / "winpty.exe",
-        ]
-        return next((str(path) for path in candidates if path.is_file()), "")
 
     def _shell_not_found_error(self) -> dict:
         logger.error("未找到 pwsh 或 powershell")
