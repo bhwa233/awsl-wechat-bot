@@ -196,6 +196,40 @@
             font-size: 16px;
         }
 
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 10px 16px;
+            border: 2px solid var(--input-border);
+            border-radius: 12px;
+            background: var(--card-bg);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all 0.2s;
+            box-shadow: var(--card-shadow);
+        }
+
+        .tab-btn.active {
+            background: #16a34a;
+            color: white;
+            border-color: #16a34a;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
         /* ===== Status Bar ===== */
         .status-bar {
             display: flex;
@@ -501,66 +535,129 @@
             </div>
         </div>
 
-        <div class="card">
-            <h2>Bot 状态</h2>
-            <div class="status-bar stopped" id="statusBar">
-                <div class="status-dot"></div>
-                <div class="status-info">
-                    <div class="label">当前状态</div>
-                    <div class="value" id="statusText">获取中...</div>
-                </div>
-            </div>
-
-            <div class="status-grid">
-                <div class="stat-item">
-                    <div class="stat-label">PID</div>
-                    <div class="stat-value" id="pidValue">-</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">运行时间</div>
-                    <div class="stat-value" id="uptimeValue">-</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">重启次数</div>
-                    <div class="stat-value" id="restartCount">0</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">自动重启</div>
-                    <div class="stat-value" id="autoRestart">-</div>
-                </div>
-                <div class="stat-item" id="healthItem">
-                    <div class="stat-label">Health Check</div>
-                    <div class="stat-value" id="healthValue">-</div>
-                </div>
-            </div>
-
-            <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;" id="lastReason"></div>
-
-            <div class="btn-group">
-                <button class="btn btn-start" id="btnStart" onclick="doAction('start')">启动</button>
-                <button class="btn btn-stop" id="btnStop" onclick="doAction('stop')">停止</button>
-                <button class="btn btn-restart" id="btnRestart" onclick="doAction('restart')">重启</button>
-                <button class="btn btn-update" id="btnUpdate" onclick="doUpdate()">更新代码</button>
-                <button class="btn btn-refresh btn-sm" onclick="refreshStatus()">刷新</button>
-            </div>
-
-            <div class="update-output" id="updateOutput"></div>
+        <div class="tabs">
+            <button class="tab-btn active" id="tabBtnBot" onclick="switchTab('bot')">Bot</button>
+            <button class="tab-btn" id="tabBtnTtyd" onclick="switchTab('ttyd')">TTYD</button>
+            <button class="tab-btn" id="tabBtnLogs" onclick="switchTab('logs')">日志</button>
         </div>
 
-        <div class="card log-container">
-            <div class="log-header">
-                <h2>Bot 日志</h2>
-                <div class="log-controls">
-                    <label>
-                        <input type="checkbox" id="autoRefreshLog" checked />
-                        自动刷新
-                    </label>
-                    <label>行数</label>
-                    <input type="number" id="logLines" value="200" min="1" max="10000" />
-                    <button class="btn btn-refresh btn-sm" onclick="refreshLogs()">刷新</button>
+        <div class="tab-panel active" id="tabPanelBot">
+            <div class="card">
+                <h2>Bot 状态</h2>
+                <div class="status-bar stopped" id="statusBar">
+                    <div class="status-dot"></div>
+                    <div class="status-info">
+                        <div class="label">当前状态</div>
+                        <div class="value" id="statusText">获取中...</div>
+                    </div>
                 </div>
+
+                <div class="status-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">PID</div>
+                        <div class="stat-value" id="pidValue">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">运行时间</div>
+                        <div class="stat-value" id="uptimeValue">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">重启次数</div>
+                        <div class="stat-value" id="restartCount">0</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">自动重启</div>
+                        <div class="stat-value" id="autoRestart">-</div>
+                    </div>
+                    <div class="stat-item" id="healthItem">
+                        <div class="stat-label">Health Check</div>
+                        <div class="stat-value" id="healthValue">-</div>
+                    </div>
+                </div>
+
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;" id="lastReason"></div>
+
+                <div class="btn-group">
+                    <button class="btn btn-start" id="btnStart" onclick="doAction('start')">启动</button>
+                    <button class="btn btn-stop" id="btnStop" onclick="doAction('stop')">停止</button>
+                    <button class="btn btn-restart" id="btnRestart" onclick="doAction('restart')">重启</button>
+                    <button class="btn btn-update" id="btnUpdate" onclick="doUpdate()">更新代码</button>
+                    <button class="btn btn-refresh btn-sm" onclick="refreshStatus()">刷新</button>
+                </div>
+
+                <div class="update-output" id="updateOutput"></div>
             </div>
-            <div class="log-box" id="logBox"></div>
+        </div>
+
+        <div class="tab-panel" id="tabPanelTtyd">
+            <div class="card">
+                <h2>TTYD 控制</h2>
+                <div class="status-bar stopped" id="ttydStatusBar">
+                    <div class="status-dot"></div>
+                    <div class="status-info">
+                        <div class="label">当前状态</div>
+                        <div class="value" id="ttydStatusText">获取中...</div>
+                    </div>
+                </div>
+
+                <div class="status-grid">
+                    <div class="stat-item">
+                        <div class="stat-label">安装状态</div>
+                        <div class="stat-value" id="ttydInstalled">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">PID</div>
+                        <div class="stat-value" id="ttydPid">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">运行时间</div>
+                        <div class="stat-value" id="ttydUptime">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">监听地址</div>
+                        <div class="stat-value" id="ttydEndpoint">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Shell</div>
+                        <div class="stat-value" id="ttydShell">-</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">鉴权</div>
+                        <div class="stat-value" id="ttydAuth">-</div>
+                    </div>
+                </div>
+
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;" id="ttydLastReason"></div>
+
+                <div class="btn-group">
+                    <button class="btn btn-update" id="btnTtydInstall" onclick="doTtydAction('install')">安装</button>
+                    <button class="btn btn-start" id="btnTtydStart" onclick="doTtydAction('start')">启动</button>
+                    <button class="btn btn-stop" id="btnTtydStop" onclick="doTtydAction('stop')">停止</button>
+                    <button class="btn btn-restart" id="btnTtydRestart" onclick="doTtydAction('restart')">重启</button>
+                    <button class="btn btn-refresh btn-sm" onclick="refreshTtydStatus()">刷新</button>
+                    <a class="btn btn-refresh btn-sm" id="ttydOpenLink" href="#" target="_blank" rel="noreferrer noopener" style="display: none; text-decoration: none;">打开终端</a>
+                </div>
+
+                <div class="update-output" id="ttydOutput"></div>
+            </div>
+        </div>
+
+        <div class="tab-panel" id="tabPanelLogs">
+            <div class="card log-container">
+                <div class="log-header">
+                    <h2>Bot 日志</h2>
+                    <div class="log-controls">
+                        <label>
+                            <input type="checkbox" id="autoRefreshLog" checked />
+                            自动刷新
+                        </label>
+                        <label>行数</label>
+                        <input type="number" id="logLines" value="200" min="1" max="10000" />
+                        <button class="btn btn-refresh btn-sm" onclick="refreshLogs()">刷新</button>
+                    </div>
+                </div>
+                <div class="log-box" id="logBox"></div>
+            </div>
         </div>
     </div>
 
@@ -645,8 +742,22 @@
             return `${s}s`;
         }
 
+        function getTtydUrl(host, port) {
+            const resolvedHost = !host || host === '0.0.0.0' || host === '::' ? window.location.hostname : host;
+            return `${window.location.protocol}//${resolvedHost}:${port}/`;
+        }
+
+        function switchTab(tabName) {
+            const tabs = ['bot', 'ttyd', 'logs'];
+            tabs.forEach(name => {
+                $(`tabBtn${name.charAt(0).toUpperCase() + name.slice(1)}`).classList.toggle('active', name === tabName);
+                $(`tabPanel${name.charAt(0).toUpperCase() + name.slice(1)}`).classList.toggle('active', name === tabName);
+            });
+            localStorage.setItem('daemon_active_tab', tabName);
+        }
+
         // 刷新状态
-        async function refreshStatus() {
+        async function refreshBotStatus() {
             try {
                 const data = await api('GET', '/status');
                 const bar = $('statusBar');
@@ -687,8 +798,46 @@
                 $('btnStop').disabled = !running;
             } catch (e) {
                 $('statusText').textContent = '连接失败';
-                showToast(e.message, 'error');
             }
+        }
+
+        async function refreshTtydStatus() {
+            try {
+                const data = await api('GET', '/ttyd/status');
+                const running = data.running;
+                const bar = $('ttydStatusBar');
+                const output = $('ttydOutput');
+                const openLink = $('ttydOpenLink');
+                const endpoint = data.port ? `${data.host}:${data.port}` : '-';
+
+                bar.className = `status-bar ${running ? 'running' : 'stopped'}`;
+                $('ttydStatusText').textContent = running ? '运行中' : '已停止';
+                $('ttydInstalled').textContent = data.installed ? '已安装' : '未安装';
+                $('ttydPid').textContent = data.pid || '-';
+                $('ttydUptime').textContent = formatUptime(data.uptime_seconds);
+                $('ttydEndpoint').textContent = endpoint;
+                $('ttydShell').textContent = data.shell || '-';
+                $('ttydAuth').textContent = data.auth_enabled ? '已启用' : '未启用';
+                $('ttydLastReason').textContent = data.last_start_reason ? `上次操作: ${data.last_start_reason}` : '';
+
+                const showLink = running && data.port;
+                openLink.style.display = showLink ? 'inline-flex' : 'none';
+                if (showLink) {
+                    openLink.href = getTtydUrl(data.host, data.port);
+                }
+
+                $('btnTtydInstall').disabled = data.installed;
+                $('btnTtydStart').disabled = running;
+                $('btnTtydStop').disabled = !running;
+                $('btnTtydRestart').disabled = !data.installed;
+                if (!output.textContent) output.style.display = 'none';
+            } catch (e) {
+                $('ttydStatusText').textContent = '连接失败';
+            }
+        }
+
+        async function refreshStatus() {
+            await Promise.allSettled([refreshBotStatus(), refreshTtydStatus()]);
         }
 
         // 操作按钮
@@ -707,6 +856,35 @@
                 btn.textContent = origText;
                 btn.disabled = false;
                 setTimeout(refreshStatus, 500);
+            }
+        }
+
+        async function doTtydAction(action) {
+            const map = {
+                install: 'btnTtydInstall',
+                start: 'btnTtydStart',
+                stop: 'btnTtydStop',
+                restart: 'btnTtydRestart',
+            };
+            const btn = $(map[action]);
+            const output = $('ttydOutput');
+            const origText = btn.textContent;
+            btn.disabled = true;
+            btn.innerHTML = `<span class="spinner"></span>${origText}`;
+            output.style.display = 'block';
+            output.textContent = `正在执行 ttyd ${action}...\n`;
+
+            try {
+                const data = await api('POST', `/ttyd/${action}`);
+                output.textContent = JSON.stringify(data, null, 2);
+                showToast(data.message, data.ok ? 'success' : 'error');
+            } catch (e) {
+                output.textContent = `错误: ${e.message}`;
+                showToast(e.message, 'error');
+            } finally {
+                btn.textContent = origText;
+                btn.disabled = false;
+                setTimeout(refreshTtydStatus, 500);
             }
         }
 
@@ -817,6 +995,7 @@
             const saved = getToken();
             if (saved) $('tokenInput').value = saved;
             updateAuthUI();
+            switchTab(localStorage.getItem('daemon_active_tab') || 'bot');
             refreshStatus();
             refreshLogs();
             startAutoRefresh();
