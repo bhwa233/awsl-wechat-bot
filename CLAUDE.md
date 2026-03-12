@@ -76,8 +76,14 @@ per group                              │ 广播
 - `adapters/base.py` - BaseWeChatAdapter 抽象基类 (4 个方法)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
 - `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，发送 _send_lock 串行
+- `utils/ocr.py` - macOS Vision OCR 封装
+- `utils/screenshot.py` - 截图工具
+- `utils/chat_summary.py` - 群聊总结生成（Markdown → 图片）
+- `utils/wechat_chatlog.py` - 微信数据库解密 + 消息查询
+- `utils/accessibility.py` - macOS 辅助功能权限检查
+- `utils/summary_service.py` - 总结服务（异步任务调度）
 - `storage/message_db.py` - SQLModel ORM 消息去重 (SQLite)
-- `routes/` - REST (health, groups, messages, chatlog) + WS 端点
+- `routes/` - REST (health, groups, messages, chatlog) + WS 端点 (`ws.py`)
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
@@ -94,7 +100,8 @@ per group                              │ 广播
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
-- `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs)
+- `ttyd_manager.py` - TtydProcessManager：ttyd 子进程启停，自动检测 shell（pwsh/powershell/zsh）
+- `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs/ttyd)
 
 **integrations/** - 外部 AI Agent 接入
 - `nanobot/awsl_channel.py` - NanoBot BaseChannel（WS 客户端连接 Gateway，处理 AI 对话）
@@ -128,7 +135,7 @@ Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws
 
 Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `GET /api/groups`(代理), `POST /api/send`(代理)
 
-Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
+Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`, `GET /ttyd/status`, `POST /ttyd/start|stop|restart`
 
 认证: REST `Authorization: Bearer <HTTP_API_TOKEN>`，WS 首条消息认证 `{"type": "auth", "token": "xxx"}`(hmac.compare_digest)
 
@@ -157,6 +164,13 @@ Server → Client:
 - **Webhook ThreadPoolExecutor(3)**: HTTP POST fire-and-forget
 - **Scheduler 线程**: 5s 轮询定时任务，阻塞操作在此线程内（不影响消息处理）
 - **main.py**: asyncio.gather 运行双 server，异常时通知对方退出
+
+## Development Notes
+
+- **No test suite**: 项目当前没有配置 pytest / ruff / mypy 等工具，无自动化测试
+- **Python 3.11+**: `requires-python = ">=3.11"`
+- **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖，可选依赖组：`decrypt`、`summary`
+- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `DEBUG`）
 
 ## Platform Notes
 

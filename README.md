@@ -90,8 +90,8 @@ cp .env.example .env  # 编辑配置
 # 触发关键词
 TRIGGER_KEYWORD=awsl
 
-# 机器人名称列表（@触发，逗号分隔）
-BOT_NAMES=机器人,小助手
+# 机器人名称列表（@触发，JSON 数组格式）
+BOT_NAMES=["机器人","小助手"]
 
 # OpenAI API
 OPENAI_API_KEY=your-api-key-here
@@ -137,7 +137,7 @@ uv run run_daemon.py       # Daemon (:8001)
 GET  /api/health              # 健康检查
 GET  /api/groups              # 群组列表
 POST /api/send                # 发送消息/图片
-WS   /ws?token=<token>        # WebSocket 消息订阅
+WS   /ws                      # WebSocket（首条消息认证）
 POST /api/chatlog/decrypt     # 解密微信数据库
 GET  /api/chatlog/groups      # 群聊列表
 GET  /api/chatlog/messages    # 查询消息
@@ -150,6 +150,8 @@ POST /api/chatlog/summary     # 群聊总结
 GET  /api/health                      # 健康检查
 GET/POST/PUT/DELETE /api/tasks        # 定时任务 CRUD
 GET/POST/PUT/DELETE /api/webhooks     # Webhook 管理
+GET  /api/groups                      # 群组列表（代理 Gateway）
+POST /api/send                        # 发送消息（代理 Gateway）
 ```
 
 ### Daemon (:8001)
@@ -171,10 +173,11 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 
 ### WebSocket 协议
 
-连接：`ws://host:8000/ws?token=<bearer_token>`
+连接：`ws://host:8000/ws`
 
 **Client → Server：**
 ```json
+{"type": "auth", "token": "xxx"}
 {"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}
 {"type": "unsubscribe"}
 {"type": "send_message", "group_name": "群名", "message": "text", "image_base64": "..."}
@@ -182,13 +185,14 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 
 **Server → Client：**
 ```json
+{"type": "auth_ok"}
 {"type": "subscribe_ok", "group_filter": "...", "message_filter": "..."}
 {"type": "message", "group_name": "群名", "content": "消息内容", "timestamp": 1710000000.0}
 {"type": "send_ok"}
 {"type": "error", "detail": "..."}
 ```
 
-认证：`Authorization: Bearer <HTTP_API_TOKEN>`
+认证：WS 首条消息 `{"type": "auth", "token": "xxx"}`（10s 超时断开），REST `Authorization: Bearer <HTTP_API_TOKEN>`
 
 </details>
 
