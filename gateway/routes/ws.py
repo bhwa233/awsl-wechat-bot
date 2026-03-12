@@ -82,7 +82,7 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
 
     match msg:
         case WSSubscribe():
-            err = gateway.ws_subscribe(ws, msg.group_filter, msg.message_filter)
+            err = gateway.ws_subscribe(ws, msg)
             if err:
                 await ws.send_text(WSError(request_id=msg.request_id, detail=err).model_dump_json())
             else:
@@ -90,6 +90,8 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
                     request_id=msg.request_id,
                     group_filter=msg.group_filter,
                     message_filter=msg.message_filter,
+                    priority=msg.priority,
+                    passive=msg.passive,
                 ).model_dump_json())
 
         case WSUnsubscribe():

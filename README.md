@@ -178,7 +178,7 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 **Client → Server：**
 ```json
 {"type": "auth", "token": "xxx"}
-{"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}
+{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}
 {"type": "unsubscribe"}
 {"type": "send_message", "group_name": "群名", "message": "text", "image_base64": "..."}
 ```
@@ -186,7 +186,7 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 **Server → Client：**
 ```json
 {"type": "auth_ok"}
-{"type": "subscribe_ok", "group_filter": "...", "message_filter": "..."}
+{"type": "subscribe_ok", "group_filter": "...", "message_filter": "...", "priority": 0, "passive": false}
 {"type": "message", "group_name": "群名", "content": "消息内容", "timestamp": 1710000000.0}
 {"type": "send_ok"}
 {"type": "error", "detail": "..."}
@@ -205,7 +205,7 @@ Gateway 的 WS 协议支持任意客户端接入。`integrations/` 目录提供�
 | NanoBot | Python | `cd integrations/nanobot && uv sync && uv run main.py` |
 | OpenClaw | Node.js | `cd integrations/openclaw && npm install && openclaw --config openclaw.json` |
 
-它们与 Cortex 并行运行，通过 `message_filter` 正则分流消息。详见 [integrations/README.md](integrations/README.md)。
+它们与 Cortex 并行运行，通过 `message_filter` 正则分流消息，通过 `priority` 控制优先级（Cortex 默认 priority=10，低优先级客户端在高优先级在线时不会收到消息；`passive=true` 的客户端始终收到）。详见 [integrations/README.md](integrations/README.md)。
 
 ## 注意事项
 

@@ -104,9 +104,7 @@ per group                              │ 广播
 - `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs/ttyd)
 
 **integrations/** - 外部 AI Agent 接入
-- `nanobot/awsl_channel.py` - NanoBot BaseChannel（WS 客户端连接 Gateway，处理 AI 对话）
-- `nanobot/config.yaml` - NanoBot 配置（LLM/Channel/Agent）
-- `nanobot/run.py` - NanoBot 启动脚本
+- `nanobot/main.py` - NanoBot Agent WS 客户端（连接 Gateway，收到消息调 NanoBot AgentLoop 处理）
 - `openclaw/index.js` - OpenClaw 本地 Channel Plugin（Node.js WS 客户端）
 - `openclaw/openclaw.json` - OpenClaw 配置（指向本地插件）
 
@@ -127,7 +125,8 @@ per group                              │ 广播
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池
 - **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
 - **comtypes 日志静默**: Windows 上 `comtypes` logger 设为 WARNING 级别，屏蔽 COM 类型库生成的 INFO 日志
-- **外部 Agent 接入**: NanoBot/OpenClaw 作为独立 WS 客户端连接 Gateway，与 Cortex 并行，通过 `message_filter` 分流消息
+- **WS 订阅优先级**: subscribe 支持 `priority`（int，默认 0）和 `passive`（bool，默认 false）。广播时 passive 客户端始终收到消息，非 passive 只推送给匹配的最高优先级客户端。Cortex 默认 priority=10
+- **外部 Agent 接入**: NanoBot/OpenClaw 作为独立 WS 客户端连接 Gateway，与 Cortex 并行，通过 `message_filter` 分流消息，通过 `priority` 控制优先级
 
 ## HTTP API
 
@@ -145,7 +144,7 @@ Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`, `
 
 Client → Server:
 - `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
-- `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex"}` — 无效 regex 返回 error
+- `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}` — priority/passive 可选，无效 regex 返回 error
 - `{"type": "unsubscribe"}`
 - `{"type": "send_message", "group_name": "...", "message": "...", "image_base64": "..."}`
 

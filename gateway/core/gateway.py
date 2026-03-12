@@ -13,6 +13,7 @@ from gateway.core.models import SendTask
 from common.models import (
     GatewayMessage,
     WSMessageBroadcast,
+    WSSubscribe,
     WSSubscription,
 )
 
@@ -62,13 +63,15 @@ class Gateway:
             self._ws_clients.pop(ws, None)
         logger.info(f"WS 客户端已断开 (当前 {len(self._ws_clients)} 个)")
 
-    def ws_subscribe(self, ws: WebSocket, group_filter: str, message_filter: str) -> str | None:
+    def ws_subscribe(self, ws: WebSocket, msg: WSSubscribe) -> str | None:
         """设置订阅过滤条件，返回错误信息或 None"""
         try:
             sub = WSSubscription(
                 subscribed=True,
-                group_re=re.compile(group_filter) if group_filter else None,
-                message_re=re.compile(message_filter) if message_filter else None,
+                group_re=re.compile(msg.group_filter) if msg.group_filter else None,
+                message_re=re.compile(msg.message_filter) if msg.message_filter else None,
+                priority=msg.priority,
+                passive=msg.passive,
             )
         except re.error as e:
             return f"无效的正则表达式: {e}"
@@ -106,7 +109,7 @@ class Gateway:
         logger.info("Gateway 队列消费线程退出")
 
     def _broadcast(self, msg: GatewayMessage):
-        """遍历 WS 客户端，匹配过滤条件，通过 asyncio.run_coroutine_threadsafe 发送"""
+        """按优先级广播：passive 客户端始终收到，非 passive 只推送给最高优先级"""
         if not self._loop:
             return
 
@@ -120,9 +123,25 @@ class Gateway:
         with self._lock:
             targets = list(self._ws_clients.items())
 
+        # 分组：passive 始终推送，非 passive 按优先级筛选
+        passive_targets = []
+        active_targets = []
         for ws, sub in targets:
             if not self._matches(sub, msg.group_name, msg.content):
                 continue
+            if sub.passive:
+                passive_targets.append(ws)
+            else:
+                active_targets.append((ws, sub.priority))
+
+        # 非 passive：只推送给最高优先级的客户端
+        if active_targets:
+            max_priority = max(p for _, p in active_targets)
+            active_targets = [ws for ws, p in active_targets if p == max_priority]
+        else:
+            active_targets = []
+
+        for ws in passive_targets + active_targets:
             try:
                 asyncio.run_coroutine_threadsafe(
                     ws.send_text(payload), self._loop

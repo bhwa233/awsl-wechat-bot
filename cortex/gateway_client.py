@@ -163,6 +163,7 @@ class GatewayClient:
             type="subscribe",
             group_filter="",
             message_filter="",
+            priority=10,
         ).model_dump_json())
 
         try:

@@ -36,6 +36,8 @@ class WSSubscribe(BaseModel):
     request_id: str | None = None
     group_filter: str = ""
     message_filter: str = ""
+    priority: int = 0
+    passive: bool = False
 
     @field_validator("group_filter", "message_filter")
     @classmethod
@@ -98,6 +100,8 @@ class WSSubscribeOk(BaseModel):
     request_id: str | None = None
     group_filter: str = ""
     message_filter: str = ""
+    priority: int = 0
+    passive: bool = False
 
 
 class WSMessageBroadcast(BaseModel):
@@ -157,3 +161,5 @@ class WSSubscription:
     subscribed: bool = False
     group_re: re.Pattern | None = None
     message_re: re.Pattern | None = None
+    priority: int = 0
+    passive: bool = False
