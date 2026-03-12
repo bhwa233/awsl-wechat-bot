@@ -127,28 +127,28 @@ class Gateway:
             targets = list(self._ws_clients.items())
 
         # 分组：passive 始终推送，非 passive 按优先级筛选
-        passive = []
-        active = []
+        passive_targets = []
+        active_targets = []
         for ws, sub in targets:
             if not self._matches(sub, msg.group_name, msg.content):
                 continue
-            (passive if sub.passive else active).append((ws, sub.priority))
+            (passive_targets if sub.passive else active_targets).append((ws, sub.priority))
 
         # 非 passive：只保留最高优先级
-        if active:
-            max_pri = max(p for _, p in active)
-            skipped_pri = [p for _, p in active if p < max_pri]
-            active = [ws for ws, p in active if p == max_pri]
-            if skipped_pri:
-                logger.debug(f"[{msg.group_name}] 跳过低优先级: {skipped_pri} (最高={max_pri})")
+        if active_targets:
+            max_priority = max(p for _, p in active_targets)
+            skipped_priorities = [p for _, p in active_targets if p < max_priority]
+            active_targets = [ws for ws, p in active_targets if p == max_priority]
+            if skipped_priorities:
+                logger.debug(f"[{msg.group_name}] 跳过低优先级: {skipped_priorities} (最高={max_priority})")
 
-        send_to = [ws for ws, _ in passive] + active
+        send_to = [ws for ws, _ in passive_targets] + active_targets
         if not send_to:
             return
 
         logger.info(
             f"[{msg.group_name}] 广播到 {len(send_to)} 个客户端 "
-            f"(active={len(active)} passive={len(passive)}): "
+            f"(active={len(active_targets)} passive={len(passive_targets)}): "
             f"{msg.content[:50]}..."
         )
         for ws in send_to:
