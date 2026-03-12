@@ -102,6 +102,9 @@ OPENAI_MODEL=gpt-4o-mini
 HTTP_API_PORT=8000
 HTTP_API_TOKEN=your-secret-token  # 留空不启用认证
 CORTEX_HTTP_PORT=7999
+TTYD_HOST=0.0.0.0
+TTYD_PORT=7681
+TTYD_CREDENTIALS=
 ```
 
 ## 运行
@@ -156,7 +159,21 @@ GET  /status              # 运行状态
 POST /start|stop|restart  # 启停控制
 POST /update              # git pull + uv sync + 重启
 GET  /logs?lines=100      # 日志
+GET  /ttyd/status         # ttyd 状态
+POST /ttyd/install        # Windows 下用 winget 安装 ttyd
+POST /ttyd/start          # 启动 ttyd (默认 pwsh，回退 powershell，可选 -c 鉴权)
+POST /ttyd/stop           # 停止 ttyd
+POST /ttyd/restart        # 重启 ttyd
 ```
+
+Windows 安装 `ttyd`：
+
+```powershell
+winget install --id tsl0922.ttyd -e --source winget --accept-source-agreements --accept-package-agreements
+```
+
+注意：当 `TTYD_HOST=0.0.0.0` 且未额外加反向代理或防火墙限制时，`ttyd` 是裸终端暴露，任何能访问该端口的人都可直接获得 shell。
+如需启用 ttyd 基础鉴权，可配置 `TTYD_CREDENTIALS=user:pass`。
 
 ### WebSocket 协议
 
