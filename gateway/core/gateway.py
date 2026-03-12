@@ -66,20 +66,15 @@ class Gateway:
     def ws_subscribe(self, ws: WebSocket, msg: WSSubscribe) -> str | None:
         """设置订阅过滤条件，返回错误信息或 None"""
         try:
-            sub = WSSubscription(
-                subscribed=True,
-                group_re=re.compile(msg.group_filter) if msg.group_filter else None,
-                message_re=re.compile(msg.message_filter) if msg.message_filter else None,
-                priority=msg.priority,
-                passive=msg.passive,
-            )
+            sub = WSSubscription.from_subscribe(msg)
         except re.error as e:
             return f"无效的正则表达式: {e}"
         with self._lock:
             if ws in self._ws_clients:
                 self._ws_clients[ws] = sub
+        name = msg.client_name or "anonymous"
         logger.info(
-            f"WS 客户端已订阅: priority={msg.priority} passive={msg.passive} "
+            f"WS 客户端已订阅 [{name}]: priority={msg.priority} passive={msg.passive} "
             f"group_filter='{msg.group_filter}' message_filter='{msg.message_filter}'"
         )
         return None
@@ -127,31 +122,34 @@ class Gateway:
             targets = list(self._ws_clients.items())
 
         # 分组：passive 始终推送，非 passive 按优先级筛选
-        passive_targets = []
-        active_targets = []
+        passive_matched = []
+        active_matched = []
         for ws, sub in targets:
             if not self._matches(sub, msg.group_name, msg.content):
                 continue
-            (passive_targets if sub.passive else active_targets).append((ws, sub.priority))
+            (passive_matched if sub.passive else active_matched).append((ws, sub))
 
         # 非 passive：只保留最高优先级
-        if active_targets:
-            max_priority = max(p for _, p in active_targets)
-            skipped_priorities = [p for _, p in active_targets if p < max_priority]
-            active_targets = [ws for ws, p in active_targets if p == max_priority]
-            if skipped_priorities:
-                logger.debug(f"[{msg.group_name}] 跳过低优先级: {skipped_priorities} (最高={max_priority})")
+        if active_matched:
+            max_priority = max(sub.priority for _, sub in active_matched)
+            skipped = [(ws, sub) for ws, sub in active_matched if sub.priority < max_priority]
+            active_matched = [(ws, sub) for ws, sub in active_matched if sub.priority == max_priority]
+            if skipped:
+                skipped_names = [f"{sub.client_name or 'anonymous'}({sub.priority})" for _, sub in skipped]
+                logger.debug(
+                    f"[{msg.group_name}] 跳过低优先级: {skipped_names} (最高={max_priority})"
+                )
 
-        send_to = [ws for ws, _ in passive_targets] + active_targets
+        send_to = passive_matched + active_matched
         if not send_to:
             return
 
+        names = [sub.client_name or "anonymous" for _, sub in send_to]
         logger.info(
-            f"[{msg.group_name}] 广播到 {len(send_to)} 个客户端 "
-            f"(active={len(active_targets)} passive={len(passive_targets)}): "
+            f"[{msg.group_name}] 广播到 {names}: "
             f"{msg.content[:50]}..."
         )
-        for ws in send_to:
+        for ws, _ in send_to:
             try:
                 asyncio.run_coroutine_threadsafe(ws.send_text(payload), self._loop)
             except Exception as e:

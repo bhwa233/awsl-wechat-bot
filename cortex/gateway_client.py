@@ -164,6 +164,7 @@ class GatewayClient:
             group_filter="",
             message_filter="",
             priority=10,
+            client_name="cortex",
         ).model_dump_json())
 
         try:

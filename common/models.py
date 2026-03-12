@@ -38,6 +38,7 @@ class WSSubscribe(BaseModel):
     message_filter: str = ""
     priority: int = 0
     passive: bool = False
+    client_name: str = ""
 
     @field_validator("group_filter", "message_filter")
     @classmethod
@@ -163,3 +164,16 @@ class WSSubscription:
     message_re: re.Pattern | None = None
     priority: int = 0
     passive: bool = False
+    client_name: str = ""
+
+    @staticmethod
+    def from_subscribe(msg: "WSSubscribe") -> "WSSubscription":
+        """从 WSSubscribe 构建订阅状态，regex 编译失败会抛 re.error"""
+        return WSSubscription(
+            subscribed=True,
+            group_re=re.compile(msg.group_filter) if msg.group_filter else None,
+            message_re=re.compile(msg.message_filter) if msg.message_filter else None,
+            priority=msg.priority,
+            passive=msg.passive,
+            client_name=msg.client_name,
+        )

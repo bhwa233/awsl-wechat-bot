@@ -70,6 +70,7 @@ async def ws_handshake(ws) -> bool:
         "group_filter": settings.group_filter,
         "message_filter": settings.message_filter or "^(?![a-zA-Z]+\\s)(?!@\\S+\\s)",
         "priority": 20,
+        "client_name": "nanobot",
     }))
     resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
     if resp.get("type") != "subscribe_ok":
