@@ -2,7 +2,7 @@
 
 import logging
 import os
-import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -163,6 +163,8 @@ class BotProcessManager:
                 self._kill_win32()
             else:
                 self._kill_posix()
+            if not self._wait_ports_released():
+                logger.warning("bot 进程退出后端口仍未释放 (ports=%s,%s)", config.HTTP_API_PORT, config.CORTEX_HTTP_PORT)
         except Exception:
             pass
         self._process = None
@@ -170,16 +172,18 @@ class BotProcessManager:
         return {"ok": True, "message": f"bot 已停止 (pid={pid})"}
 
     def _kill_win32(self):
+        subprocess.run(
+            ["taskkill", "/PID", str(self._process.pid), "/T", "/F"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
         try:
-            os.kill(self._process.pid, signal.CTRL_BREAK_EVENT)
             self._process.wait(timeout=5)
-        except (subprocess.TimeoutExpired, OSError):
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
-                self._process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            self._process.kill()
+            self._process.wait(timeout=3)
 
     def _kill_posix(self):
         self._process.terminate()
@@ -253,3 +257,20 @@ class BotProcessManager:
             return resp.status_code == 200
         except Exception:
             return False
+
+    def _wait_ports_released(self, timeout: float = 8.0) -> bool:
+        ports = (config.HTTP_API_PORT, config.CORTEX_HTTP_PORT)
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not any(self._is_port_open(port) for port in ports):
+                return True
+            time.sleep(0.2)
+        return not any(self._is_port_open(port) for port in ports)
+
+    def _is_port_open(self, port: int) -> bool:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.2)
+        try:
+            return sock.connect_ex(("127.0.0.1", port)) == 0
+        finally:
+            sock.close()
