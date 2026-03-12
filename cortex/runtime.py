@@ -99,7 +99,7 @@ class CortexRuntime(MessageListener):
                 msg = ans or "抱歉，我现在无法回答这个问题"
 
             elif trigger_type == TriggerType.COMMAND and self.command_service:
-                logger.info(f"[{group_name}] 执行命令: {content[0]}")
+                logger.info(f"[{group_name}] 执行命令: {content[0]} {content[1][:50]}...")
                 res = self.command_service.execute_command(content[0], content[1])
                 if res:
                     msg = res["content"]
