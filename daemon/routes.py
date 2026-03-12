@@ -77,11 +77,6 @@ def ttyd_start():
     return ttyd_manager.start_ttyd(reason="API /ttyd/start")
 
 
-@app.post("/ttyd/install", dependencies=[Depends(verify_token)])
-def ttyd_install():
-    return ttyd_manager.install_ttyd()
-
-
 @app.post("/ttyd/stop", dependencies=[Depends(verify_token)])
 def ttyd_stop():
     return ttyd_manager.stop_ttyd()

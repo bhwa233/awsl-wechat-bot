@@ -630,12 +630,10 @@
                 <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;" id="ttydLastReason"></div>
 
                 <div class="btn-group">
-                    <button class="btn btn-update" id="btnTtydInstall" onclick="doTtydAction('install')">安装</button>
                     <button class="btn btn-start" id="btnTtydStart" onclick="doTtydAction('start')">启动</button>
                     <button class="btn btn-stop" id="btnTtydStop" onclick="doTtydAction('stop')">停止</button>
                     <button class="btn btn-restart" id="btnTtydRestart" onclick="doTtydAction('restart')">重启</button>
                     <button class="btn btn-refresh btn-sm" onclick="refreshTtydStatus()">刷新</button>
-                    <a class="btn btn-refresh btn-sm" id="ttydOpenLink" href="#" target="_blank" rel="noreferrer noopener" style="display: none; text-decoration: none;">打开终端</a>
                 </div>
 
                 <div class="update-output" id="ttydOutput"></div>
@@ -742,11 +740,6 @@
             return `${s}s`;
         }
 
-        function getTtydUrl(host, port) {
-            const resolvedHost = !host || host === '0.0.0.0' || host === '::' ? window.location.hostname : host;
-            return `${window.location.protocol}//${resolvedHost}:${port}/`;
-        }
-
         function switchTab(tabName) {
             const tabs = ['bot', 'ttyd', 'logs'];
             tabs.forEach(name => {
@@ -807,7 +800,6 @@
                 const running = data.running;
                 const bar = $('ttydStatusBar');
                 const output = $('ttydOutput');
-                const openLink = $('ttydOpenLink');
                 const endpoint = data.port ? `${data.host}:${data.port}` : '-';
 
                 bar.className = `status-bar ${running ? 'running' : 'stopped'}`;
@@ -820,13 +812,6 @@
                 $('ttydAuth').textContent = data.auth_enabled ? '已启用' : '未启用';
                 $('ttydLastReason').textContent = data.last_start_reason ? `上次操作: ${data.last_start_reason}` : '';
 
-                const showLink = running && data.port;
-                openLink.style.display = showLink ? 'inline-flex' : 'none';
-                if (showLink) {
-                    openLink.href = getTtydUrl(data.host, data.port);
-                }
-
-                $('btnTtydInstall').disabled = data.installed;
                 $('btnTtydStart').disabled = running;
                 $('btnTtydStop').disabled = !running;
                 $('btnTtydRestart').disabled = !data.installed;
@@ -861,7 +846,6 @@
 
         async function doTtydAction(action) {
             const map = {
-                install: 'btnTtydInstall',
                 start: 'btnTtydStart',
                 stop: 'btnTtydStop',
                 restart: 'btnTtydRestart',

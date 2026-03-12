@@ -32,10 +32,6 @@ class TtydProcessManager:
                 return {"ok": False, "message": "ttyd 已在运行中"}
             return self._launch(reason)
 
-    def install_ttyd(self) -> dict:
-        with self._lock:
-            return self._install_ttyd()
-
     def stop_ttyd(self) -> dict:
         with self._lock:
             result = self._terminate()
@@ -145,12 +141,7 @@ class TtydProcessManager:
     def _ensure_ttyd_bin(self) -> tuple[str, Optional[dict]]:
         if ttyd_bin := self._find_ttyd_bin():
             return ttyd_bin, None
-        install_result = self._install_ttyd()
-        if not install_result["ok"]:
-            return "", install_result
-        if ttyd_bin := self._find_ttyd_bin():
-            return ttyd_bin, None
-        return "", self._ttyd_not_found_after_install_error()
+        return "", self._ttyd_not_found_error()
 
     def _build_command(self, ttyd_bin: str, shell_name: str) -> list[str]:
         return [
@@ -213,55 +204,9 @@ class TtydProcessManager:
             "message": "未找到 pwsh 或 powershell，请确认 PowerShell 已安装且在 PATH 中",
         }
 
-    def _ttyd_not_found_after_install_error(self) -> dict:
-        logger.error("winget 安装完成后仍未找到 ttyd")
+    def _ttyd_not_found_error(self) -> dict:
+        logger.error("未找到 ttyd 可执行文件")
         return {
             "ok": False,
-            "message": "已执行 winget 安装，但当前进程仍未找到 ttyd，请重启 daemon 后再试",
+            "message": "未找到 ttyd，请先手动安装并确认 ttyd 已加入 PATH",
         }
-
-    def _install_ttyd(self) -> dict:
-        if self._find_ttyd_bin():
-            return {"ok": True, "message": "ttyd 已安装"}
-        if sys.platform != "win32":
-            return {
-                "ok": False,
-                "message": "当前平台不支持通过 winget 自动安装 ttyd",
-            }
-        winget_bin = shutil.which("winget") or ""
-        if not winget_bin:
-            return {"ok": False, "message": "未找到 winget，无法自动安装 ttyd"}
-
-        logger.info("开始通过 winget 安装 ttyd")
-        try:
-            result = subprocess.run(
-                [
-                    winget_bin,
-                    "install",
-                    "--id",
-                    "tsl0922.ttyd",
-                    "-e",
-                    "--source",
-                    "winget",
-                    "--accept-source-agreements",
-                    "--accept-package-agreements",
-                ],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=600,
-            )
-        except Exception as exc:
-            logger.exception("winget 安装 ttyd 失败")
-            return {"ok": False, "message": f"winget 安装 ttyd 失败: {exc}"}
-
-        if result.returncode == 0 or self._find_ttyd_bin():
-            logger.info("winget 安装 ttyd 完成")
-            return {"ok": True, "message": "ttyd 已安装"}
-
-        detail = (
-            (result.stderr or "").strip()
-            or (result.stdout or "").strip()
-            or f"exit_code={result.returncode}"
-        )
-        return {"ok": False, "message": f"winget 安装 ttyd 失败: {detail}"}
