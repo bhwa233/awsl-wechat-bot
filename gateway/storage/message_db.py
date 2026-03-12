@@ -66,23 +66,26 @@ class MessageDatabase:
                 session.add(MessageHash(group_name=group_name, hash=msg_hash))
                 session.commit()
 
-    def cleanup_old_hashes(self):
-        """清理旧记录"""
+    def cleanup_old_hashes(self, group_name: str | None = None):
+        """清理旧记录（按群）"""
         with Session(self._engine) as session:
-            count = session.exec(select(func.count()).select_from(MessageHash)).one()
-            if count > self.max_cache:
-                delete_count = count - self.max_cache // 2
-                old_ids = session.exec(
-                    select(MessageHash.id)
-                    .order_by(col(MessageHash.id).asc())
-                    .limit(delete_count)
-                ).all()
-                if old_ids:
-                    for row_id in old_ids:
-                        obj = session.get(MessageHash, row_id)
-                        if obj:
-                            session.delete(obj)
-                    session.commit()
+            base = select(func.count()).select_from(MessageHash)
+            if group_name:
+                base = base.where(MessageHash.group_name == group_name)
+            count = session.exec(base).one()
+            if count <= self.max_cache:
+                return
+            delete_count = count - self.max_cache // 2
+            id_query = select(MessageHash.id).order_by(col(MessageHash.id).asc())
+            if group_name:
+                id_query = id_query.where(MessageHash.group_name == group_name)
+            old_ids = session.exec(id_query.limit(delete_count)).all()
+            if old_ids:
+                for row_id in old_ids:
+                    obj = session.get(MessageHash, row_id)
+                    if obj:
+                        session.delete(obj)
+                session.commit()
 
     def close(self):
         """关闭数据库连接"""

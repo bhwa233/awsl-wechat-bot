@@ -55,7 +55,7 @@ class MessageDetector:
 
                 self._check_count += 1
                 if self._check_count >= self.CLEANUP_INTERVAL:
-                    self.db.cleanup_old_hashes()
+                    self.db.cleanup_old_hashes(self.group_name)
                     self._check_count = 0
 
                 time.sleep(config.CHECK_INTERVAL)
