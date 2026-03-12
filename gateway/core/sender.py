@@ -7,7 +7,7 @@ from typing import Any
 
 from common.config import config
 from gateway.adapters.base import BaseWeChatAdapter
-from gateway.core.models import SendTask
+from gateway.core.models import SendTask, SentMessageStore
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 class MessageSender:
     """串行消息发送器，支持全局限速"""
 
-    def __init__(self, adapter: BaseWeChatAdapter, group_windows: dict[str, Any]):
+    def __init__(self, adapter: BaseWeChatAdapter, group_windows: dict[str, Any],
+                 sent_store: SentMessageStore | None = None):
         self.adapter = adapter
         self.group_windows = group_windows
+        self.sent_store = sent_store or SentMessageStore()
         self.send_queue: queue.Queue[SendTask] = queue.Queue()
         self._last_send_time = 0.0
         self._running = False
@@ -63,6 +65,8 @@ class MessageSender:
 
                 if send_ok:
                     self._last_send_time = time.time()
+                    if not task.is_image:
+                        self.sent_store.record(task.group_name, task.content)
                     logger.info(f"[{task.group_name}] 消息已发送")
                 else:
                     logger.warning(f"[{task.group_name}] 消息发送失败")

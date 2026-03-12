@@ -4,6 +4,7 @@ import queue
 import logging
 from common.config import config
 from gateway.adapters.base import BaseWeChatAdapter
+from gateway.core.models import SentMessageStore
 from gateway.storage.message_db import MessageDatabase
 from common.models import GatewayMessage
 
@@ -23,12 +24,14 @@ class MessageDetector:
         db: MessageDatabase,
         *,
         gateway_queue: queue.Queue,
+        sent_store: SentMessageStore | None = None,
     ):
         self.group_name = group_name
         self.window = window
         self.adapter = wechat_adapter
         self.db = db
         self.gateway_queue = gateway_queue
+        self.sent_store = sent_store
         self._running = False
         self._check_count = 0
 
@@ -118,6 +121,10 @@ class MessageDetector:
                 if config.DEBUG:
                     logger.debug(
                         f"[{self.group_name}] 非最新消息，跳过触发: {msg[:30]}...")
+                continue
+
+            if self.sent_store and self.sent_store.is_self_sent(self.group_name, msg):
+                logger.debug(f"[{self.group_name}] 跳过自己发送的消息: {msg[:30]}...")
                 continue
 
             try:

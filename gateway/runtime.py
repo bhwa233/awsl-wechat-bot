@@ -10,6 +10,7 @@ from gateway.storage.message_db import MessageDatabase
 from gateway.core.sender import MessageSender
 from gateway.core.detector import MessageDetector
 from gateway.core.gateway import Gateway
+from gateway.core.models import SentMessageStore
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,8 @@ class GatewayRuntime:
         self.adapter: BaseWeChatAdapter = get_wechat_adapter()
         self.db = MessageDatabase()
         self.group_windows: dict[str, Any] = {}
-        self.gateway = Gateway(MessageSender(self.adapter, self.group_windows))
+        self.sent_store = SentMessageStore()
+        self.gateway = Gateway(MessageSender(self.adapter, self.group_windows, self.sent_store))
         self._lock = threading.Lock()
         self._detectors: dict[str, _DetectorHandle] = {}
         self._running = False
@@ -80,6 +82,7 @@ class GatewayRuntime:
             wechat_adapter=self.adapter,
             db=self.db,
             gateway_queue=self.gateway.gateway_queue,
+            sent_store=self.sent_store,
         )
         thread = threading.Thread(target=detector.run, daemon=True, name=f"detector-{group_name}")
         thread.start()
