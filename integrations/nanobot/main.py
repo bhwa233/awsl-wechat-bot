@@ -68,7 +68,8 @@ async def ws_handshake(ws) -> bool:
     await ws.send(json.dumps({
         "type": "subscribe",
         "group_filter": settings.group_filter,
-        "message_filter": settings.message_filter,
+        "message_filter": settings.message_filter or "^(?![a-zA-Z]+\\s)(?!@\\S+\\s)",
+        "priority": 20,
     }))
     resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
     if resp.get("type") != "subscribe_ok":
