@@ -12,6 +12,7 @@ from fastapi import FastAPI, Depends, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from common.auth import verify_token
+from common.config import config
 from .manager import BotProcessManager
 from .ttyd_manager import TtydProcessManager
 
