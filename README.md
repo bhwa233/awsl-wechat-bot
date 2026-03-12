@@ -167,6 +167,7 @@ POST /ttyd/restart        # 重启 ttyd
 
 注意：当 `TTYD_HOST=0.0.0.0` 且未额外加反向代理或防火墙限制时，`ttyd` 是裸终端暴露，任何能访问该端口的人都可直接获得 shell。
 如需启用 ttyd 基础鉴权，可配置 `TTYD_CREDENTIALS=user:pass`。
+Windows 下为保证 `pwsh/powershell` 可正常交互，daemon 会优先用 `winpty` 包装；如果缺少 `winpty`，启动 ttyd 会直接报错提示安装。
 
 ### WebSocket 协议
 
