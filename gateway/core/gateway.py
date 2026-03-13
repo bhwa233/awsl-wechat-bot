@@ -145,7 +145,7 @@ class Gateway:
             return
 
         names = [sub.client_name or "anonymous" for _, sub in send_to]
-        logger.info(
+        logger.debug(
             f"[{msg.group_name}] 广播到 {names}: "
             f"{msg.content[:50]}..."
         )
