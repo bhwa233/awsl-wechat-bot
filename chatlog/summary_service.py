@@ -5,7 +5,7 @@
 import logging
 import os
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 
@@ -19,12 +19,22 @@ class SummaryGroup:
 
 
 @dataclass
+class GroupSummaryOutput:
+    """单个群聊的总结产出"""
+    group_name: str
+    success: bool
+    message: str
+    image_base64: str | None = None
+    text_message: str | None = None
+
+
+@dataclass
 class SummaryConfig:
     input_path: str
     key: str
     output_path: str
     groups: list[SummaryGroup]
-    send_fn: Callable[[str, str, bool], None] = field(default=lambda *a, **k: None)  # (group_name, content, is_image)
+    on_group_complete: Callable[[GroupSummaryOutput], None] | None = None
     date: str | None = None  # YYYY-MM-DD，默认为今天
 
 
@@ -97,8 +107,8 @@ class SummaryService:
     def _execute_summary(self, config: SummaryConfig) -> SummaryResult:
         import base64
 
-        from gateway.utils.wechat_chatlog import WeChatDBDecryptor, WeChatDBReader
-        from gateway.utils.chat_summary import (
+        from chatlog.wechat_db import WeChatDBDecryptor, WeChatDBReader
+        from chatlog.summary import (
             format_messages_for_llm,
             generate_ranking,
             generate_ranking_text,
@@ -255,22 +265,23 @@ class SummaryService:
                     fail_count += 1
                     continue
 
-                # 通过回调发送（不走 HTTP）
-                logger.info(f"[Summary] 发送到群聊: {group.group_name}")
+                # 读取图片并清理临时文件
                 with open(output_image, "rb") as f:
                     image_b64 = base64.b64encode(f.read()).decode("utf-8")
-                config.send_fn(group.group_name, image_b64, True)
-
-                try:
-                    config.send_fn(group.group_name, text_message, False)
-                except Exception as e:
-                    logger.warning(f"[Summary] 文本消息发送失败 [{group.group_name}]: {e}")
-
-                # 清理图片
                 try:
                     os.remove(output_image)
                 except OSError:
                     pass
+
+                # 通过回调通知调用方
+                if config.on_group_complete:
+                    config.on_group_complete(GroupSummaryOutput(
+                        group_name=group.group_name,
+                        success=True,
+                        message="成功",
+                        image_base64=image_b64,
+                        text_message=text_message,
+                    ))
 
                 group_result["success"] = True
                 group_result["message"] = "成功"

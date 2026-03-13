@@ -7,19 +7,19 @@
     summary  - 生成群聊总结
 
 使用方法:
-    python chat_summary.py decrypt --input <输入路径> --key <密钥> --output <输出路径>
-    python chat_summary.py summary --group <群ID> --db-path <数据库路径> [--date <日期>] [--image]
+    python summary.py decrypt --input <输入路径> --key <密钥> --output <输出路径>
+    python summary.py summary --group <群ID> --db-path <数据库路径> [--date <日期>] [--image]
 
 示例:
     # 解密数据库
-    python chat_summary.py decrypt \\
-        --input "C:\\Users\\xxx\\Documents\\xwechat_files\\wxid_xxx" \\
-        --key "9d0391daa25847..." \\
+    python summary.py decrypt \
+        --input "C:\\Users\\xxx\\Documents\\xwechat_files\\wxid_xxx" \
+        --key "9d0391daa25847..." \
         --output "C:\\decrypted"
 
     # 生成总结
-    python chat_summary.py summary --group 49100408389@chatroom --db-path "C:\\decrypted"
-    python chat_summary.py summary --group 49100408389@chatroom --db-path "C:\\decrypted" --image
+    python summary.py summary --group 49100408389@chatroom --db-path "C:\\decrypted"
+    python summary.py summary --group 49100408389@chatroom --db-path "C:\\decrypted" --image
 """
 
 import argparse
@@ -266,7 +266,7 @@ def generate_ranking_text(sender_stats: dict[str, tuple[int, int]], top_n: int =
 
 
 def extract_overview(summary_md: str) -> str:
-    """从总结 Markdown 中提取“概览”段落"""
+    """从总结 Markdown 中提取"概览"段落"""
     import re
 
     lines = summary_md.splitlines()
@@ -401,7 +401,7 @@ def summarize_with_llm(
 
 def _get_group_display_name(db_path: str, group_id: str) -> str:
     try:
-        from gateway.utils.wechat_chatlog import WeChatDBReader
+        from chatlog.wechat_db import WeChatDBReader
     except Exception:
         return ""
 

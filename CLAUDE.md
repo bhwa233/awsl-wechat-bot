@@ -78,12 +78,17 @@ per group                              │ 广播
 - `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，发送 _send_lock 串行
 - `utils/ocr.py` - macOS Vision OCR 封装
 - `utils/screenshot.py` - 截图工具
-- `utils/chat_summary.py` - 群聊总结生成（Markdown → 图片）
-- `utils/wechat_chatlog.py` - 微信数据库解密 + 消息查询
 - `utils/accessibility.py` - macOS 辅助功能权限检查
-- `utils/summary_service.py` - 总结服务（异步任务调度）
 - `storage/message_db.py` - SQLModel ORM 消息去重 (SQLite)
 - `routes/` - REST (health, groups, messages, chatlog) + WS 端点 (`ws.py`)
+
+**chatlog/** - 聊天记录模块（独立顶层模块）
+- `__init__.py` - 导出 ChatlogService 和相关模型
+- `service.py` - ChatlogService 统一接口类
+- `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatSummaryRequest 等）
+- `wechat_db.py` - 微信数据库解密 + 消息查询（WeChatDBDecryptor, WeChatDBReader）
+- `summary.py` - 群聊总结生成（LLM 总结 + Markdown → 图片渲染）
+- `summary_service.py` - 总结服务（异步任务调度，SummaryConfig/SummaryResult）
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）

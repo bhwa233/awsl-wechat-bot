@@ -8,9 +8,9 @@
 3. 按时间范围查询聊天记录
 
 使用方法:
-    python wechat_chatlog.py decrypt --input <目录> --key <密钥> --output <输出目录>
-    python wechat_chatlog.py list-groups --db-path <解密后目录>
-    python wechat_chatlog.py query --db-path <目录> --group <群ID> [--start <时间>] [--end <时间>]
+    python wechat_db.py decrypt --input <目录> --key <密钥> --output <输出目录>
+    python wechat_db.py list-groups --db-path <解密后目录>
+    python wechat_db.py query --db-path <目录> --group <群ID> [--start <时间>] [--end <时间>]
 """
 
 import argparse

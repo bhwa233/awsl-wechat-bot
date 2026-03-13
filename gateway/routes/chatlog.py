@@ -11,28 +11,30 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 
 from common.config import config
 from common.auth import verify_token
-from gateway.models import (
+from chatlog import (
+    ChatlogService,
     ChatlogGroupResponse, ChatlogMessageResponse,
-    ChatSummaryRequest, ChatSummaryResponse
+    ChatSummaryRequest, ChatSummaryResponse,
+    SummaryConfig, SummaryGroup, SummaryResult, GroupSummaryOutput,
 )
-from gateway.utils.wechat_chatlog import WeChatDBDecryptor, WeChatDBReader, HAS_CRYPTO
-from gateway.utils.summary_service import start_chat_summary_async, SummaryConfig, SummaryGroup, SummaryResult
+from gateway.core.gateway import Gateway
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chatlog", tags=["chatlog"])
 
 
-def create_routes(send_fn):
+def create_routes(gateway: Gateway):
     """创建路由
 
     Args:
-        send_fn: 发送消息回调 (group_name, content, is_image)
+        gateway: Gateway 实例，用于发送消息
     """
+    chatlog = ChatlogService()
 
     @router.post("/decrypt", dependencies=[Depends(verify_token)])
     async def decrypt_database():
         """解密微信数据库（使用全局配置）"""
-        if not HAS_CRYPTO:
+        if not chatlog.has_crypto():
             raise HTTPException(status_code=500, detail="服务器缺少 pycryptodome 依赖")
 
         if not config.has_wechat_db_config():
@@ -42,8 +44,7 @@ def create_routes(send_fn):
             raise HTTPException(status_code=400, detail=f"输入目录不存在: {config.WECHAT_DB_INPUT_PATH}")
 
         try:
-            decryptor = WeChatDBDecryptor(config.WECHAT_DB_KEY)
-            count = decryptor.decrypt_directory(config.WECHAT_DB_INPUT_PATH, config.WECHAT_DB_OUTPUT_PATH)
+            count = chatlog.decrypt(config.WECHAT_DB_INPUT_PATH, config.WECHAT_DB_KEY, config.WECHAT_DB_OUTPUT_PATH)
             logger.info(f"[HTTP API] 解密完成: {count} 个文件")
             return {
                 "success": True,
@@ -68,9 +69,8 @@ def create_routes(send_fn):
         if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
             raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
 
-        reader = WeChatDBReader(config.WECHAT_DB_OUTPUT_PATH)
         try:
-            groups = reader.list_groups(limit=limit)
+            groups = chatlog.list_groups(config.WECHAT_DB_OUTPUT_PATH, limit=limit)
             return [
                 ChatlogGroupResponse(
                     username=g.username,
@@ -86,8 +86,6 @@ def create_routes(send_fn):
         except Exception as e:
             logger.error(f"[HTTP API] 列出群聊失败: {e}")
             raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-        finally:
-            reader.close()
 
     @router.get("/messages", response_model=List[ChatlogMessageResponse], dependencies=[Depends(verify_token)])
     async def query_messages(
@@ -116,14 +114,14 @@ def create_routes(send_fn):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"无效的时间格式: {e}")
 
-        reader = WeChatDBReader(config.WECHAT_DB_OUTPUT_PATH)
         try:
-            messages = reader.get_messages(
-                talker=group,
+            messages = chatlog.get_messages(
+                config.WECHAT_DB_OUTPUT_PATH,
+                group,
                 start_time=start_time,
                 end_time=end_time,
                 text_only=True,
-                limit=limit
+                limit=limit,
             )
             return [
                 ChatlogMessageResponse(
@@ -143,8 +141,6 @@ def create_routes(send_fn):
         except Exception as e:
             logger.error(f"[HTTP API] 查询消息失败: {e}")
             raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
-        finally:
-            reader.close()
 
     @router.post("/summary", response_model=ChatSummaryResponse, dependencies=[Depends(verify_token)])
     async def send_chat_summary(request: ChatSummaryRequest):
@@ -157,13 +153,22 @@ def create_routes(send_fn):
         if not config.has_wechat_db_config():
             raise HTTPException(status_code=400, detail="微信数据库配置不完整")
 
+        def on_group_complete(output: GroupSummaryOutput):
+            """每个群聊总结完成后，通过 Gateway 发送消息"""
+            if not output.success:
+                return
+            if output.image_base64:
+                gateway.send_message(output.group_name, output.image_base64, is_image=True)
+            if output.text_message:
+                gateway.send_message(output.group_name, output.text_message, is_image=False)
+
         # 构建配置（使用全局 config 中的路径）
         summary_config = SummaryConfig(
             input_path=config.WECHAT_DB_INPUT_PATH,
             key=config.WECHAT_DB_KEY,
             output_path=config.WECHAT_DB_OUTPUT_PATH,
             groups=[SummaryGroup(group_id=g.group_id, group_name=g.group_name) for g in request.groups],
-            send_fn=send_fn,
+            on_group_complete=on_group_complete,
         )
 
         group_names = [g.group_name for g in request.groups]
@@ -176,7 +181,7 @@ def create_routes(send_fn):
                 logger.error(f"[HTTP API] 群聊总结任务失败: {result.message}")
 
         # 异步启动任务（内部已处理锁和线程）
-        result = start_chat_summary_async(summary_config, on_complete)
+        result = chatlog.start_summary_async(summary_config, on_complete)
 
         if not result.success:
             return ChatSummaryResponse(

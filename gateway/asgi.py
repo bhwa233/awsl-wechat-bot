@@ -22,8 +22,5 @@ def create_app(gateway_app) -> FastAPI:
     app.include_router(groups.create_routes(gateway_app))
     app.include_router(messages.create_routes(gateway_app.gateway))
     app.include_router(ws.create_routes(gateway_app.gateway))
-    _gw = gateway_app.gateway
-    app.include_router(chatlog.create_routes(
-        lambda name, content, is_image: _gw.send_message(name, content, is_image=is_image)
-    ))
+    app.include_router(chatlog.create_routes(gateway_app.gateway))
     return app
