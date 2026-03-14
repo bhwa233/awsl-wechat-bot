@@ -10,7 +10,8 @@ from common.auth import verify_token
 logger = logging.getLogger(__name__)
 
 
-def create_routes(gateway_base_url: str, gateway_token: str) -> APIRouter:
+def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter, httpx.AsyncClient]:
+    """创建代理路由，返回 (router, client)，调用方负责在 shutdown 时关闭 client"""
     router = APIRouter()
 
     client = httpx.AsyncClient(
@@ -41,4 +42,4 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> APIRouter:
         resp = await client.post("/api/chatlog/summary", json=body, timeout=300)
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
-    return router
+    return router, client

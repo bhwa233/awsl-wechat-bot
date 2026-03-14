@@ -20,6 +20,7 @@ class AIService:
                 "Content-Type": "application/json",
             },
             timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
         logger.info(f"AI 服务初始化完成，API: {config.OPENAI_BASE_URL}")
 

@@ -299,8 +299,12 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             finally:
                 if temp_path:
                     time.sleep(1)
-                    try:
-                        os.unlink(temp_path)
-                    except Exception:
-                        pass
+                    for _ in range(3):
+                        try:
+                            os.unlink(temp_path)
+                            break
+                        except PermissionError:
+                            time.sleep(1)
+                        except Exception:
+                            break
 

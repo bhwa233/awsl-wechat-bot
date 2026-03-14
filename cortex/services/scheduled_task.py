@@ -117,7 +117,11 @@ class ScheduledTaskService:
 
     # ==================== CRUD ====================
 
+    _MAX_CRON_LEN = 256
+
     def validate_cron_expression(self, cron_expr: str) -> bool:
+        if len(cron_expr) > self._MAX_CRON_LEN:
+            return False
         try:
             croniter(cron_expr)
             return True

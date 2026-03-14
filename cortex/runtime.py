@@ -56,7 +56,7 @@ class CortexRuntime(MessageListener):
 
     def stop(self):
         self.gateway_client.stop()
-        self._executor.shutdown(wait=False)
+        self._executor.shutdown(wait=True, cancel_futures=True)
         if self.ai_service:
             self.ai_service.close()
         if self.command_service:

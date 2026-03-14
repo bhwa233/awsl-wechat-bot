@@ -26,6 +26,8 @@ def create_app(cortex_app) -> FastAPI:
     cortex_app.gateway_client.add_listener(cortex_app)
     cortex_app.gateway_client.add_listener(webhook_service)
 
+    proxy_router, proxy_client = gateway_proxy.create_routes(config.HTTP_API_BASE_URL, config.HTTP_API_TOKEN)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         cortex_app.start()
@@ -33,6 +35,7 @@ def create_app(cortex_app) -> FastAPI:
         yield
         scheduler.stop()
         cortex_app.stop()
+        await proxy_client.aclose()
         webhook_service.close()
         task_service.close()
 
@@ -44,5 +47,5 @@ def create_app(cortex_app) -> FastAPI:
     app.include_router(health.create_routes())
     app.include_router(tasks.create_routes(task_service))
     app.include_router(webhooks.create_routes(webhook_service))
-    app.include_router(gateway_proxy.create_routes(config.HTTP_API_BASE_URL, config.HTTP_API_TOKEN))
+    app.include_router(proxy_router)
     return app

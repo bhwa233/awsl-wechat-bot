@@ -149,11 +149,17 @@ class Gateway:
         logger.debug(
             f"[{msg.group_name}] 广播到 {names}: {content_preview}"
         )
+        failed = []
         for ws, _ in send_to:
             try:
                 asyncio.run_coroutine_threadsafe(ws.send_text(payload), self._loop)
             except Exception as e:
                 logger.warning(f"WS 发送失败: {e}")
+                failed.append(ws)
+        if failed:
+            with self._lock:
+                for ws in failed:
+                    self._ws_clients.pop(ws, None)
 
     @staticmethod
     def _matches(sub: WSSubscription, group_name: str, content: str) -> bool:

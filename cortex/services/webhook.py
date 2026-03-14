@@ -18,7 +18,7 @@ import httpx
 from pydantic import BaseModel, field_validator
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
-from common.models import WSMessageBroadcast
+from common.models import WSMessageBroadcast, MAX_REGEX_LEN
 from cortex.models import MessageListener
 
 logger = logging.getLogger(__name__)
@@ -169,11 +169,9 @@ class WebhookService(MessageListener):
             self._cache_ts = time.time()
         return webhooks
 
-    _MAX_REGEX_LEN = 200
-
     def _safe_regex_match(self, pattern: str, text: str) -> bool | None:
         """安全正则匹配，返回 None 表示正则无效"""
-        if len(pattern) > self._MAX_REGEX_LEN:
+        if len(pattern) > MAX_REGEX_LEN:
             return None
         try:
             return bool(re.search(pattern, text))
@@ -214,11 +212,16 @@ class WebhookService(MessageListener):
         """用固定示例数据测试单个 webhook"""
         self._pool.submit(self._send, wh, "测试群聊", "这是一条测试消息")
 
-    def _replace_placeholders(self, template: str, group_name: str, message: str) -> str:
-        # JSON 转义：确保替换值不会破坏 JSON 结构
-        safe_group = json.dumps(group_name)[1:-1]  # 去掉外层引号
-        safe_message = json.dumps(message)[1:-1]
-        return template.replace("{{group_name}}", safe_group).replace("{{message}}", safe_message)
+    @staticmethod
+    def _replace_placeholders(template: str, group_name: str, message: str) -> str:
+        # JSON 转义：json.dumps 生成带引号的安全字符串，[1:-1] 取内部转义后的内容
+        replacements = {
+            "{{group_name}}": json.dumps(group_name, ensure_ascii=False)[1:-1],
+            "{{message}}": json.dumps(message, ensure_ascii=False)[1:-1],
+        }
+        for placeholder, value in replacements.items():
+            template = template.replace(placeholder, value)
+        return template
 
     def _send(self, wh: Webhook, group_name: str, message: str):
         try:

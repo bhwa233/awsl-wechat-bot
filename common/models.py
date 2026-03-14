@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Annotated, Literal, Union
 
-from pydantic import BaseModel, Discriminator, Tag, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, Discriminator, Field, Tag, TypeAdapter, field_validator, model_validator
 
 
 # ── 消息类型常量 ──────────────────────────────────────────
@@ -31,7 +31,7 @@ class WSAuth(BaseModel):
     token: str
 
 
-_MAX_REGEX_LEN = 200
+MAX_REGEX_LEN = 200
 
 
 class WSSubscribe(BaseModel):
@@ -47,8 +47,8 @@ class WSSubscribe(BaseModel):
     @classmethod
     def validate_regex(cls, v):
         if v:
-            if len(v) > _MAX_REGEX_LEN:
-                raise ValueError(f"正则表达式长度不能超过 {_MAX_REGEX_LEN} 字符")
+            if len(v) > MAX_REGEX_LEN:
+                raise ValueError(f"正则表达式长度不能超过 {MAX_REGEX_LEN} 字符")
             re.compile(v)
         return v
 
@@ -63,7 +63,7 @@ class WSSendMessage(BaseModel):
     request_id: str | None = None
     group_name: str
     message: str | None = None
-    image_base64: str | None = None
+    image_base64: str | None = Field(None, max_length=10_000_000)
 
     @model_validator(mode="after")
     def check_content(self):
