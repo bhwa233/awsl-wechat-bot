@@ -24,7 +24,6 @@ from common.models import (
 logger = logging.getLogger(__name__)
 
 AUTH_TIMEOUT = 10.0
-WS_IDLE_TIMEOUT = 300.0  # 5 分钟无消息断开
 
 
 def create_routes(gateway: Gateway) -> APIRouter:
@@ -42,11 +41,8 @@ def create_routes(gateway: Gateway) -> APIRouter:
         gateway.ws_connect(ws)
         try:
             while True:
-                raw = await asyncio.wait_for(ws.receive_text(), timeout=WS_IDLE_TIMEOUT)
+                raw = await ws.receive_text()
                 await _handle_message(ws, gateway, raw)
-        except asyncio.TimeoutError:
-            logger.debug("WS 空闲超时，断开连接")
-            await ws.close(code=1000, reason="Idle timeout")
         except WebSocketDisconnect:
             pass
         except Exception as e:
