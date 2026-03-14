@@ -113,7 +113,8 @@ class TtydProcessManager:
         return {"ok": True, "message": f"ttyd 已停止 (pid={pid})"}
 
     def _resolve_shell_name(self) -> str:
-        return next((name for name in ("pwsh", "powershell") if shutil.which(name)), "")
+        candidates = ("pwsh", "powershell") if sys.platform == "win32" else ("zsh", "bash", "sh")
+        return next((name for name in candidates if shutil.which(name)), "")
 
     def _is_running(self) -> bool:
         return bool(self._process and self._process.poll() is None)
@@ -199,11 +200,12 @@ class TtydProcessManager:
             return ""
 
     def _shell_not_found_error(self) -> dict:
-        logger.error("未找到 pwsh 或 powershell")
-        return {
-            "ok": False,
-            "message": "未找到 pwsh 或 powershell，请确认 PowerShell 已安装且在 PATH 中",
-        }
+        if sys.platform == "win32":
+            msg = "未找到 pwsh 或 powershell，请确认 PowerShell 已安装且在 PATH 中"
+        else:
+            msg = "未找到 zsh、bash 或 sh，请确认 shell 已安装且在 PATH 中"
+        logger.error(msg)
+        return {"ok": False, "message": msg}
 
     def _ttyd_not_found_error(self) -> dict:
         logger.error("未找到 ttyd 可执行文件")

@@ -12,9 +12,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
 from common.models import WSMessageBroadcast
@@ -46,7 +47,13 @@ class Webhook(WebhookBase, table=True):
 
 
 class WebhookCreate(WebhookBase):
-    pass
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v):
+        parsed = urlparse(v)
+        if parsed.scheme not in ("http", "https"):
+            raise ValueError("Webhook URL 仅支持 http/https 协议")
+        return v
 
 
 class WebhookUpdate(SQLModel):
@@ -57,6 +64,15 @@ class WebhookUpdate(SQLModel):
     group_filter: Optional[str] = None
     message_filter: Optional[str] = None
     enabled: Optional[bool] = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v):
+        if v is not None:
+            parsed = urlparse(v)
+            if parsed.scheme not in ("http", "https"):
+                raise ValueError("Webhook URL 仅支持 http/https 协议")
+        return v
 
 
 class WebhookResponse(BaseModel):

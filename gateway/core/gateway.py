@@ -145,9 +145,9 @@ class Gateway:
             return
 
         names = [sub.client_name or "anonymous" for _, sub in send_to]
+        content_preview = msg.content[:50] + "..." if len(msg.content) > 50 else msg.content
         logger.debug(
-            f"[{msg.group_name}] 广播到 {names}: "
-            f"{msg.content[:50]}..."
+            f"[{msg.group_name}] 广播到 {names}: {content_preview}"
         )
         for ws, _ in send_to:
             try:

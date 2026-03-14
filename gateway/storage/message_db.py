@@ -3,22 +3,23 @@ import hashlib
 import logging
 import os
 
-from sqlmodel import SQLModel, Field, Session, create_engine, select, func, col
+from sqlalchemy import Index
+from sqlmodel import SQLModel, Field, Session, create_engine, select, func, col, delete
 
 logger = logging.getLogger(__name__)
 
 
 class MessageHash(SQLModel, table=True):
     __tablename__ = "message_hashes"
-    __table_args__ = ({"extend_existing": True},)
+    __table_args__ = (
+        Index("ix_group_hash", "group_name", "hash"),
+        {"extend_existing": True},
+    )
 
     id: int | None = Field(default=None, primary_key=True)
     group_name: str = Field(index=True)
     hash: str
     created_at: str | None = Field(default=None, sa_column_kwargs={"server_default": "CURRENT_TIMESTAMP"})
-
-    class Config:
-        table_args = {"sqlite_autoincrement": True}
 
 
 class MessageDatabase:
@@ -67,7 +68,7 @@ class MessageDatabase:
                 session.commit()
 
     def cleanup_old_hashes(self, group_name: str | None = None):
-        """清理旧记录（按群）"""
+        """清理旧记录（按群）— 批量删除"""
         with Session(self._engine) as session:
             base = select(func.count()).select_from(MessageHash)
             if group_name:
@@ -81,10 +82,7 @@ class MessageDatabase:
                 id_query = id_query.where(MessageHash.group_name == group_name)
             old_ids = session.exec(id_query.limit(delete_count)).all()
             if old_ids:
-                for row_id in old_ids:
-                    obj = session.get(MessageHash, row_id)
-                    if obj:
-                        session.delete(obj)
+                session.exec(delete(MessageHash).where(col(MessageHash.id).in_(old_ids)))
                 session.commit()
 
     def close(self):

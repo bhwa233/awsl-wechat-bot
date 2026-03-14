@@ -410,8 +410,10 @@ class WeChatDBReader:
         cursor = db.cursor()
         query = "SELECT username, owner FROM chat_room ORDER BY username"
         if limit > 0:
-            query += f" LIMIT {limit}"
-        cursor.execute(query)
+            query += " LIMIT ?"
+            cursor.execute(query, (limit,))
+        else:
+            cursor.execute(query)
         chat_rooms = []
         for username, owner in cursor.fetchall():
             chat_room = ChatRoom(username=username, owner=owner or "")
@@ -481,6 +483,8 @@ class WeChatDBReader:
             return []
 
         table_name = self._talker_to_table_name(talker)
+        if not re.fullmatch(r'Msg_[0-9a-f]{32}', table_name):
+            raise ValueError(f"Invalid table name derived from talker: {talker}")
         is_chatroom = talker.endswith("@chatroom")
         messages = []
 

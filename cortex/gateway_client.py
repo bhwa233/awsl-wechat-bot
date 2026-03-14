@@ -13,6 +13,7 @@ import websockets
 
 from common.config import config
 from common.models import (
+    WSType,
     WSAuth, WSAuthOk,
     WSSubscribe, WSSubscribeOk, WSMessageBroadcast, WSSendMessage, WSError,
     parse_server_message,
@@ -67,7 +68,7 @@ class GatewayClient:
             logger.warning(f"GatewayClient 未连接，无法发送消息到 {group_name}")
             return
         msg = WSSendMessage(
-            type="send_message",
+            type=WSType.SEND_MESSAGE,
             group_name=group_name,
             message=None if is_image else content,
             image_base64=content if is_image else None,
@@ -145,7 +146,7 @@ class GatewayClient:
         """首条消息认证"""
         if not config.HTTP_API_TOKEN:
             return True
-        await ws.send(WSAuth(type="auth", token=config.HTTP_API_TOKEN).model_dump_json())
+        await ws.send(WSAuth(type=WSType.AUTH, token=config.HTTP_API_TOKEN).model_dump_json())
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=10)
             msg = parse_server_message(raw)
@@ -160,7 +161,7 @@ class GatewayClient:
 
     async def _subscribe(self, ws) -> bool:
         await ws.send(WSSubscribe(
-            type="subscribe",
+            type=WSType.SUBSCRIBE,
             group_filter="",
             message_filter="",
             priority=10,

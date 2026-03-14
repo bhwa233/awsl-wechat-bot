@@ -57,6 +57,10 @@ class CortexRuntime(MessageListener):
     def stop(self):
         self.gateway_client.stop()
         self._executor.shutdown(wait=False)
+        if self.ai_service:
+            self.ai_service.close()
+        if self.command_service:
+            self.command_service.close()
         logger.info("Cortex 已停止")
 
     def _is_rate_limited(self, group_name: str) -> bool:
@@ -68,6 +72,10 @@ class CortexRuntime(MessageListener):
         cutoff = now - self._rate_window
         while times and times[0] < cutoff:
             times.popleft()
+        # 清理空 deque，防止不活跃群组内存泄漏
+        if not times:
+            del self._trigger_times[group_name]
+            return False
         return len(times) >= self._rate_limit
 
     def _handle_message(self, msg: WSMessageBroadcast) -> None:

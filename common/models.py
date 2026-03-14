@@ -40,10 +40,14 @@ class WSSubscribe(BaseModel):
     passive: bool = False
     client_name: str = ""
 
+    _MAX_REGEX_LEN = 200
+
     @field_validator("group_filter", "message_filter")
     @classmethod
     def validate_regex(cls, v):
         if v:
+            if len(v) > cls._MAX_REGEX_LEN:
+                raise ValueError(f"正则表达式长度不能超过 {cls._MAX_REGEX_LEN} 字符")
             re.compile(v)
         return v
 

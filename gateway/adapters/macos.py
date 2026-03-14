@@ -142,17 +142,27 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
     def _send_text(self, window: MacOSWindow, text: str) -> bool:
         self._activate_window_by_index(window.index)
         time.sleep(0.2)
-        script = f'''
-        set the clipboard to "{text}"
-        tell application "System Events"
-            tell process "{self.process_name}"
-                keystroke "v" using command down
-                delay 0.3
-                key code 36
+        # 使用 osascript 参数传递文本，避免 AppleScript 字符串注入
+        script = '''
+        on run argv
+            set the clipboard to (item 1 of argv)
+            tell application "System Events"
+                tell process "''' + self.process_name + '''"
+                    keystroke "v" using command down
+                    delay 0.3
+                    key code 36
+                end tell
             end tell
-        end tell
+        end run
         '''
-        self._run_applescript(script)
+        result = subprocess.run(
+            ['osascript', '-e', script, text],
+            capture_output=True,
+            text=True,
+            timeout=config.APPLESCRIPT_TIMEOUT_LONG
+        )
+        if result.returncode != 0:
+            logger.debug(f"AppleScript 发送错误: {result.stderr}")
         time.sleep(0.5)
         return True
 
@@ -209,5 +219,5 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                 if tmp_path:
                     try:
                         os.unlink(tmp_path)
-                    except:
+                    except Exception:
                         pass

@@ -28,8 +28,7 @@ class Config(BaseSettings):
     TRIGGER_RATE_LIMIT: int = 10
     TRIGGER_RATE_WINDOW: int = 60  # 限速时间窗口（秒）
 
-    # 并发处理配置
-    MAX_CONCURRENT_TASKS: int = 5       # 线程池大小
+    # 发送间隔配置
     GLOBAL_SEND_INTERVAL: float = 3.0  # 全局发送间隔（秒）
 
     # 调试模式（输出每次检测到的所有消息）

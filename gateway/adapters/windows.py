@@ -94,7 +94,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                                 "class": cls
                             })
                             logger.debug(f"发现窗口: {title} ({cls})")
-                    except:
+                    except Exception:
                         continue
             except Exception as e:
                 logger.warning(f"扫描类名 {cls} 时出错: {e}")

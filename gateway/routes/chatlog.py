@@ -55,8 +55,8 @@ def create_routes(gateway: Gateway):
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
-            logger.error(f"[HTTP API] 解密失败: {e}")
-            raise HTTPException(status_code=500, detail=f"解密失败: {str(e)}")
+            logger.error(f"[HTTP API] 解密失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="解密失败，请查看服务器日志")
 
     @router.get("/groups", response_model=List[ChatlogGroupResponse], dependencies=[Depends(verify_token)])
     async def list_chat_groups(
@@ -84,8 +84,8 @@ def create_routes(gateway: Gateway):
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"[HTTP API] 列出群聊失败: {e}")
-            raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+            logger.error(f"[HTTP API] 列出群聊失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="查询失败，请查看服务器日志")
 
     @router.get("/messages", response_model=List[ChatlogMessageResponse], dependencies=[Depends(verify_token)])
     async def query_messages(
@@ -139,8 +139,8 @@ def create_routes(gateway: Gateway):
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e))
         except Exception as e:
-            logger.error(f"[HTTP API] 查询消息失败: {e}")
-            raise HTTPException(status_code=500, detail=f"查询失败: {str(e)}")
+            logger.error(f"[HTTP API] 查询消息失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="查询失败，请查看服务器日志")
 
     @router.post("/summary", response_model=ChatSummaryResponse, dependencies=[Depends(verify_token)])
     async def send_chat_summary(request: ChatSummaryRequest):
