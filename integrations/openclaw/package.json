@@ -1,9 +1,0 @@
-{
-  "name": "openclaw-awsl-gateway",
-  "version": "1.0.0",
-  "description": "OpenClaw Channel Plugin for AWSL Gateway WS",
-  "main": "index.js",
-  "dependencies": {
-    "ws": "^8.18.0"
-  }
-}

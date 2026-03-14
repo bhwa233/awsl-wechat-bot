@@ -11,7 +11,6 @@
 - **WebSocket 消息网关**：统一消息广播，支持正则过滤订阅
 - **多群并发处理**：每群独立检测线程，全局限速发送
 - **定时任务 / 群聊总结 / @触发 / 动态命令 / Webhook 转发**
-- **外部 Agent 接入**：NanoBot (Python) / OpenClaw (Node.js) 作为 WS 客户端并行运行
 
 <details>
 <summary>架构设计</summary>
@@ -195,17 +194,6 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 认证：WS 首条消息 `{"type": "auth", "token": "xxx"}`（10s 超时断开），REST `Authorization: Bearer <HTTP_API_TOKEN>`
 
 </details>
-
-## 外部 AI Agent 接入（可选）
-
-Gateway 的 WS 协议支持任意客户端接入。`integrations/` 目录提供了两种 AI Agent 框架的集成：
-
-| Agent | 语言 | 启动 |
-|-------|------|------|
-| NanoBot | Python | `cd integrations/nanobot && uv sync && uv run main.py` |
-| OpenClaw | Node.js | `cd integrations/openclaw && npm install && openclaw --config openclaw.json` |
-
-它们与 Cortex 并行运行，通过 `message_filter` 正则分流消息，通过 `priority` 控制优先级（Cortex 默认 priority=10，低优先级客户端在高优先级在线时不会收到消息；`passive=true` 的客户端始终收到）。详见 [integrations/README.md](integrations/README.md)。
 
 ## 注意事项
 
