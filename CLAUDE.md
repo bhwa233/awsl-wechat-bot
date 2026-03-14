@@ -63,7 +63,7 @@ per group                              │ 广播
 
 **common/** - 共享模块
 - `config.py` - Pydantic Settings 配置 (全局 `config` 实例，从 .env 读取)
-- `models.py` - WS 协议 Pydantic 模型 (discriminated union 解析, WSType 常量, model_validator 校验)
+- `models.py` - WS 协议 Pydantic 模型 (discriminated union 解析, WSType 常量, model_validator 校验, MAX_REGEX_LEN 共享常量)
 - `auth.py` - Bearer Token 验证 (HMAC 常量时间比较)
 - `logging.py` - HealthFilter + setup_uvicorn_logging()
 
@@ -72,6 +72,7 @@ per group                              │ 广播
 - `asgi.py` - FastAPI app 工厂，lifespan 管理生命周期
 - `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播 + subscribe regex 校验
 - `core/detector.py` - MessageDetector：per-group 消息检测线程，SHA256 上下文哈希去重
+- `core/models.py` - SendTask + SentMessageStore（自消息检测：精确/前缀/包含/相似度 4 层匹配）
 - `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
 - `adapters/base.py` - BaseWeChatAdapter 抽象基类 (4 个方法)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
@@ -101,7 +102,7 @@ per group                              │ 广播
 - `services/trigger.py` - TriggerMatcher 正则匹配（AI/命令/文本/图片触发）
 - `services/webhook.py` - WebhookService (MessageListener)：SQLModel ORM + ThreadPoolExecutor fire-and-forget
 - `services/scheduled_task.py` - ScheduledTaskService：SQLModel ORM CRUD + cron 调度
-- `routes/` - tasks, webhooks, health, gateway_proxy（代理 Gateway 的 /api/groups 和 /api/send）
+- `routes/` - tasks, webhooks, health, gateway_proxy（代理 Gateway API，返回 (router, client) 由 lifespan 管理 AsyncClient 生命周期）
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
@@ -121,8 +122,10 @@ per group                              │ 广播
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
 - **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
-- **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验
-- **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池
+- **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验，image_base64 限 10MB
+- **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池，AI service 限制 max_connections=10
+- **自消息过滤**: Windows UIA 读取所有消息（含自己发送的），SentMessageStore 通过精确/前缀/包含/相似度 4 层匹配过滤自发消息，TTL 120s
+- **输入校验**: 正则长度 MAX_REGEX_LEN=200（common/models.py 共享），cron 表达式限 256 字符，AppleScript 参数化防注入（`on run argv`）
 - **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
 - **comtypes 日志静默**: Windows 上 `comtypes` logger 设为 WARNING 级别，屏蔽 COM 类型库生成的 INFO 日志
 - **WS 订阅优先级**: subscribe 支持 `priority`（int，默认 0）和 `passive`（bool，默认 false）。广播时 passive 客户端始终收到消息，非 passive 只推送给匹配的最高优先级客户端。Cortex 默认 priority=10
