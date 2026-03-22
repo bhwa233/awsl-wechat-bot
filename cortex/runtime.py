@@ -1,8 +1,9 @@
 """Cortex 应用 - 业务逻辑中枢"""
 import logging
+import queue
+import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 
 from common.config import config
 from common.models import WSMessageBroadcast
@@ -13,6 +14,7 @@ from cortex.services.command import CommandService
 from cortex.services.trigger import TriggerMatcher
 
 logger = logging.getLogger(__name__)
+_STOP_CORTEX_TASK = object()
 
 
 class CortexRuntime(MessageListener):
@@ -22,11 +24,15 @@ class CortexRuntime(MessageListener):
         self.ai_service = self._init_ai_service()
         self.command_service = self._init_command_service()
         self.trigger_matcher = TriggerMatcher(self.command_service)
+        self._running = False
 
         self._rate_limit = config.TRIGGER_RATE_LIMIT
         self._rate_window = config.TRIGGER_RATE_WINDOW
         self._trigger_times: dict[str, deque[float]] = {}
-        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="cortex")
+        self._task_queue: queue.Queue[tuple[TriggerType, object, str] | object] = queue.Queue(
+            maxsize=config.CORTEX_QUEUE_SIZE
+        )
+        self._workers: list[threading.Thread] = []
 
         self.gateway_client = GatewayClient(ws_url=ws_url)
         logger.info("Cortex 初始化完成")
@@ -51,12 +57,30 @@ class CortexRuntime(MessageListener):
             return None
 
     def start(self):
+        self._running = True
+        if not self._workers:
+            for idx in range(config.CORTEX_POOL_SIZE):
+                worker = threading.Thread(
+                    target=self._worker_loop,
+                    daemon=True,
+                    name=f"cortex-worker-{idx + 1}",
+                )
+                worker.start()
+                self._workers.append(worker)
         self.gateway_client.start()
         logger.info("Cortex 已启动")
 
     def stop(self):
+        self._running = False
         self.gateway_client.stop()
-        self._executor.shutdown(wait=True, cancel_futures=True)
+        for _ in self._workers:
+            try:
+                self._task_queue.put_nowait(_STOP_CORTEX_TASK)
+            except queue.Full:
+                logger.warning("Cortex 处理队列已满，停止信号入队失败")
+        for worker in self._workers:
+            worker.join(timeout=5)
+        self._workers.clear()
         if self.ai_service:
             self.ai_service.close()
         if self.command_service:
@@ -88,8 +112,29 @@ class CortexRuntime(MessageListener):
 
         self._trigger_times.setdefault(msg.group_name, deque()).append(time.time())
 
-        # 阻塞操作（AI/命令）丢到线程池，不阻塞 GatewayClient 消息接收
-        self._executor.submit(self._process_and_reply, trigger_type, content, msg.group_name)
+        try:
+            self._task_queue.put_nowait((trigger_type, content, msg.group_name))
+        except queue.Full:
+            logger.warning(f"[{msg.group_name}] Cortex 处理队列已满，丢弃触发任务")
+
+    def _worker_loop(self):
+        while True:
+            try:
+                task = self._task_queue.get(timeout=1)
+            except queue.Empty:
+                if self._running:
+                    continue
+                break
+
+            if task is _STOP_CORTEX_TASK:
+                self._task_queue.task_done()
+                break
+
+            try:
+                trigger_type, content, group_name = task
+                self._process_and_reply(trigger_type, content, group_name)
+            finally:
+                self._task_queue.task_done()
 
     def _process_and_reply(self, trigger_type: TriggerType, content, group_name: str):
         reply_content, is_image = self._handle_trigger(trigger_type, content, group_name)

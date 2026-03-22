@@ -27,7 +27,8 @@ def create_routes(gateway: Gateway):
         content = request.image_base64 if is_image else request.message
         message_type = "图片" if is_image else "文本消息"
 
-        gateway.send_message(request.group_name, content, is_image=is_image)
+        if not gateway.send_message(request.group_name, content, is_image=is_image):
+            raise HTTPException(status_code=503, detail="发送队列已满，请稍后重试")
 
         return SendMessageResponse(success=True, message=f"{message_type}已加入发送队列")
 

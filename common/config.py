@@ -74,6 +74,8 @@ class Config(BaseSettings):
     # Handler HTTP API 服务配置
     CORTEX_HTTP_HOST: str = "0.0.0.0"
     CORTEX_HTTP_PORT: int = 7999
+    CORTEX_POOL_SIZE: int = 4
+    CORTEX_QUEUE_SIZE: int = 100
 
     # 机器人名称列表（@名称 触发，替换为 "a " + 文本，支持多个名称，逗号分隔）
     BOT_NAMES: list[str] = []
@@ -92,6 +94,17 @@ class Config(BaseSettings):
     WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
     WECHAT_DB_OUTPUT_PATH: str = ""  # 解密后输出目录
     WECHAT_DB_KEY: str = ""          # 数据库解密密钥
+
+    # Webhook 配置
+    WEBHOOK_POOL_SIZE: int = 5            # Webhook worker 数量
+    WEBHOOK_QUEUE_SIZE: int = 100         # Webhook 待处理队列容量
+    WEBHOOK_TIMEOUT: int = 10             # 普通 webhook HTTP 超时（秒）
+    WEBHOOK_REPLY_TIMEOUT: int = 180      # 回复型 webhook HTTP 超时（秒）
+    WEBHOOK_MAX_REPLY_TEXT: int = 1200    # 回复文本最大长度
+    WEBHOOK_CACHE_TTL: float = 5.0        # 缓存 TTL（秒）
+
+    # 发送配置
+    SEND_QUEUE_SIZE: int = 100            # 微信发送队列容量
 
     def has_wechat_db_config(self) -> bool:
         """检查微信数据库配置是否完整"""

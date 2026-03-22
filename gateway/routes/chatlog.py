@@ -158,9 +158,11 @@ def create_routes(gateway: Gateway):
             if not output.success:
                 return
             if output.image_base64:
-                gateway.send_message(output.group_name, output.image_base64, is_image=True)
+                if not gateway.send_message(output.group_name, output.image_base64, is_image=True):
+                    logger.warning(f"[HTTP API] 总结图片入队失败，发送队列已满: {output.group_name}")
             if output.text_message:
-                gateway.send_message(output.group_name, output.text_message, is_image=False)
+                if not gateway.send_message(output.group_name, output.text_message, is_image=False):
+                    logger.warning(f"[HTTP API] 总结文本入队失败，发送队列已满: {output.group_name}")
 
         # 构建配置（使用全局 config 中的路径）
         summary_config = SummaryConfig(

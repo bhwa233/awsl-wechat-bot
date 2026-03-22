@@ -18,14 +18,14 @@ def create_routes(webhook_service):
         return webhook_service.get_all()
 
     @router.post("/api/webhooks", response_model=WebhookResponse, dependencies=[Depends(verify_token)])
-    def create_webhook(request: WebhookCreate):
-        wh = webhook_service.create(request)
+    def create_webhook(payload: WebhookCreate):
+        wh = webhook_service.create(payload)
         logger.info(f"[HTTP API] 创建 webhook: {wh.name}")
         return wh
 
     @router.put("/api/webhooks/{webhook_id}", response_model=WebhookResponse, dependencies=[Depends(verify_token)])
-    def update_webhook(webhook_id: int, request: WebhookUpdate):
-        wh = webhook_service.update(webhook_id, request)
+    def update_webhook(webhook_id: int, payload: WebhookUpdate):
+        wh = webhook_service.update(webhook_id, payload)
         if not wh:
             raise HTTPException(status_code=404, detail=f"未找到 webhook: {webhook_id}")
         logger.info(f"[HTTP API] 更新 webhook: {webhook_id}")
@@ -43,7 +43,8 @@ def create_routes(webhook_service):
         wh = webhook_service.get(webhook_id)
         if not wh:
             raise HTTPException(status_code=404, detail=f"未找到 webhook: {webhook_id}")
-        webhook_service.test(wh)
+        if not webhook_service.test(wh):
+            raise HTTPException(status_code=503, detail="Webhook 队列已满，请稍后重试")
         return {"success": True, "message": "测试请求已发送"}
 
     return router

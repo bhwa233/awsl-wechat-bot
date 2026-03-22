@@ -85,9 +85,9 @@ class Gateway:
             if ws in self._ws_clients:
                 self._ws_clients[ws] = WSSubscription()
 
-    def send_message(self, group_name: str, content: str, *, is_image: bool = False):
+    def send_message(self, group_name: str, content: str, *, is_image: bool = False) -> bool:
         """发送消息到微信（所有调用者统一入口）"""
-        self.sender.enqueue(SendTask(group_name, content, is_image=is_image))
+        return self.sender.enqueue(SendTask(group_name, content, is_image=is_image))
 
     def _consume_loop(self):
         """消费 gateway_queue，广播到匹配的 WS 客户端"""

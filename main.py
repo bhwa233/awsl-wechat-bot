@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 async def main():
     from gateway.runtime import GatewayRuntime
     from gateway.asgi import create_app as create_gateway_app
-    from cortex.runtime import CortexRuntime
     from cortex.asgi import create_app as create_cortex_app
+    from cortex.runtime import CortexRuntime
 
     setup_uvicorn_logging()
 

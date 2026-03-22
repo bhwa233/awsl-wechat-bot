@@ -10,6 +10,7 @@ from gateway.adapters.base import BaseWeChatAdapter
 from gateway.core.models import SendTask, SentMessageStore
 
 logger = logging.getLogger(__name__)
+_STOP_SENDER = object()
 
 
 class MessageSender:
@@ -20,7 +21,7 @@ class MessageSender:
         self.adapter = adapter
         self.group_windows = group_windows
         self.sent_store = sent_store or SentMessageStore()
-        self.send_queue: queue.Queue[SendTask] = queue.Queue()
+        self.send_queue: queue.Queue[SendTask | object] = queue.Queue(maxsize=config.SEND_QUEUE_SIZE)
         self._last_send_time = 0.0
         self._running = False
         self._thread = None
@@ -33,18 +34,33 @@ class MessageSender:
 
     def stop(self):
         self._running = False
+        try:
+            self.send_queue.put_nowait(_STOP_SENDER)
+        except queue.Full:
+            logger.warning("发送队列已满，停止信号入队失败，将等待线程按空队列超时退出")
         if self._thread:
             self._thread.join(timeout=2)
 
     def enqueue(self, task: SendTask):
-        self.send_queue.put(task)
+        try:
+            self.send_queue.put_nowait(task)
+            return True
+        except queue.Full:
+            logger.warning(f"[{task.group_name}] 发送队列已满，丢弃消息")
+            return False
 
     def _loop(self):
-        while self._running:
+        while True:
             try:
                 task = self.send_queue.get(timeout=1)
             except queue.Empty:
-                continue
+                if self._running:
+                    continue
+                break
+
+            if task is _STOP_SENDER:
+                self.send_queue.task_done()
+                break
 
             try:
                 window = self.group_windows.get(task.group_name)

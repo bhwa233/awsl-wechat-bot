@@ -311,6 +311,20 @@
                         </select>
                     </div>
 
+                    <div class="form-group">
+                        <label for="webhookReplyMode">回复模式</label>
+                        <select id="webhookReplyMode" onchange="toggleReplyJsonPath()">
+                            <option value="none">不回复</option>
+                            <option value="text">纯文本</option>
+                            <option value="jsonpath">JSONPath 提取</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="replyJsonPathGroup" style="display: none;">
+                        <label for="webhookReplyJsonPath">JSONPath 表达式</label>
+                        <input type="text" id="webhookReplyJsonPath" placeholder="例如：$.message 或 $.data.reply">
+                    </div>
+
                     <div style="display: flex; gap: 10px;">
                         <button type="submit" class="btn" id="webhookFormBtn">
                             <span id="webhookFormBtnText">创建 Webhook</span>
@@ -829,7 +843,9 @@
                 name: $('webhookName').value, url: $('webhookUrl').value,
                 headers: $('webhookHeaders').value, body_template: $('webhookBodyTemplate').value,
                 group_filter: $('webhookGroupFilter').value, message_filter: $('webhookMessageFilter').value,
-                enabled: $('webhookEnabled').value === 'true'
+                enabled: $('webhookEnabled').value === 'true',
+                reply_mode: $('webhookReplyMode').value,
+                reply_jsonpath: $('webhookReplyJsonPath').value
             }),
 
             populateForm: (wh) => {
@@ -837,13 +853,24 @@
                 $('webhookHeaders').value = wh.headers; $('webhookBodyTemplate').value = wh.body_template;
                 $('webhookGroupFilter').value = wh.group_filter || ''; $('webhookMessageFilter').value = wh.message_filter || '';
                 $('webhookEnabled').value = wh.enabled.toString();
+                $('webhookReplyMode').value = wh.reply_mode || 'none';
+                $('webhookReplyJsonPath').value = wh.reply_jsonpath || '';
+                toggleReplyJsonPath();
             },
 
             resetForm: () => {
                 $('webhookHeaders').value = '{}'; $('webhookBodyTemplate').value = '{}';
                 $('webhookGroupFilter').value = ''; $('webhookMessageFilter').value = '';
+                $('webhookReplyMode').value = 'none';
+                $('webhookReplyJsonPath').value = '';
+                toggleReplyJsonPath();
             }
         });
+
+        function toggleReplyJsonPath() {
+            const mode = $('webhookReplyMode').value;
+            $('replyJsonPathGroup').style.display = mode === 'jsonpath' ? 'block' : 'none';
+        }
 
         async function testWebhook(webhookId) {
             const result = await apiRequest(`/api/webhooks/${webhookId}/test`, { method: 'POST', errorMsg: '测试失败' });

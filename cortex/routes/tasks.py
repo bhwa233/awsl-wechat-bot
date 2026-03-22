@@ -44,14 +44,14 @@ def create_routes(task_service):
         return [_task_to_response(t) for t in task_service.get_all_tasks()]
 
     @router.post("/api/tasks", response_model=ScheduledTaskResponse, dependencies=[Depends(verify_token)])
-    def create_scheduled_task(request: ScheduledTaskApiCreate):
+    def create_scheduled_task(payload: ScheduledTaskApiCreate):
         data = ScheduledTaskCreate(
-            name=request.name,
-            cron_expression=request.cron_expression,
-            message=request.message or "",
-            message_type=request.message_type,
-            image_base64=request.image_base64 or "",
-            target_groups=json.dumps(request.target_groups, ensure_ascii=False),
+            name=payload.name,
+            cron_expression=payload.cron_expression,
+            message=payload.message or "",
+            message_type=payload.message_type,
+            image_base64=payload.image_base64 or "",
+            target_groups=json.dumps(payload.target_groups, ensure_ascii=False),
         )
         task = task_service.create_task(data)
         if not task:
@@ -67,8 +67,8 @@ def create_routes(task_service):
         return _task_to_response(task)
 
     @router.put("/api/tasks/{task_id}", response_model=ScheduledTaskResponse, dependencies=[Depends(verify_token)])
-    def update_scheduled_task(task_id: int, request: ScheduledTaskApiUpdate):
-        raw = request.model_dump(exclude_unset=True)
+    def update_scheduled_task(task_id: int, payload: ScheduledTaskApiUpdate):
+        raw = payload.model_dump(exclude_unset=True)
         if "target_groups" in raw:
             raw["target_groups"] = json.dumps(raw["target_groups"], ensure_ascii=False)
         data = ScheduledTaskUpdate(**raw)

@@ -11,9 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter, httpx.AsyncClient]:
-    """创建代理路由，返回 (router, client)，调用方负责在 shutdown 时关闭 client"""
+    """创建代理路由，返回 (router, client)，调用方负责关闭 client"""
     router = APIRouter()
-
     client = httpx.AsyncClient(
         base_url=gateway_base_url.rstrip("/"),
         headers={"Authorization": f"Bearer {gateway_token}"} if gateway_token else {},

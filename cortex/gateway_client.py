@@ -61,6 +61,12 @@ class GatewayClient:
     def add_listener(self, listener: MessageListener):
         self._listeners.append(listener)
 
+    def remove_listener(self, listener: MessageListener):
+        try:
+            self._listeners.remove(listener)
+        except ValueError:
+            pass
+
     def send_message(self, group_name: str, content: str, *, is_image: bool = False):
         """通过 WS 发送消息到 Gateway（线程安全）"""
         ws, loop = self._ws, self._loop
