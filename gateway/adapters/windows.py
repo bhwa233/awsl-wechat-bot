@@ -388,18 +388,15 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
         self._ensure_uia()
         with self._send_lock:
-            logger.info(f"[send_image_to_window] 开始向窗口 {window.Name} 发送图片")
+            logger.debug(f"[send_image_to_window] 向窗口 {window.Name} 发送图片...")
 
             # 激活窗口
             self.activate_specific_window(window)
 
             temp_path = None
             try:
-                # 解码 base64 数据并保存为临时文件
                 image_data = base64.b64decode(image_base64)
-                logger.info(f"[send_image_to_window] 图片解码完成: size={len(image_data)} bytes")
 
-                # 根据 magic bytes 检测图片格式
                 suffix = '.png'
                 if image_data[:2] == b'\xff\xd8':
                     suffix = '.jpg'
@@ -407,47 +404,35 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     suffix = '.gif'
                 elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
                     suffix = '.webp'
-                logger.info(f"[send_image_to_window] 检测图片后缀: {suffix}")
 
                 fd, temp_path = tempfile.mkstemp(suffix=suffix)
                 with os.fdopen(fd, 'wb') as f:
                     f.write(image_data)
-                logger.info(f"[send_image_to_window] 临时图片已写入: {temp_path}")
 
                 temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
                 dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
                 self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
-                logger.info("[send_image_to_window] 已写入剪贴板 CF_HDROP")
 
                 time.sleep(0.3)
 
-                # 粘贴图片
-                logger.info("[send_image_to_window] 开始发送 Ctrl+V")
                 window.SendKeys('{CTRL}v', waitTime=0.5)
-
-                # 发送
-                logger.info("[send_image_to_window] 开始发送 Enter")
                 window.SendKeys('{ENTER}', waitTime=0.2)
 
-                logger.info(f"[send_image_to_window] 图片发送流程完成: {window.Name}")
+                logger.debug(f"✓ 图片发送成功到 [{window.Name}]")
                 return True
             except Exception as e:
                 logger.error(f"发送图片失败: {e}")
                 return False
             finally:
                 if temp_path:
-                    logger.info(f"[send_image_to_window] 准备清理临时图片: {temp_path}")
                     time.sleep(1)
                     for _ in range(3):
                         try:
                             os.unlink(temp_path)
-                            logger.info(f"[send_image_to_window] 已清理临时图片: {temp_path}")
                             break
                         except PermissionError:
-                            logger.info(f"[send_image_to_window] 临时图片被占用，稍后重试: {temp_path}")
                             time.sleep(1)
                         except Exception:
-                            logger.info(f"[send_image_to_window] 临时图片清理跳过: {temp_path}")
                             break
 
     def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
@@ -460,53 +445,42 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
         self._ensure_uia()
         with self._send_lock:
-            logger.info(f"[send_file_to_window] 开始向窗口 {window.Name} 发送文件: {filename}")
+            logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
 
             self.activate_specific_window(window)
 
             temp_path = None
             try:
-                # 解码 base64 数据并保存为临时文件
                 file_data = base64.b64decode(file_base64)
-                logger.info(f"[send_file_to_window] 文件解码完成: size={len(file_data)} bytes")
 
                 suffix = os.path.splitext(filename or "")[1] or ".bin"
-                logger.info(f"[send_file_to_window] 检测文件后缀: {suffix}")
 
                 fd, temp_path = tempfile.mkstemp(suffix=suffix)
                 with os.fdopen(fd, 'wb') as f:
                     f.write(file_data)
-                logger.info(f"[send_file_to_window] 临时文件已写入: {temp_path}")
 
                 temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
                 dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
                 self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
-                logger.info("[send_file_to_window] 已写入剪贴板 CF_HDROP")
 
                 time.sleep(0.3)
 
-                logger.info("[send_file_to_window] 开始发送 Ctrl+V")
                 window.SendKeys('{CTRL}v', waitTime=0.5)
-                logger.info("[send_file_to_window] 开始发送 Enter")
                 window.SendKeys('{ENTER}', waitTime=0.2)
 
-                logger.info(f"[send_file_to_window] 文件发送流程完成: {window.Name} -> {filename}")
+                logger.debug(f"✓ 文件发送成功到 [{window.Name}]: {filename}")
                 return True
             except Exception as e:
                 logger.error(f"发送文件失败: {e}")
                 return False
             finally:
                 if temp_path:
-                    logger.info(f"[send_file_to_window] 准备清理临时文件: {temp_path}")
                     time.sleep(1)
                     for _ in range(3):
                         try:
                             os.unlink(temp_path)
-                            logger.info(f"[send_file_to_window] 已清理临时文件: {temp_path}")
                             break
                         except PermissionError:
-                            logger.info(f"[send_file_to_window] 临时文件被占用，稍后重试: {temp_path}")
                             time.sleep(1)
                         except Exception:
-                            logger.info(f"[send_file_to_window] 临时文件清理跳过: {temp_path}")
                             break
