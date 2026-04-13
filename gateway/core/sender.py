@@ -6,6 +6,7 @@ import threading
 from typing import Any
 
 from common.config import config
+from common.models import MessageType
 from gateway.adapters.base import BaseWeChatAdapter
 from gateway.core.models import SendTask, SentMessageStore
 
@@ -74,16 +75,25 @@ class MessageSender:
 
                 self._wait_for_rate_limit()
 
-                if task.is_image:
-                    send_ok = self.adapter.send_image_to_window(window, task.content)
+                if task.message_type == MessageType.IMAGE:
+                    send_ok = self.adapter.send_image_to_window(window, task.message)
+                    preview = "[图片]"
+                elif task.message_type == MessageType.FILE:
+                    if not task.filename:
+                        logger.warning(f"[{task.group_name}] 文件消息缺少文件名，跳过发送")
+                        continue
+                    send_ok = self.adapter.send_file_to_window(window, task.message, task.filename)
+                    preview = f"[文件] {task.filename}"
                 else:
-                    send_ok = self.adapter.send_text_to_window(window, task.content)
+                    send_ok = self.adapter.send_text_to_window(window, task.message)
+                    preview = f"{task.message[:50]}..."
 
-                preview = "[图片]" if task.is_image else f"{task.content[:50]}..."
                 if send_ok:
                     self._last_send_time = time.time()
-                    if not task.is_image:
-                        self.sent_store.record(task.group_name, task.content)
+                    if task.message_type == MessageType.TEXT:
+                        self.sent_store.record(task.group_name, task.message)
+                    elif task.message_type == MessageType.FILE:
+                        self.sent_store.record(task.group_name, task.filename)
                     logger.info(f"[{task.group_name}] 已发送: {preview}")
                 else:
                     logger.warning(f"[{task.group_name}] 发送失败: {preview}")

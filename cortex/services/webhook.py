@@ -20,11 +20,11 @@ import httpx
 from jsonpath_ng.exceptions import JsonPathParserError
 from jsonpath_ng.ext import parse as parse_jsonpath
 from pydantic import BaseModel, field_validator, model_validator
-from sqlalchemy import text
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
 from common.config import config
-from common.models import WSMessageBroadcast, MAX_REGEX_LEN
+from common.models import OutgoingMessage, WSMessageBroadcast, MAX_REGEX_LEN
+from common.sqlite_migrator import SQLiteMigrator
 from cortex.models import MessageListener
 
 logger = logging.getLogger(__name__)
@@ -188,7 +188,7 @@ class WebhookService(MessageListener):
             echo=False,
         )
         Webhook.__table__.create(self.engine, checkfirst=True)
-        self._ensure_schema()
+        self._run_migrations(db_path)
         self._task_queue: queue.Queue[WebhookTask | object] = queue.Queue(
             maxsize=config.WEBHOOK_QUEUE_SIZE
         )
@@ -217,20 +217,29 @@ class WebhookService(MessageListener):
         self._running = True
         logger.info("Webhook 数据库初始化完成")
 
-    def _ensure_schema(self):
-        with self.engine.begin() as conn:
-            cols = conn.exec_driver_sql("PRAGMA table_info(webhook)").fetchall()
-            column_names = {row[1] for row in cols}
-            if "reply_mode" not in column_names:
-                logger.warning("webhooks 表缺少 reply_mode 字段，正在补齐")
-                conn.execute(
-                    text(f"ALTER TABLE webhook ADD COLUMN reply_mode TEXT NOT NULL DEFAULT '{ReplyMode.NONE.value}'")
-                )
-            if "reply_jsonpath" not in column_names:
-                logger.warning("webhooks 表缺少 reply_jsonpath 字段，正在补齐")
-                conn.execute(
-                    text("ALTER TABLE webhook ADD COLUMN reply_jsonpath TEXT NOT NULL DEFAULT ''")
-                )
+    def _run_migrations(self, db_path: str):
+        migrator = SQLiteMigrator(db_path)
+
+        def add_reply_mode(conn):
+            SQLiteMigrator.add_column_if_missing(
+                conn,
+                "webhook",
+                f"reply_mode TEXT NOT NULL DEFAULT '{ReplyMode.NONE.value}'",
+                "reply_mode",
+            )
+
+        def add_reply_jsonpath(conn):
+            SQLiteMigrator.add_column_if_missing(
+                conn,
+                "webhook",
+                "reply_jsonpath TEXT NOT NULL DEFAULT ''",
+                "reply_jsonpath",
+            )
+
+        migrator.migrate([
+            ("20260331_001_webhook_add_reply_mode", add_reply_mode),
+            ("20260331_002_webhook_add_reply_jsonpath", add_reply_jsonpath),
+        ])
 
     # ==================== CRUD ====================
 
@@ -533,7 +542,10 @@ class WebhookService(MessageListener):
                     reply_text = reply_text[:config.WEBHOOK_MAX_REPLY_TEXT]
 
                 try:
-                    self._gateway_client.send_message(group_name, reply_text)
+                    self._gateway_client.send_message(OutgoingMessage(
+                        group_name=group_name,
+                        message=reply_text,
+                    ))
                     logger.info(f"Webhook [{wh.name}] 回复到群聊: {group_name} => {_preview_text(reply_text, 80)}")
                 except Exception as send_err:
                     logger.error(f"Webhook [{wh.name}] 回复发送失败: {send_err}")

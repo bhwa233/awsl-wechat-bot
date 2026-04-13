@@ -13,6 +13,9 @@ from croniter import croniter
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Session, create_engine, select
 
+from common.models import MessageType, TaskType
+from common.sqlite_migrator import SQLiteMigrator
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,9 +32,10 @@ def _now_utc() -> str:
 class ScheduledTaskBase(SQLModel):
     name: str
     cron_expression: str
+    task_type: TaskType = TaskType.SEND
     message: str = ""
-    message_type: str = "text"
-    image_base64: str = ""
+    message_type: MessageType = MessageType.TEXT
+    filename: str = ""
     target_groups: str = ""
     enabled: bool = True
 
@@ -53,9 +57,10 @@ class ScheduledTaskUpdate(SQLModel):
     """service 层更新模型，target_groups 为 JSON 字符串"""
     name: Optional[str] = None
     cron_expression: Optional[str] = None
+    task_type: Optional[TaskType] = None
     message: Optional[str] = None
-    message_type: Optional[str] = None
-    image_base64: Optional[str] = None
+    message_type: Optional[MessageType] = None
+    filename: Optional[str] = None
     target_groups: Optional[str] = None
     enabled: Optional[bool] = None
 
@@ -66,18 +71,20 @@ class ScheduledTaskUpdate(SQLModel):
 class ScheduledTaskApiCreate(BaseModel):
     name: str
     cron_expression: str
+    task_type: TaskType = TaskType.SEND
     message: Optional[str] = ""
-    message_type: str = "text"
-    image_base64: Optional[str] = ""
+    message_type: MessageType = MessageType.TEXT
+    filename: Optional[str] = ""
     target_groups: List[str] = []
 
 
 class ScheduledTaskApiUpdate(BaseModel):
     name: Optional[str] = None
     cron_expression: Optional[str] = None
+    task_type: Optional[TaskType] = None
     message: Optional[str] = None
-    message_type: Optional[str] = None
-    image_base64: Optional[str] = None
+    message_type: Optional[MessageType] = None
+    filename: Optional[str] = None
     target_groups: Optional[List[str]] = None
     enabled: Optional[bool] = None
 
@@ -86,9 +93,10 @@ class ScheduledTaskResponse(BaseModel):
     id: int
     name: str
     cron_expression: str
+    task_type: TaskType
     message: str
-    message_type: str
-    image_base64: str
+    message_type: MessageType
+    filename: str
     target_groups: List[str] = []
     enabled: bool
     created_at: Optional[str] = None
@@ -105,12 +113,14 @@ class ScheduledTaskService:
     _EXECUTION_WINDOW_SECONDS = 30
 
     def __init__(self, db_path: str):
+        self.db_path = db_path
         self.engine = create_engine(
             f"sqlite:///{db_path}",
             connect_args={"check_same_thread": False},
             echo=False,
         )
         ScheduledTask.__table__.create(self.engine, checkfirst=True)
+        self._run_migrations()
         self._run_cache_lock = threading.Lock()
         self._last_scheduled_run: Dict[int, tuple[datetime, float]] = {}
         logger.info("定时任务数据库初始化完成")
@@ -129,9 +139,168 @@ class ScheduledTaskService:
             logger.debug(f"无效的 cron 表达式 '{cron_expr}': {e}")
             return False
 
+    def _run_migrations(self):
+        migrator = SQLiteMigrator(self.db_path)
+
+        def add_task_type(conn):
+            SQLiteMigrator.add_column_if_missing(
+                conn,
+                "scheduled_tasks",
+                f"task_type TEXT NOT NULL DEFAULT '{TaskType.SEND.name}'",
+                "task_type",
+            )
+
+        def add_message_type(conn):
+            SQLiteMigrator.add_column_if_missing(
+                conn,
+                "scheduled_tasks",
+                f"message_type TEXT NOT NULL DEFAULT '{MessageType.TEXT.name}'",
+                "message_type",
+            )
+
+        def add_filename(conn):
+            SQLiteMigrator.add_column_if_missing(
+                conn,
+                "scheduled_tasks",
+                "filename TEXT NOT NULL DEFAULT ''",
+                "filename",
+            )
+
+        def migrate_summary_task_type(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "message_type" not in columns or "task_type" not in columns:
+                return
+            conn.execute(
+                """
+                UPDATE scheduled_tasks
+                SET task_type = 'SUMMARY', message_type = 'TEXT'
+                WHERE message_type IN ('summary', 'SUMMARY')
+                """
+            )
+
+        def migrate_image_payload(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "image_base64" not in columns or "message_type" not in columns:
+                return
+            conn.execute(
+                """
+                UPDATE scheduled_tasks
+                SET message = image_base64, message_type = 'IMAGE'
+                WHERE message_type IN ('image', 'IMAGE')
+                  AND COALESCE(image_base64, '') != ''
+                """
+            )
+
+        def migrate_file_payload(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "is_file" not in columns or "message_type" not in columns:
+                return
+            conn.execute(
+                """
+                UPDATE scheduled_tasks
+                SET message_type = 'FILE'
+                WHERE is_file = 1
+                """
+            )
+
+        def backfill_defaults(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "task_type" in columns:
+                conn.execute(
+                    """
+                    UPDATE scheduled_tasks
+                    SET task_type = 'SEND'
+                    WHERE COALESCE(task_type, '') = ''
+                    """
+                )
+            if "message_type" in columns:
+                conn.execute(
+                    """
+                    UPDATE scheduled_tasks
+                    SET message_type = 'TEXT'
+                    WHERE COALESCE(message_type, '') = ''
+                    """
+                )
+
+        def normalize_enum_storage(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "task_type" in columns:
+                conn.execute(
+                    """
+                    UPDATE scheduled_tasks
+                    SET task_type = CASE task_type
+                        WHEN 'send' THEN 'SEND'
+                        WHEN 'summary' THEN 'SUMMARY'
+                        ELSE task_type
+                    END
+                    """
+                )
+            if "message_type" in columns:
+                conn.execute(
+                    """
+                    UPDATE scheduled_tasks
+                    SET message_type = CASE message_type
+                        WHEN 'text' THEN 'TEXT'
+                        WHEN 'image' THEN 'IMAGE'
+                        WHEN 'file' THEN 'FILE'
+                        WHEN 'summary' THEN 'TEXT'
+                        ELSE message_type
+                    END
+                    """
+                )
+
+        def repair_legacy_image_payload(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "image_base64" not in columns or "message_type" not in columns:
+                return
+            conn.execute(
+                """
+                UPDATE scheduled_tasks
+                SET message = image_base64, message_type = 'IMAGE'
+                WHERE message_type IN ('image', 'IMAGE')
+                  AND COALESCE(image_base64, '') != ''
+                """
+            )
+
+        migrator.migrate([
+            ("20260331_001_scheduled_tasks_add_task_type", add_task_type),
+            ("20260331_002_scheduled_tasks_add_message_type", add_message_type),
+            ("20260331_003_scheduled_tasks_add_filename", add_filename),
+            ("20260331_004_scheduled_tasks_migrate_summary_task_type", migrate_summary_task_type),
+            ("20260331_005_scheduled_tasks_migrate_image_payload", migrate_image_payload),
+            ("20260331_006_scheduled_tasks_migrate_file_payload", migrate_file_payload),
+            ("20260331_007_scheduled_tasks_backfill_defaults", backfill_defaults),
+            ("20260331_008_scheduled_tasks_normalize_enum_storage", normalize_enum_storage),
+            ("20260331_009_scheduled_tasks_repair_legacy_image_payload", repair_legacy_image_payload),
+        ])
+
+    @staticmethod
+    def _validate_task_payload(
+        *,
+        task_type: TaskType,
+        message_type: MessageType,
+        message: str,
+        filename: str,
+    ) -> bool:
+        if task_type == TaskType.SUMMARY:
+            return bool(message.strip())
+        if not message.strip():
+            return False
+        if message_type == MessageType.FILE and not filename.strip():
+            return False
+        return True
+
     def create_task(self, data: ScheduledTaskCreate) -> Optional[ScheduledTask]:
         if not self.validate_cron_expression(data.cron_expression):
             logger.error(f"创建任务失败：无效的 cron 表达式 '{data.cron_expression}'")
+            return None
+        if not self._validate_task_payload(
+            task_type=data.task_type,
+            message_type=data.message_type,
+            message=data.message,
+            filename=data.filename,
+        ):
+            logger.error("创建任务失败：任务内容不合法")
             return None
         with Session(self.engine) as session:
             task = ScheduledTask.model_validate(data)
@@ -163,6 +332,18 @@ class ScheduledTaskService:
             if not task:
                 return None
             update_data = data.model_dump(exclude_unset=True)
+            next_task_type = update_data.get("task_type", task.task_type)
+            next_message_type = update_data.get("message_type", task.message_type)
+            next_message = update_data.get("message", task.message)
+            next_filename = update_data.get("filename", task.filename)
+            if not self._validate_task_payload(
+                task_type=next_task_type,
+                message_type=next_message_type,
+                message=next_message,
+                filename=next_filename,
+            ):
+                logger.error("更新任务失败：任务内容不合法")
+                return None
             task.sqlmodel_update(update_data)
             task.updated_at = _now_local()
             session.add(task)

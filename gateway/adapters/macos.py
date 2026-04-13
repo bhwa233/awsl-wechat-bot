@@ -3,6 +3,7 @@ import subprocess
 import os
 import logging
 import threading
+import tempfile
 import Quartz
 from gateway.adapters.base import BaseWeChatAdapter
 from common.config import config
@@ -54,7 +55,35 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             return None
         return result.stdout.strip()
 
-    def _activate_window_by_index(self, index: int):
+    @staticmethod
+    def _safe_filename(filename: str | None, default_name: str) -> str:
+        safe_name = os.path.basename(filename or "").strip()
+        if not safe_name:
+            return default_name
+        return safe_name.replace('"', "_")
+
+    def _write_temp_file(self, data: bytes, *, filename: str | None, default_name: str) -> str:
+        temp_dir = tempfile.mkdtemp(prefix="awsl-wechat-")
+        temp_path = os.path.join(temp_dir, self._safe_filename(filename, default_name))
+        with open(temp_path, "wb") as f:
+            f.write(data)
+        return temp_path
+
+    @staticmethod
+    def _cleanup_temp_file(temp_path: str | None):
+        if not temp_path:
+            return
+        temp_dir = os.path.dirname(temp_path)
+        try:
+            os.unlink(temp_path)
+        except Exception:
+            pass
+        try:
+            os.rmdir(temp_dir)
+        except Exception:
+            pass
+
+    def _activate_window_by_index(self, index: int) -> bool:
         """激活指定索引的微信窗口"""
         script = f'''
         tell application "System Events"
@@ -63,8 +92,27 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             end tell
         end tell
         '''
-        self._run_applescript(script)
+        if self._run_applescript(script) is None:
+            logger.error(f"激活微信窗口失败: index={index}")
+            return False
         time.sleep(0.3)
+        return True
+
+    def _paste_clipboard_and_send(self) -> bool:
+        script = f'''
+        tell application "System Events"
+            tell process "{self.process_name}"
+                keystroke "v" using command down
+                delay 0.5
+                key code 36
+            end tell
+        end tell
+        '''
+        if self._run_applescript(script) is None:
+            logger.error("粘贴剪贴板并发送失败")
+            return False
+        time.sleep(1.0)
+        return True
 
     def _get_quartz_windows(self) -> dict[str, int]:
         """通过 Quartz 获取微信窗口名称→窗口ID 映射"""
@@ -140,7 +188,8 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             return self._send_text(window, text)
 
     def _send_text(self, window: MacOSWindow, text: str) -> bool:
-        self._activate_window_by_index(window.index)
+        if not self._activate_window_by_index(window.index):
+            return False
         time.sleep(0.2)
         # 使用 osascript 参数传递文本，避免 AppleScript 字符串注入
         script = '''
@@ -162,22 +211,20 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             timeout=config.APPLESCRIPT_TIMEOUT_LONG
         )
         if result.returncode != 0:
-            logger.debug(f"AppleScript 发送错误: {result.stderr}")
+            logger.error(f"AppleScript 发送文本失败: {result.stderr}")
+            return False
         time.sleep(0.5)
         return True
 
     def send_image_to_window(self, window: MacOSWindow, image_base64: str) -> bool:
         """向指定窗口发送图片（base64 编码）"""
         import base64
-        import tempfile
 
         with self._send_lock:
             tmp_path = None
             try:
                 image_data = base64.b64decode(image_base64)
-                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
-                    tmp_file.write(image_data)
-                    tmp_path = tmp_file.name
+                tmp_path = self._write_temp_file(image_data, filename=None, default_name="image.png")
 
                 script = f'''
                 set theFile to POSIX file "{tmp_path}"
@@ -198,26 +245,46 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                     return False
 
                 time.sleep(0.3)
-                self._activate_window_by_index(window.index)
+                if not self._activate_window_by_index(window.index):
+                    return False
                 time.sleep(0.2)
-                script = f'''
-                tell application "System Events"
-                    tell process "{self.process_name}"
-                        keystroke "v" using command down
-                        delay 0.5
-                        key code 36
-                    end tell
-                end tell
-                '''
-                self._run_applescript(script)
-                time.sleep(1.0)
-                return True
+                return self._paste_clipboard_and_send()
             except Exception as e:
                 logger.error(f"发送图片失败: {e}")
                 return False
             finally:
-                if tmp_path:
-                    try:
-                        os.unlink(tmp_path)
-                    except Exception:
-                        pass
+                self._cleanup_temp_file(tmp_path)
+
+    def send_file_to_window(self, window: MacOSWindow, file_base64: str, filename: str) -> bool:
+        """向指定窗口发送文件（base64 编码）"""
+        import base64
+
+        with self._send_lock:
+            tmp_path = None
+            try:
+                file_data = base64.b64decode(file_base64)
+                tmp_path = self._write_temp_file(file_data, filename=filename, default_name="upload.bin")
+
+                script = f'''
+                set the clipboard to {{POSIX file "{tmp_path}"}}
+                '''
+                result = subprocess.run(
+                    ['osascript', '-e', script],
+                    capture_output=True,
+                    text=True,
+                    timeout=config.APPLESCRIPT_TIMEOUT_SHORT
+                )
+                if result.returncode != 0:
+                    logger.error(f"复制文件失败: {result.stderr}")
+                    return False
+
+                time.sleep(0.3)
+                if not self._activate_window_by_index(window.index):
+                    return False
+                time.sleep(0.2)
+                return self._paste_clipboard_and_send()
+            except Exception as e:
+                logger.error(f"发送文件失败: {e}")
+                return False
+            finally:
+                self._cleanup_temp_file(tmp_path)

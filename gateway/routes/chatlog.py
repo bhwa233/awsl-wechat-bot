@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Query
 
+from common.models import OutgoingMessage
 from common.config import config
 from common.auth import verify_token
 from chatlog import (
@@ -155,14 +156,13 @@ def create_routes(gateway: Gateway):
 
         def on_group_complete(output: GroupSummaryOutput):
             """每个群聊总结完成后，通过 Gateway 发送消息"""
-            if not output.success:
+            if not output.success or not output.messages:
                 return
-            if output.image_base64:
-                if not gateway.send_message(output.group_name, output.image_base64, is_image=True):
-                    logger.warning(f"[HTTP API] 总结图片入队失败，发送队列已满: {output.group_name}")
-            if output.text_message:
-                if not gateway.send_message(output.group_name, output.text_message, is_image=False):
-                    logger.warning(f"[HTTP API] 总结文本入队失败，发送队列已满: {output.group_name}")
+            for outgoing in output.messages:
+                if gateway.send_message(outgoing):
+                    continue
+                logger.warning(f"[HTTP API] 总结消息入队失败，发送队列已满: {output.group_name}")
+                break
 
         # 构建配置（使用全局 config 中的路径）
         summary_config = SummaryConfig(

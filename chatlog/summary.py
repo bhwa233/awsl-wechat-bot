@@ -653,7 +653,12 @@ def send_image_to_group(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    response = httpx.post(url, headers=headers, json={"group_name": group_name, "image_base64": image_base64}, timeout=30)
+    response = httpx.post(
+        url,
+        headers=headers,
+        json={"group_name": group_name, "message_type": "image", "message": image_base64},
+        timeout=30,
+    )
     response.raise_for_status()
     return True
 
@@ -670,7 +675,12 @@ def send_text_to_group(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    response = httpx.post(url, headers=headers, json={"group_name": group_name, "message": message}, timeout=30)
+    response = httpx.post(
+        url,
+        headers=headers,
+        json={"group_name": group_name, "message_type": "text", "message": message},
+        timeout=30,
+    )
     response.raise_for_status()
     return True
 

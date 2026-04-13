@@ -77,6 +77,7 @@
                         <select id="sendMessageType" onchange="toggleSendMessageType()">
                             <option value="text">文本消息</option>
                             <option value="image">图片消息</option>
+                            <option value="file">文件消息</option>
                             <option value="summary">群聊总结</option>
                         </select>
                     </div>
@@ -91,6 +92,15 @@
                         <input type="file" id="sendImageInput" accept="image/*" onchange="previewSendImage(event)">
                         <div id="sendImagePreview" class="img-preview">
                             <img id="sendImagePreviewImg">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="sendFileGroup" style="display: none;">
+                        <label for="sendFileInput">选择文件</label>
+                        <input type="file" id="sendFileInput" onchange="previewSendFile(event)">
+                        <div id="sendFilePreview" class="cron-help" style="display: none; margin-top: 10px;">
+                            <div class="cron-help-title">已选择文件</div>
+                            <p id="sendFileName" style="font-size: 12px; color: var(--yellow); margin: 8px 0 0;"></p>
                         </div>
                     </div>
 
@@ -182,11 +192,19 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="taskType">任务类型</label>
+                        <select id="taskType" onchange="toggleTaskFormMode()">
+                            <option value="send">发送消息</option>
+                            <option value="summary">群聊总结</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="taskMessageTypeGroup">
                         <label for="taskMessageType">消息类型</label>
                         <select id="taskMessageType" onchange="toggleTaskMessageType()">
                             <option value="text">文本消息</option>
                             <option value="image">图片消息</option>
-                            <option value="summary">群聊总结</option>
+                            <option value="file">文件消息</option>
                         </select>
                     </div>
 
@@ -200,6 +218,15 @@
                         <input type="file" id="taskImageInput" accept="image/*" onchange="previewTaskImage(event)">
                         <div id="taskImagePreview" class="img-preview">
                             <img id="taskImagePreviewImg">
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="taskFileGroup" style="display: none;">
+                        <label for="taskFileInput">选择文件</label>
+                        <input type="file" id="taskFileInput" onchange="previewTaskFile(event)">
+                        <div id="taskFilePreview" class="cron-help" style="display: none; margin-top: 10px;">
+                            <div class="cron-help-title">已选择文件</div>
+                            <p id="taskFileName" style="font-size: 12px; color: var(--yellow); margin: 8px 0 0;"></p>
                         </div>
                     </div>
 
@@ -436,32 +463,86 @@
             reader.readAsDataURL(file);
         }
 
-        let sendImageBase64 = '';
-        let taskImageBase64 = '';
+        function previewBinaryFile(event, state, nameElementId, previewContainerId) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                state.message = e.target.result.split(',')[1];
+                state.filename = file.name;
+                $(nameElementId).textContent = file.name;
+                $(previewContainerId).style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function resetUploadState(state, previewContainerId, extra = () => {}) {
+            state.message = '';
+            state.filename = '';
+            const previewEl = $(previewContainerId);
+            if (previewEl) previewEl.style.display = 'none';
+            extra();
+        }
+
+        const sendImageState = { message: '', filename: '' };
+        const sendFileState = { message: '', filename: '' };
+        const taskImageState = { message: '', filename: '' };
+        const taskFileState = { message: '', filename: '' };
 
         function toggleSendMessageType() {
             const messageType = $('sendMessageType').value;
             $('sendTextGroup').style.display = messageType === 'text' ? 'block' : 'none';
             $('sendImageGroup').style.display = messageType === 'image' ? 'block' : 'none';
+            $('sendFileGroup').style.display = messageType === 'file' ? 'block' : 'none';
             $('sendSummaryGroup').style.display = messageType === 'summary' ? 'block' : 'none';
             $('btnText').textContent = messageType === 'summary' ? '生成总结' : '发送消息';
             if (messageType === 'summary') loadChatlogGroups();
         }
 
+        function toggleTaskFormMode() {
+            const taskType = $('taskType').value;
+            $('taskMessageTypeGroup').style.display = taskType === 'send' ? 'block' : 'none';
+            $('taskSummaryGroup').style.display = taskType === 'summary' ? 'block' : 'none';
+            $('taskTargetGroupsGroup').style.display = taskType === 'send' ? 'block' : 'none';
+            if (taskType === 'send') {
+                toggleTaskMessageType();
+                return;
+            }
+            $('taskTextGroup').style.display = 'none';
+            $('taskImageGroup').style.display = 'none';
+            $('taskFileGroup').style.display = 'none';
+        }
+
         function toggleTaskMessageType() {
             const messageType = $('taskMessageType').value;
+            const taskType = $('taskType').value;
+            if (taskType !== 'send') {
+                $('taskTextGroup').style.display = 'none';
+                $('taskImageGroup').style.display = 'none';
+                $('taskFileGroup').style.display = 'none';
+                return;
+            }
             $('taskTextGroup').style.display = messageType === 'text' ? 'block' : 'none';
             $('taskImageGroup').style.display = messageType === 'image' ? 'block' : 'none';
-            $('taskSummaryGroup').style.display = messageType === 'summary' ? 'block' : 'none';
-            $('taskTargetGroupsGroup').style.display = messageType === 'summary' ? 'none' : 'block';
+            $('taskFileGroup').style.display = messageType === 'file' ? 'block' : 'none';
         }
 
         function previewSendImage(event) {
-            previewImage(event, v => sendImageBase64 = v, 'sendImagePreviewImg', 'sendImagePreview');
+            previewImage(event, v => sendImageState.message = v, 'sendImagePreviewImg', 'sendImagePreview');
+            sendImageState.filename = '';
         }
 
         function previewTaskImage(event) {
-            previewImage(event, v => taskImageBase64 = v, 'taskImagePreviewImg', 'taskImagePreview');
+            previewImage(event, v => taskImageState.message = v, 'taskImagePreviewImg', 'taskImagePreview');
+            taskImageState.filename = '';
+        }
+
+        function previewSendFile(event) {
+            previewBinaryFile(event, sendFileState, 'sendFileName', 'sendFilePreview');
+        }
+
+        function previewTaskFile(event) {
+            previewBinaryFile(event, taskFileState, 'taskFileName', 'taskFilePreview');
         }
 
         // ==================== Tab 切换 ====================
@@ -555,23 +636,16 @@
         }
 
         // ==================== 消息发送 ====================
-        async function sendMessage(groupName, message, imageBase64 = null) {
+        async function sendMessage(outgoing) {
             const btn = $('sendBtn');
             const btnText = $('btnText');
             btn.disabled = true;
             btnText.innerHTML = '<span class="loading"></span> 发送中...';
 
             try {
-                const payload = { group_name: groupName };
-                if (imageBase64) {
-                    payload.image_base64 = imageBase64;
-                } else {
-                    payload.message = message;
-                }
-
                 const result = await apiRequest('/api/send', {
                     method: 'POST',
-                    body: payload,
+                    body: outgoing,
                     errorMsg: '发送失败'
                 });
 
@@ -579,9 +653,12 @@
                     showMessage('sendResultMessage', '消息发送成功', 'success');
                     const messageTextEl = $('messageText');
                     if (messageTextEl) messageTextEl.value = '';
-                    const sendImagePreviewEl = $('sendImagePreview');
-                    if (sendImagePreviewEl) sendImagePreviewEl.style.display = 'none';
-                    sendImageBase64 = '';
+                    resetUploadState(sendImageState, 'sendImagePreview', () => {
+                        $('sendImagePreviewImg').src = '';
+                    });
+                    resetUploadState(sendFileState, 'sendFilePreview', () => {
+                        $('sendFileName').textContent = '';
+                    });
                 } else {
                     showMessage('sendResultMessage', result.data?.detail || result.error || '发送失败', 'error');
                 }
@@ -755,17 +832,31 @@
             createSuccessText: '任务已创建', updateSuccessText: '任务已更新', deleteSuccessText: '任务已删除',
 
             renderItem: (task) => {
-                let typeDisplay = '文本', content = task.message;
-                if (task.message_type === 'image') {
-                    typeDisplay = '图片';
-                    content = task.image_base64 ? '<img src="data:image/png;base64,' + task.image_base64 + '" style="max-width: 200px; max-height: 100px; border-radius: 4px;">' : '无图片';
-                } else if (task.message_type === 'summary') {
-                    typeDisplay = '群聊总结';
+                let taskTypeDisplay = task.task_type === 'summary' ? '群聊总结' : '发送消息';
+                let messageTypeDisplay = '文本';
+                let content = task.message;
+                let contentLabel = '消息内容';
+
+                if (task.task_type === 'summary') {
                     try { const c = JSON.parse(task.message); content = `<div style="font-size: 12px;"><strong>目标群聊:</strong> ${c.groups ? c.groups.map(g => g.group_name).join(', ') : '未配置'}</div>`; }
                     catch (e) { content = '<span style="color: var(--red);">配置解析失败</span>'; }
+                    contentLabel = '总结配置';
+                } else if (task.message_type === 'image') {
+                    messageTypeDisplay = '图片';
+                    content = task.message ? '<img src="data:image/png;base64,' + task.message + '" style="max-width: 200px; max-height: 100px; border-radius: 4px;">' : '无图片';
+                    contentLabel = '图片预览';
+                } else if (task.message_type === 'file') {
+                    messageTypeDisplay = '文件';
+                    content = task.filename || '未命名文件';
+                    contentLabel = '文件名';
                 }
-                const contentLabel = task.message_type === 'summary' ? '总结配置' : (task.message_type === 'image' ? '图片预览' : '消息内容');
-                return `<div class="task-item">${itemHeader(task.name, task.enabled)}<div class="task-info">${infoItem('Cron 表达式', task.cron_expression)}${infoItem('消息类型', typeDisplay)}${infoItem('最后运行', task.last_run || '从未运行')}${infoItem(contentLabel, content)}${task.message_type !== 'summary' ? infoItem('目标群组', task.target_groups.length > 0 ? task.target_groups.join(', ') : '所有群组') : ''}</div>${itemActions('taskCrud', task.id, task.enabled)}</div>`;
+
+                const taskTypeInfo = infoItem('任务类型', taskTypeDisplay);
+                const messageTypeInfo = task.task_type === 'send' ? infoItem('消息类型', messageTypeDisplay) : '';
+                const targetGroupsInfo = task.task_type === 'send'
+                    ? infoItem('目标群组', task.target_groups.length > 0 ? task.target_groups.join(', ') : '所有群组')
+                    : '';
+                return `<div class="task-item">${itemHeader(task.name, task.enabled)}<div class="task-info">${infoItem('Cron 表达式', task.cron_expression)}${taskTypeInfo}${messageTypeInfo}${infoItem('最后运行', task.last_run || '从未运行')}${infoItem(contentLabel, content)}${targetGroupsInfo}</div>${itemActions('taskCrud', task.id, task.enabled)}</div>`;
             },
 
             async fetchItem(id) {
@@ -775,15 +866,14 @@
             },
 
             getFormData: () => {
+                const taskType = $('taskType').value;
                 const messageType = $('taskMessageType').value;
                 const data = {
                     name: $('taskName').value, cron_expression: $('cronExpression').value,
-                    message_type: messageType, enabled: $('taskEnabled').value === 'true',
+                    task_type: taskType, enabled: $('taskEnabled').value === 'true',
                     target_groups: Array.from(document.querySelectorAll('input[name="targetGroups"]:checked')).map(cb => cb.value)
                 };
-                if (messageType === 'text') { data.message = $('taskMessage').value; data.image_base64 = ''; }
-                else if (messageType === 'image') { data.message = ''; data.image_base64 = taskImageBase64; }
-                else if (messageType === 'summary') {
+                if (taskType === 'summary') {
                     const configText = $('taskSummaryConfig').value.trim();
                     if (!configText) { showMessage('taskFormResultMessage', '请输入总结配置', 'error'); return null; }
                     try {
@@ -791,7 +881,29 @@
                         if (!config.groups || !Array.isArray(config.groups) || config.groups.length === 0) { showMessage('taskFormResultMessage', '配置缺少 groups 字段或 groups 为空', 'error'); return null; }
                         data.message = configText;
                     } catch (e) { showMessage('taskFormResultMessage', 'JSON 格式错误: ' + e.message, 'error'); return null; }
-                    data.image_base64 = ''; data.target_groups = [];
+                    data.message_type = 'text';
+                    data.filename = '';
+                    data.target_groups = [];
+                    return data;
+                }
+
+                data.message_type = messageType;
+                data.filename = '';
+                if (messageType === 'text') {
+                    data.message = $('taskMessage').value.trim();
+                } else if (messageType === 'image') {
+                    data.message = taskImageState.message;
+                } else if (messageType === 'file') {
+                    data.message = taskFileState.message;
+                    data.filename = taskFileState.filename;
+                }
+                if (!data.message) {
+                    showMessage('taskFormResultMessage', messageType === 'text' ? '请输入消息内容' : '请选择要发送的内容', 'error');
+                    return null;
+                }
+                if (messageType === 'file' && !data.filename) {
+                    showMessage('taskFormResultMessage', '请选择文件', 'error');
+                    return null;
                 }
                 return data;
             },
@@ -799,24 +911,42 @@
             populateForm: (task) => {
                 $('taskId').value = task.id; $('taskName').value = task.name;
                 $('cronExpression').value = task.cron_expression; $('taskEnabled').value = task.enabled.toString();
-                $('taskMessageType').value = task.message_type || 'text'; toggleTaskMessageType();
-                if (task.message_type === 'summary') { $('taskSummaryConfig').value = task.message; $('taskMessage').value = ''; }
-                else { $('taskMessage').value = task.message; $('taskSummaryConfig').value = ''; }
-                if (task.message_type === 'image' && task.image_base64) {
-                    taskImageBase64 = task.image_base64;
-                    $('taskImagePreviewImg').src = 'data:image/png;base64,' + task.image_base64;
+                resetUploadState(taskImageState, 'taskImagePreview', () => { $('taskImagePreviewImg').src = ''; });
+                resetUploadState(taskFileState, 'taskFilePreview', () => { $('taskFileName').textContent = ''; });
+                $('taskType').value = task.task_type || 'send';
+                $('taskMessageType').value = task.message_type || 'text';
+                toggleTaskFormMode();
+                if (task.task_type === 'summary') {
+                    $('taskSummaryConfig').value = task.message;
+                    $('taskMessage').value = '';
+                } else {
+                    $('taskSummaryConfig').value = '';
+                    $('taskMessage').value = task.message_type === 'text' ? task.message : '';
+                }
+                if (task.task_type === 'send' && task.message_type === 'image' && task.message) {
+                    taskImageState.message = task.message;
+                    $('taskImagePreviewImg').src = 'data:image/png;base64,' + task.message;
                     $('taskImagePreview').style.display = 'block';
+                }
+                if (task.task_type === 'send' && task.message_type === 'file' && task.message) {
+                    taskFileState.message = task.message;
+                    taskFileState.filename = task.filename || '';
+                    $('taskFileName').textContent = task.filename || '';
+                    $('taskFilePreview').style.display = 'block';
                 }
                 document.querySelectorAll('input[name="targetGroups"]').forEach(cb => { cb.checked = task.target_groups.includes(cb.value); });
             },
 
             resetForm: () => {
-                taskImageBase64 = ''; $('taskImagePreview').style.display = 'none';
-                $('taskMessageType').value = 'text'; $('taskSummaryConfig').value = ''; toggleTaskMessageType();
+                resetUploadState(taskImageState, 'taskImagePreview', () => { $('taskImagePreviewImg').src = ''; });
+                resetUploadState(taskFileState, 'taskFilePreview', () => { $('taskFileName').textContent = ''; });
+                $('taskType').value = 'send'; $('taskMessageType').value = 'text'; $('taskSummaryConfig').value = '';
+                toggleTaskFormMode();
             },
 
             onSuccess: () => {
-                taskImageBase64 = ''; $('taskImagePreview').style.display = 'none';
+                resetUploadState(taskImageState, 'taskImagePreview', () => { $('taskImagePreviewImg').src = ''; });
+                resetUploadState(taskFileState, 'taskFilePreview', () => { $('taskFileName').textContent = ''; });
                 setTimeout(() => { $('tasksList').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
             }
         });
@@ -902,13 +1032,24 @@
                     showMessage('sendResultMessage', '请输入消息内容', 'error');
                     return;
                 }
-                await sendMessage(groupName, message);
-            } else {
-                if (!sendImageBase64) {
+                await sendMessage({ group_name: groupName, message_type: 'text', message });
+            } else if (messageType === 'image') {
+                if (!sendImageState.message) {
                     showMessage('sendResultMessage', '请选择要发送的图片', 'error');
                     return;
                 }
-                await sendMessage(groupName, null, sendImageBase64);
+                await sendMessage({ group_name: groupName, message_type: 'image', message: sendImageState.message });
+            } else {
+                if (!sendFileState.message || !sendFileState.filename) {
+                    showMessage('sendResultMessage', '请选择要发送的文件', 'error');
+                    return;
+                }
+                await sendMessage({
+                    group_name: groupName,
+                    message_type: 'file',
+                    message: sendFileState.message,
+                    filename: sendFileState.filename
+                });
             }
         });
 
@@ -939,6 +1080,8 @@
         // ==================== 初始化 ====================
         loadGroups();
         loadServerInfo();
+        toggleSendMessageType();
+        toggleTaskFormMode();
     </script>
 </body>
 </html>

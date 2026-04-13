@@ -1,6 +1,7 @@
 import time
 import logging
 import re
+import os
 import threading
 
 logging.getLogger("comtypes").setLevel(logging.WARNING)
@@ -10,6 +11,12 @@ from gateway.adapters.base import BaseWeChatAdapter
 from common.config import config
 
 logger = logging.getLogger(__name__)
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+}
+_WINDOWS_INVALID_FILENAME_RE = re.compile(r'[<>:"/\\\\|?*\x00-\x1f]')
 
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
@@ -50,6 +57,70 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         finally:
             try:
                 win32clipboard.CloseClipboard()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _guess_image_filename(image_data: bytes) -> str:
+        if image_data[:2] == b'\xff\xd8':
+            return "image.jpg"
+        if image_data[:4] == b'GIF8':
+            return "image.gif"
+        if image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
+            return "image.webp"
+        return "image.png"
+
+    @staticmethod
+    def _safe_filename(filename: str | None, default_name: str) -> str:
+        safe_name = os.path.basename(filename or "").strip()
+        if not safe_name:
+            return default_name
+        safe_name = _WINDOWS_INVALID_FILENAME_RE.sub("_", safe_name)
+        safe_name = safe_name.rstrip(" .")
+        if not safe_name:
+            return default_name
+
+        stem, ext = os.path.splitext(safe_name)
+        if stem.upper() in _WINDOWS_RESERVED_NAMES:
+            safe_name = f"_{stem}{ext}"
+        return safe_name or default_name
+
+    def _write_temp_file(self, data: bytes, *, filename: str | None, default_name: str) -> tuple[str, str]:
+        import tempfile
+
+        temp_dir = tempfile.mkdtemp(prefix="awsl-wechat-")
+        temp_path = os.path.join(temp_dir, self._safe_filename(filename, default_name))
+        with open(temp_path, 'wb') as f:
+            f.write(data)
+        return temp_path, temp_dir
+
+    def _paste_file_to_window(self, window, temp_path: str):
+        import struct
+        import win32clipboard
+
+        temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
+        dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
+        self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
+
+        time.sleep(0.3)
+        window.SendKeys('{CTRL}v', waitTime=0.5)
+        window.SendKeys('{ENTER}', waitTime=0.2)
+
+    @staticmethod
+    def _cleanup_temp_path(temp_path: str | None, temp_dir: str | None):
+        if temp_path:
+            time.sleep(1)
+            for _ in range(3):
+                try:
+                    os.unlink(temp_path)
+                    break
+                except PermissionError:
+                    time.sleep(1)
+                except Exception:
+                    break
+        if temp_dir:
+            try:
+                os.rmdir(temp_dir)
             except Exception:
                 pass
 
@@ -248,10 +319,6 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         import base64
-        import tempfile
-        import os
-        import struct
-        import win32clipboard
 
         self._ensure_uia()
         with self._send_lock:
@@ -261,50 +328,47 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             self.activate_specific_window(window)
 
             temp_path = None
+            temp_dir = None
             try:
-                # 解码 base64 数据并保存为临时文件
                 image_data = base64.b64decode(image_base64)
-
-                # 根据 magic bytes 检测图片格式
-                suffix = '.png'
-                if image_data[:2] == b'\xff\xd8':
-                    suffix = '.jpg'
-                elif image_data[:4] == b'GIF8':
-                    suffix = '.gif'
-                elif image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP':
-                    suffix = '.webp'
-
-                fd, temp_path = tempfile.mkstemp(suffix=suffix)
-                with os.fdopen(fd, 'wb') as f:
-                    f.write(image_data)
-
-                # 使用 CF_HDROP 格式将文件复制到剪贴板（保持原始格式）
-                temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
-                dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
-                self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
-
-                time.sleep(0.3)
-
-                # 粘贴图片
-                window.SendKeys('{CTRL}v', waitTime=0.5)
-
-                # 发送
-                window.SendKeys('{ENTER}', waitTime=0.2)
-
+                temp_path, temp_dir = self._write_temp_file(
+                    image_data,
+                    filename=None,
+                    default_name=self._guess_image_filename(image_data),
+                )
+                self._paste_file_to_window(window, temp_path)
                 logger.debug(f"✓ 图片发送成功到 [{window.Name}]")
                 return True
             except Exception as e:
                 logger.error(f"发送图片失败: {e}")
                 return False
             finally:
-                if temp_path:
-                    time.sleep(1)
-                    for _ in range(3):
-                        try:
-                            os.unlink(temp_path)
-                            break
-                        except PermissionError:
-                            time.sleep(1)
-                        except Exception:
-                            break
+                self._cleanup_temp_path(temp_path, temp_dir)
 
+    def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
+        """向指定窗口发送文件（base64 编码）"""
+        import base64
+
+        self._ensure_uia()
+        with self._send_lock:
+            logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
+
+            self.activate_specific_window(window)
+
+            temp_path = None
+            temp_dir = None
+            try:
+                file_data = base64.b64decode(file_base64)
+                temp_path, temp_dir = self._write_temp_file(
+                    file_data,
+                    filename=filename,
+                    default_name="upload.bin",
+                )
+                self._paste_file_to_window(window, temp_path)
+                logger.debug(f"✓ 文件发送成功到 [{window.Name}]: {filename}")
+                return True
+            except Exception as e:
+                logger.error(f"发送文件失败: {e}")
+                return False
+            finally:
+                self._cleanup_temp_path(temp_path, temp_dir)

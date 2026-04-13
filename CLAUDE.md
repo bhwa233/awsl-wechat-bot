@@ -122,7 +122,7 @@ per group                              │ 广播
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
 - **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
-- **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，WSSendMessage model_validator 校验，image_base64 限 10MB
+- **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，发送载荷统一为 `message_type + message + filename`
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池，AI service 限制 max_connections=10
 - **自消息过滤**: Windows UIA 读取所有消息（含自己发送的），SentMessageStore 通过精确/前缀/包含/相似度 4 层匹配过滤自发消息，TTL 120s
 - **输入校验**: 正则长度 MAX_REGEX_LEN=200（common/models.py 共享），cron 表达式限 256 字符，AppleScript 参数化防注入（`on run argv`）
@@ -149,7 +149,7 @@ Client → Server:
 - `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
 - `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}` — priority/passive 可选，无效 regex 返回 error
 - `{"type": "unsubscribe"}`
-- `{"type": "send_message", "group_name": "...", "message": "...", "image_base64": "..."}`
+- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file", "message": "...", "filename": "..."}`（file 需要 filename）
 
 Server → Client:
 - `{"type": "auth_ok"}`

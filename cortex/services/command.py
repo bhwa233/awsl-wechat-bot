@@ -19,6 +19,12 @@ class CommandService:
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
 
+    @staticmethod
+    def _normalize_content(resp_type: str, content: str) -> str:
+        if resp_type in {"image", "file"} and content.startswith("data:"):
+            return content.split(",", 1)[1] if "," in content else content
+        return content
+
     def load_commands(self) -> bool:
         try:
             resp = self._client.get(
@@ -57,11 +63,22 @@ class CommandService:
             data = resp.json()
             content = data.get("content", "")
             resp_type = data.get("type", "text")
+            filename = data.get("filename")
 
-            if resp_type == "image" and content.startswith("data:"):
-                content = content.split(",", 1)[1] if "," in content else content
+            if resp_type not in {"text", "image", "file"}:
+                logger.warning(f"命令 {command_key} 返回了不支持的类型: {resp_type}")
+                return None
+            if resp_type == "file" and not filename:
+                logger.warning(f"命令 {command_key} 返回 file 类型但缺少 filename")
+                return None
 
-            return {"content": content, "type": resp_type}
+            content = self._normalize_content(resp_type, content)
+
+            return {
+                "content": content,
+                "type": resp_type,
+                "filename": filename,
+            }
         except Exception as e:
             logger.error(f"执行命令 {command_key} 失败: {e}")
             return None

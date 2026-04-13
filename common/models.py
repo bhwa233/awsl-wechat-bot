@@ -2,6 +2,7 @@
 
 import re
 from dataclasses import dataclass
+from enum import Enum
 from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Discriminator, Field, Tag, TypeAdapter, field_validator, model_validator
@@ -22,6 +23,35 @@ class WSType:
     MESSAGE = "message"
     SEND_OK = "send_ok"
     ERROR = "error"
+
+
+class MessageType(str, Enum):
+    TEXT = "text"
+    IMAGE = "image"
+    FILE = "file"
+
+
+class TaskType(str, Enum):
+    SEND = "send"
+    SUMMARY = "summary"
+
+
+class MessagePayload(BaseModel):
+    message_type: MessageType = MessageType.TEXT
+    message: str | None = Field(None, max_length=10_000_000)
+    filename: str | None = None
+
+    @model_validator(mode="after")
+    def check_content(self):
+        if self.message_type == MessageType.FILE and not self.filename:
+            raise ValueError("file 类型必须提供 filename")
+        if not self.message:
+            raise ValueError("message 不能为空")
+        return self
+
+
+class OutgoingMessage(MessagePayload):
+    group_name: str
 
 
 # ── Client → Server ──────────────────────────────────────
@@ -58,18 +88,18 @@ class WSUnsubscribe(BaseModel):
     request_id: str | None = None
 
 
-class WSSendMessage(BaseModel):
+class WSSendMessage(MessagePayload):
     type: Literal[WSType.SEND_MESSAGE]
     request_id: str | None = None
     group_name: str
-    message: str | None = None
-    image_base64: str | None = Field(None, max_length=10_000_000)
 
-    @model_validator(mode="after")
-    def check_content(self):
-        if not self.message and not self.image_base64:
-            raise ValueError("message 和 image_base64 不能同时为空")
-        return self
+    def to_outgoing_message(self) -> OutgoingMessage:
+        return OutgoingMessage(
+            group_name=self.group_name,
+            message_type=self.message_type,
+            message=self.message,
+            filename=self.filename,
+        )
 
 
 # Discriminated union: 一步解析客户端消息

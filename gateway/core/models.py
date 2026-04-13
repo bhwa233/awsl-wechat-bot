@@ -3,18 +3,14 @@ import re
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
 from difflib import SequenceMatcher
+
+from common.models import OutgoingMessage
 
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class SendTask:
-    group_name: str
-    content: str
-    is_image: bool = False
+SendTask = OutgoingMessage
 
 
 _WS_RE = re.compile(r'\s+')

@@ -30,3 +30,8 @@ class BaseWeChatAdapter(ABC):
     def send_image_to_window(self, window: Any, image_base64: str) -> bool:
         """向指定窗口发送图片（base64 编码）"""
         pass
+
+    @abstractmethod
+    def send_file_to_window(self, window: Any, file_base64: str, filename: str) -> bool:
+        """向指定窗口发送文件（base64 编码）"""
+        pass

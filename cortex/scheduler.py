@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from common.models import OutgoingMessage, TaskType
+
 if TYPE_CHECKING:
     from cortex.gateway_client import GatewayClient
     from cortex.services.scheduled_task import ScheduledTaskService
@@ -82,7 +84,7 @@ class TaskScheduler:
             logger.info(f"[Scheduler] 执行定时任务: {task.name} - {task.message_type}")
             self.task_service.update_last_run(task.id)
 
-            if task.message_type == "summary":
+            if task.task_type == TaskType.SUMMARY:
                 self._execute_summary_task(task)
                 return
 
@@ -94,11 +96,13 @@ class TaskScheduler:
             if not target_groups:
                 target_groups = self._get_active_groups()
 
-            is_image = task.message_type == "image"
-            content = task.image_base64 if is_image else task.message
-
             for group_name in target_groups:
-                self._send_message(group_name, content, is_image=is_image)
+                self._send_message(OutgoingMessage(
+                    group_name=group_name,
+                    message_type=task.message_type,
+                    message=task.message,
+                    filename=task.filename or None,
+                ))
         finally:
             self._cleanup_executing_task(task.id)
 
@@ -124,8 +128,8 @@ class TaskScheduler:
             logger.error(f"[Scheduler] 获取群组列表失败: {e}")
         return []
 
-    def _send_message(self, group_name: str, content: str, *, is_image: bool = False):
-        self._gateway_client.send_message(group_name, content, is_image=is_image)
+    def _send_message(self, outgoing: OutgoingMessage):
+        self._gateway_client.send_message(outgoing)
 
     def _gateway_post(self, path: str, body: dict) -> dict | None:
         if not self._client:

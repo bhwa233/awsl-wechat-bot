@@ -179,7 +179,9 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 {"type": "auth", "token": "xxx"}
 {"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}
 {"type": "unsubscribe"}
-{"type": "send_message", "group_name": "群名", "message": "text", "image_base64": "..."}
+{"type": "send_message", "group_name": "群名", "message_type": "text", "message": "hello"}
+{"type": "send_message", "group_name": "群名", "message_type": "image", "message": "<base64>"}
+{"type": "send_message", "group_name": "群名", "message_type": "file", "message": "<base64>", "filename": "voice.mp3"}
 ```
 
 **Server → Client：**

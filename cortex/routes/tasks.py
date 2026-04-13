@@ -25,9 +25,10 @@ def _task_to_response(task) -> ScheduledTaskResponse:
         id=task.id,
         name=task.name,
         cron_expression=task.cron_expression,
+        task_type=task.task_type,
         message=task.message,
         message_type=task.message_type,
-        image_base64=task.image_base64 if task.message_type == "image" else "",
+        filename=task.filename,
         target_groups=target_groups,
         enabled=task.enabled,
         created_at=task.created_at,
@@ -48,9 +49,10 @@ def create_routes(task_service):
         data = ScheduledTaskCreate(
             name=payload.name,
             cron_expression=payload.cron_expression,
+            task_type=payload.task_type,
             message=payload.message or "",
             message_type=payload.message_type,
-            image_base64=payload.image_base64 or "",
+            filename=payload.filename or "",
             target_groups=json.dumps(payload.target_groups, ensure_ascii=False),
         )
         task = task_service.create_task(data)

@@ -6,7 +6,7 @@ import time
 from collections import deque
 
 from common.config import config
-from common.models import WSMessageBroadcast
+from common.models import MessageType, OutgoingMessage, WSMessageBroadcast
 from cortex.gateway_client import GatewayClient
 from cortex.models import MessageListener, TriggerType
 from cortex.services.ai import AIService
@@ -137,13 +137,14 @@ class CortexRuntime(MessageListener):
                 self._task_queue.task_done()
 
     def _process_and_reply(self, trigger_type: TriggerType, content, group_name: str):
-        reply_content, is_image = self._handle_trigger(trigger_type, content, group_name)
-        if reply_content:
-            self.gateway_client.send_message(group_name, reply_content, is_image=is_image)
+        outgoing = self._handle_trigger(trigger_type, content, group_name)
+        if outgoing:
+            self.gateway_client.send_message(outgoing)
 
-    def _handle_trigger(self, trigger_type: TriggerType, content, group_name: str) -> tuple[str | None, bool]:
+    def _handle_trigger(self, trigger_type: TriggerType, content, group_name: str) -> OutgoingMessage | None:
         msg = None
-        is_image = False
+        message_type = MessageType.TEXT
+        filename = None
 
         try:
             if trigger_type == TriggerType.AI and self.ai_service:
@@ -156,7 +157,11 @@ class CortexRuntime(MessageListener):
                 res = self.command_service.execute_command(content[0], content[1])
                 if res:
                     msg = res["content"]
-                    is_image = res.get("type") == "image"
+                    if res.get("type") == "image":
+                        message_type = MessageType.IMAGE
+                    elif res.get("type") == "file":
+                        message_type = MessageType.FILE
+                        filename = res.get("filename")
 
             elif trigger_type == TriggerType.COMMAND_REFRESH and self.command_service:
                 logger.info(f"[{group_name}] 刷新命令列表")
@@ -168,10 +173,22 @@ class CortexRuntime(MessageListener):
 
             elif trigger_type == TriggerType.IMAGE:
                 msg = content
-                is_image = True
+                message_type = MessageType.IMAGE
 
         except Exception as e:
             logger.error(f"[{group_name}] 处理触发出错: {e}", exc_info=True)
-            return None, False
+            return None
 
-        return msg, is_image
+        if not msg:
+            return None
+
+        try:
+            return OutgoingMessage(
+                group_name=group_name,
+                message_type=message_type,
+                message=msg,
+                filename=filename,
+            )
+        except Exception as e:
+            logger.error(f"[{group_name}] 构造回复消息出错: {e}", exc_info=True)
+            return None

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable
 
+from common.models import MessageType, OutgoingMessage
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,8 +26,7 @@ class GroupSummaryOutput:
     group_name: str
     success: bool
     message: str
-    image_base64: str | None = None
-    text_message: str | None = None
+    messages: list[OutgoingMessage] | None = None
 
 
 @dataclass
@@ -275,12 +276,26 @@ class SummaryService:
 
                 # 通过回调通知调用方
                 if config.on_group_complete:
+                    outgoing_messages = [
+                        OutgoingMessage(
+                            group_name=group.group_name,
+                            message_type=MessageType.IMAGE,
+                            message=image_b64,
+                        )
+                    ]
+                    if text_message:
+                        outgoing_messages.append(
+                            OutgoingMessage(
+                                group_name=group.group_name,
+                                message_type=MessageType.TEXT,
+                                message=text_message,
+                            )
+                        )
                     config.on_group_complete(GroupSummaryOutput(
                         group_name=group.group_name,
                         success=True,
                         message="成功",
-                        image_base64=image_b64,
-                        text_message=text_message,
+                        messages=outgoing_messages,
                     ))
 
                 group_result["success"] = True

@@ -98,15 +98,12 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
             gateway.ws_unsubscribe(ws)
 
         case WSSendMessage():
-            is_image = bool(msg.image_base64)
-            content = msg.image_base64 if is_image else msg.message
-            if content:
-                if not gateway.send_message(msg.group_name, content, is_image=is_image):
-                    await ws.send_text(WSError(
-                        request_id=msg.request_id,
-                        detail="发送队列已满，请稍后重试",
-                    ).model_dump_json())
-                    return
+            if not gateway.send_message(msg.to_outgoing_message()):
+                await ws.send_text(WSError(
+                    request_id=msg.request_id,
+                    detail="发送队列已满，请稍后重试",
+                ).model_dump_json())
+                return
             await ws.send_text(WSSendOk(
                 request_id=msg.request_id,
             ).model_dump_json())

@@ -13,6 +13,7 @@ import websockets
 
 from common.config import config
 from common.models import (
+    OutgoingMessage,
     WSType,
     WSAuth, WSAuthOk,
     WSSubscribe, WSSubscribeOk, WSMessageBroadcast, WSSendMessage, WSError,
@@ -67,22 +68,23 @@ class GatewayClient:
         except ValueError:
             pass
 
-    def send_message(self, group_name: str, content: str, *, is_image: bool = False):
+    def send_message(self, outgoing: OutgoingMessage):
         """通过 WS 发送消息到 Gateway（线程安全）"""
         ws, loop = self._ws, self._loop
         if not loop or not ws or self._state != ConnectionState.SUBSCRIBED:
-            logger.warning(f"GatewayClient 未连接，无法发送消息到 {group_name}")
+            logger.warning(f"GatewayClient 未连接，无法发送消息到 {outgoing.group_name}")
             return
         msg = WSSendMessage(
             type=WSType.SEND_MESSAGE,
-            group_name=group_name,
-            message=None if is_image else content,
-            image_base64=content if is_image else None,
+            group_name=outgoing.group_name,
+            message_type=outgoing.message_type,
+            message=outgoing.message,
+            filename=outgoing.filename,
         )
         try:
             asyncio.run_coroutine_threadsafe(ws.send(msg.model_dump_json()), loop)
         except RuntimeError:
-            logger.warning(f"GatewayClient 事件循环已关闭，消息未发送到 {group_name}")
+            logger.warning(f"GatewayClient 事件循环已关闭，消息未发送到 {outgoing.group_name}")
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True, name="GatewayClient")
