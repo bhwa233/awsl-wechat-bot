@@ -203,6 +203,20 @@ ttyd 官方默认是只读模式，daemon 这里已固定加 `-W` 启用可写�
 - 运行时微信群聊窗口需保持打开（弹出的独立聊天窗口）
 - 窗口自动发现，无需手动选择群聊
 
+### Windows 疑难排查
+
+如果在 Windows 上启动后找不到窗口或无法获取消息，可能是讲述人（Narrator）未开启导致 UI Automation 无法正常工作。尝试通过注册表启用：
+
+```powershell
+# 查询讲述人状态（0=关闭，1=开启）
+reg query "HKCU\SOFTWARE\Microsoft\Narrator\NoRoam" /v RunningState
+
+# 启用讲述人
+reg add "HKCU\SOFTWARE\Microsoft\Narrator\NoRoam" /v RunningState /t REG_DWORD /d 1 /f
+```
+
+也可以通过 **设置 → 轻松使用 → 讲述人** 手动开启，或按 `Win + Ctrl + Enter` 快捷键切换。
+
 ## 免责声明
 
 **本项目仅供学习交流使用，请勿用于商业用途或任何违法违规行为。**
