@@ -17,6 +17,9 @@ _WINDOWS_RESERVED_NAMES = {
     "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 }
 _WINDOWS_INVALID_FILENAME_RE = re.compile(r'[<>:"/\\\\|?*\x00-\x1f]')
+_WINDOWS_DROPFILE_CLEANUP_DELAY = 15.0
+_WINDOWS_DROPFILE_CLEANUP_RETRY_DELAY = 1.0
+_WINDOWS_DROPFILE_CLEANUP_RETRIES = 10
 
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
@@ -107,15 +110,22 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         window.SendKeys('{ENTER}', waitTime=0.2)
 
     @staticmethod
-    def _cleanup_temp_path(temp_path: str | None, temp_dir: str | None):
+    def _cleanup_temp_path(
+        temp_path: str | None,
+        temp_dir: str | None,
+        *,
+        initial_delay: float = 1.0,
+        retry_delay: float = 1.0,
+        retries: int = 3,
+    ):
         if temp_path:
-            time.sleep(1)
-            for _ in range(3):
+            time.sleep(initial_delay)
+            for _ in range(retries):
                 try:
                     os.unlink(temp_path)
                     break
                 except PermissionError:
-                    time.sleep(1)
+                    time.sleep(retry_delay)
                 except Exception:
                     break
         if temp_dir:
@@ -123,6 +133,22 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 os.rmdir(temp_dir)
             except Exception:
                 pass
+
+    def _schedule_temp_path_cleanup(self, temp_path: str | None, temp_dir: str | None, *, initial_delay: float):
+        if not temp_path and not temp_dir:
+            return
+        threading.Thread(
+            target=self._cleanup_temp_path,
+            kwargs={
+                "temp_path": temp_path,
+                "temp_dir": temp_dir,
+                "initial_delay": initial_delay,
+                "retry_delay": _WINDOWS_DROPFILE_CLEANUP_RETRY_DELAY,
+                "retries": _WINDOWS_DROPFILE_CLEANUP_RETRIES,
+            },
+            daemon=True,
+            name="wechat-temp-cleanup",
+        ).start()
 
     def find_all_wechat_windows(self) -> list[dict]:
         """查找所有微信窗口（包括弹出的群聊窗口）
@@ -329,6 +355,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
             temp_path = None
             temp_dir = None
+            cleanup_delay = 1.0
             try:
                 image_data = base64.b64decode(image_base64)
                 temp_path, temp_dir = self._write_temp_file(
@@ -337,13 +364,14 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     default_name=self._guess_image_filename(image_data),
                 )
                 self._paste_file_to_window(window, temp_path)
+                cleanup_delay = _WINDOWS_DROPFILE_CLEANUP_DELAY
                 logger.debug(f"✓ 图片发送成功到 [{window.Name}]")
                 return True
             except Exception as e:
                 logger.error(f"发送图片失败: {e}")
                 return False
             finally:
-                self._cleanup_temp_path(temp_path, temp_dir)
+                self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=cleanup_delay)
 
     def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
         """向指定窗口发送文件（base64 编码）"""
@@ -357,6 +385,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
             temp_path = None
             temp_dir = None
+            cleanup_delay = 1.0
             try:
                 file_data = base64.b64decode(file_base64)
                 temp_path, temp_dir = self._write_temp_file(
@@ -365,10 +394,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     default_name="upload.bin",
                 )
                 self._paste_file_to_window(window, temp_path)
+                cleanup_delay = _WINDOWS_DROPFILE_CLEANUP_DELAY
                 logger.debug(f"✓ 文件发送成功到 [{window.Name}]: {filename}")
                 return True
             except Exception as e:
                 logger.error(f"发送文件失败: {e}")
                 return False
             finally:
-                self._cleanup_temp_path(temp_path, temp_dir)
+                self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=cleanup_delay)
