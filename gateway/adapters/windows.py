@@ -456,28 +456,36 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
         self._ensure_uia()
         with self._send_lock:
-            logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
+            logger.info(f"[send_file_to_window] 开始向窗口 {window.Name} 发送文件: {filename}")
 
             self.activate_specific_window(window)
-            target = self._focus_send_target(window)
 
             temp_path = None
             temp_dir = None
             cleanup_delay = 1.0
             try:
                 file_data = base64.b64decode(file_base64)
+                logger.info(f"[send_file_to_window] 文件解码完成: size={len(file_data)} bytes")
                 temp_path, temp_dir = self._write_temp_file(
                     file_data,
                     filename=filename,
                     default_name="upload.bin",
                 )
+                logger.info(f"[send_file_to_window] 临时文件已写入: {temp_path}")
                 self._paste_file_to_window(window, temp_path)
-                self._send_file_paste_and_enter(target)
+                logger.info("[send_file_to_window] 已写入剪贴板 CF_HDROP")
+                time.sleep(0.3)
+                logger.info("[send_file_to_window] 开始发送 Ctrl+V")
+                window.SendKeys('{CTRL}v', waitTime=0.5)
+                logger.info("[send_file_to_window] 开始发送 Enter")
+                window.SendKeys('{ENTER}', waitTime=0.2)
                 cleanup_delay = _WINDOWS_DROPFILE_CLEANUP_DELAY
-                logger.debug(f"✓ 文件发送成功到 [{window.Name}]: {filename}")
+                logger.info(f"[send_file_to_window] 文件发送流程完成: {window.Name} -> {filename}")
                 return True
             except Exception as e:
                 logger.error(f"发送文件失败: {e}")
                 return False
             finally:
+                if temp_path:
+                    logger.info(f"[send_file_to_window] 计划延迟清理临时文件: {temp_path}")
                 self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=cleanup_delay)
