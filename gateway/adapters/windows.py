@@ -381,6 +381,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         import base64
+        import struct
+        import win32clipboard
 
         self._ensure_uia()
         with self._send_lock:
@@ -399,7 +401,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     filename=None,
                     default_name=self._guess_image_filename(image_data),
                 )
-                self._paste_file_to_window(window, temp_path)
+                temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
+                dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
+                self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
                 time.sleep(0.3)
                 window.SendKeys('{CTRL}v', waitTime=0.5)
                 window.SendKeys('{ENTER}', waitTime=0.2)
