@@ -453,6 +453,10 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
     def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
         """向指定窗口发送文件（base64 编码）"""
         import base64
+        import tempfile
+        import os
+        import struct
+        import win32clipboard
 
         self._ensure_uia()
         with self._send_lock:
@@ -461,25 +465,31 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             self.activate_specific_window(window)
 
             temp_path = None
-            temp_dir = None
-            cleanup_delay = 1.0
             try:
+                # 解码 base64 数据并保存为临时文件
                 file_data = base64.b64decode(file_base64)
                 logger.info(f"[send_file_to_window] 文件解码完成: size={len(file_data)} bytes")
-                temp_path, temp_dir = self._write_temp_file(
-                    file_data,
-                    filename=filename,
-                    default_name="upload.bin",
-                )
+
+                suffix = os.path.splitext(filename or "")[1] or ".bin"
+                logger.info(f"[send_file_to_window] 检测文件后缀: {suffix}")
+
+                fd, temp_path = tempfile.mkstemp(suffix=suffix)
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(file_data)
                 logger.info(f"[send_file_to_window] 临时文件已写入: {temp_path}")
-                self._paste_file_to_window(window, temp_path)
+
+                temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
+                dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
+                self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
                 logger.info("[send_file_to_window] 已写入剪贴板 CF_HDROP")
+
                 time.sleep(0.3)
+
                 logger.info("[send_file_to_window] 开始发送 Ctrl+V")
                 window.SendKeys('{CTRL}v', waitTime=0.5)
                 logger.info("[send_file_to_window] 开始发送 Enter")
                 window.SendKeys('{ENTER}', waitTime=0.2)
-                cleanup_delay = _WINDOWS_DROPFILE_CLEANUP_DELAY
+
                 logger.info(f"[send_file_to_window] 文件发送流程完成: {window.Name} -> {filename}")
                 return True
             except Exception as e:
@@ -487,5 +497,16 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 return False
             finally:
                 if temp_path:
-                    logger.info(f"[send_file_to_window] 计划延迟清理临时文件: {temp_path}")
-                self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=cleanup_delay)
+                    logger.info(f"[send_file_to_window] 准备清理临时文件: {temp_path}")
+                    time.sleep(1)
+                    for _ in range(3):
+                        try:
+                            os.unlink(temp_path)
+                            logger.info(f"[send_file_to_window] 已清理临时文件: {temp_path}")
+                            break
+                        except PermissionError:
+                            logger.info(f"[send_file_to_window] 临时文件被占用，稍后重试: {temp_path}")
+                            time.sleep(1)
+                        except Exception:
+                            logger.info(f"[send_file_to_window] 临时文件清理跳过: {temp_path}")
+                            break
