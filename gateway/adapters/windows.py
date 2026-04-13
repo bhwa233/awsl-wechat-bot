@@ -105,9 +105,44 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
         self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
 
+    def _find_chat_input_control(self, window):
+        edit_controls = []
+        for control, _depth in auto.WalkControl(window, maxDepth=6):
+            if control.ControlTypeName != 'EditControl':
+                continue
+            try:
+                if not control.Exists(0):
+                    continue
+            except Exception:
+                continue
+            edit_controls.append(control)
+        if not edit_controls:
+            logger.debug(f"[{window.Name}] 未找到 EditControl，回退到窗口级按键")
+            return None
+        target = edit_controls[-1]
+        logger.debug(f"[{window.Name}] 使用输入控件: Name={target.Name!r} AutomationId={target.AutomationId!r}")
+        return target
+
+    def _focus_send_target(self, window):
+        target = self._find_chat_input_control(window)
+        if target is None:
+            return window
+        try:
+            target.Click(waitTime=0)
+        except Exception as e:
+            logger.debug(f"[{window.Name}] 点击输入框失败，继续尝试聚焦: {e}")
+        try:
+            target.SetFocus()
+        except Exception as e:
+            logger.debug(f"[{window.Name}] 输入框 SetFocus 失败，继续尝试按键发送: {e}")
+        time.sleep(0.2)
+        return target
+
+    @staticmethod
+    def _send_file_paste_and_enter(target):
         time.sleep(0.3)
-        window.SendKeys('{CTRL}v', waitTime=0.5)
-        window.SendKeys('{ENTER}', waitTime=0.2)
+        target.SendKeys('{CTRL}v', waitTime=0.5)
+        target.SendKeys('{ENTER}', waitTime=0.2)
 
     @staticmethod
     def _cleanup_temp_path(
@@ -300,10 +335,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
             # 激活窗口
             self.activate_specific_window(window)
+            target = self._focus_send_target(window)
 
             try:
                 # 清空可能存在的草稿
-                window.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
+                target.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
 
                 # 通过剪贴板设置文本
                 auto.SetClipboardText(text)
@@ -323,10 +359,10 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                         logger.debug("已使用 win32clipboard 重新设置剪贴板")
 
                 # 粘贴
-                window.SendKeys('{CTRL}v', waitTime=0.2)
+                target.SendKeys('{CTRL}v', waitTime=0.2)
 
                 # 发送消息
-                window.SendKeys('{ENTER}', waitTime=0.2)
+                target.SendKeys('{ENTER}', waitTime=0.2)
 
                 logger.debug(f"✓ 发送成功到 [{window.Name}]: {text[:20]}...")
                 return True
@@ -364,6 +400,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     default_name=self._guess_image_filename(image_data),
                 )
                 self._paste_file_to_window(window, temp_path)
+                time.sleep(0.3)
+                window.SendKeys('{CTRL}v', waitTime=0.5)
+                window.SendKeys('{ENTER}', waitTime=0.2)
                 cleanup_delay = _WINDOWS_DROPFILE_CLEANUP_DELAY
                 logger.debug(f"✓ 图片发送成功到 [{window.Name}]")
                 return True
@@ -382,6 +421,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
 
             self.activate_specific_window(window)
+            target = self._focus_send_target(window)
 
             temp_path = None
             temp_dir = None
@@ -394,6 +434,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     default_name="upload.bin",
                 )
                 self._paste_file_to_window(window, temp_path)
+                self._send_file_paste_and_enter(target)
                 cleanup_delay = _WINDOWS_DROPFILE_CLEANUP_DELAY
                 logger.debug(f"✓ 文件发送成功到 [{window.Name}]: {filename}")
                 return True
