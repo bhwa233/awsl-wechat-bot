@@ -1,0 +1,3 @@
+display_name: AWSL WeChat Gateway
+short_description: Query Gateway chatlogs and send messages.
+default_prompt: Use the AWSL WeChat Gateway skill with a Gateway base URL and optional token to list open chat windows, query chat logs, or send messages.
