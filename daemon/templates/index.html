@@ -326,7 +326,7 @@
                     <label><input type="checkbox" id="autoLog" checked> 自动</label>
                     <input type="number" id="logLines" value="200" min="1" max="10000">
                     <button class="btn btn-ghost" onclick="refreshLogs()">刷新</button>
-                    <button class="btn btn-ghost" onclick="$('logBox').textContent=''">清除</button>
+                    <button class="btn btn-ghost" onclick="clearLogs()">清除</button>
                 </div>
             </div>
             <div class="log-box" id="logBox"></div>
@@ -414,6 +414,14 @@
                 box.textContent = text;
                 if (atBot) box.scrollTop = box.scrollHeight;
             } catch {}
+        }
+
+        async function clearLogs() {
+            try {
+                await api('POST', '/logs/clear');
+                $('logBox').textContent = '';
+                showToast('日志已清除', 'success');
+            } catch (e) { showToast(e.message, 'error'); }
         }
 
         function refreshAll() { refreshStatus(); refreshLogs(); }

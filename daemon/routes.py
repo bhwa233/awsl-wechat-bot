@@ -133,3 +133,9 @@ def update():
 @app.get("/logs", dependencies=[Depends(verify_token)], response_class=PlainTextResponse)
 def logs(lines: int = Query(default=100, ge=1, le=10000)):
     return manager.tail_log(lines)
+
+
+@app.post("/logs/clear", dependencies=[Depends(verify_token)])
+def clear_logs():
+    manager.clear_log()
+    return {"ok": True, "message": "日志已清除"}

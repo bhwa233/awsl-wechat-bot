@@ -87,6 +87,10 @@ class BotProcessManager:
             buf = list(self._log_buffer)
         return "".join(buf[-lines:])
 
+    def clear_log(self) -> None:
+        with self._lock:
+            self._log_buffer.clear()
+
     def enable_auto_restart(self):
         self._auto_restart = True
 
