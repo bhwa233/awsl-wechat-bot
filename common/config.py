@@ -77,6 +77,10 @@ class Config(BaseSettings):
     CORTEX_POOL_SIZE: int = 4
     CORTEX_QUEUE_SIZE: int = 100
 
+    # Chatlog HTTP API 服务配置
+    CHATLOG_HTTP_HOST: str = "0.0.0.0"
+    CHATLOG_HTTP_PORT: int = 7998
+
     # 机器人名称列表（@名称 触发，替换为 "a " + 文本，支持多个名称，逗号分隔）
     BOT_NAMES: list[str] = []
 

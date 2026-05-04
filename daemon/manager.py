@@ -164,7 +164,7 @@ class BotProcessManager:
             else:
                 self._kill_posix()
             if not self._wait_ports_released():
-                logger.warning("bot 进程退出后端口仍未释放 (ports=%s,%s)", config.HTTP_API_PORT, config.CORTEX_HTTP_PORT)
+                logger.warning("bot 进程退出后端口仍未释放 (ports=%s,%s,%s)", config.HTTP_API_PORT, config.CORTEX_HTTP_PORT, config.CHATLOG_HTTP_PORT)
         except Exception:
             pass
         self._process = None
@@ -259,7 +259,7 @@ class BotProcessManager:
             return False
 
     def _wait_ports_released(self, timeout: float = 8.0) -> bool:
-        ports = (config.HTTP_API_PORT, config.CORTEX_HTTP_PORT)
+        ports = (config.HTTP_API_PORT, config.CORTEX_HTTP_PORT, config.CHATLOG_HTTP_PORT)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if not any(self._is_port_open(port) for port in ports):

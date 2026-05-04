@@ -151,40 +151,6 @@ def command_windows(args: argparse.Namespace) -> None:
     json_dump(request_json("GET", args.base_url, "/api/groups", token=args.token, timeout=args.timeout))
 
 
-def command_chatlog_groups(args: argparse.Namespace) -> None:
-    data = request_json(
-        "GET",
-        args.base_url,
-        "/api/chatlog/groups",
-        token=args.token,
-        params={"limit": args.limit},
-        timeout=args.timeout,
-    )
-    json_dump(data)
-
-
-def command_decrypt(args: argparse.Namespace) -> None:
-    data = request_json("POST", args.base_url, "/api/chatlog/decrypt", token=args.token, timeout=args.timeout)
-    json_dump(data)
-
-
-def command_messages(args: argparse.Namespace) -> None:
-    data = request_json(
-        "GET",
-        args.base_url,
-        "/api/chatlog/messages",
-        token=args.token,
-        params={
-            "group": args.group,
-            "start": args.start,
-            "end": args.end,
-            "limit": args.limit,
-        },
-        timeout=args.timeout,
-    )
-    json_dump(data)
-
-
 def load_message_payload(args: argparse.Namespace) -> tuple[str, str | None]:
     if args.file_path:
         path = Path(args.file_path).expanduser()
@@ -268,20 +234,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     windows_parser = subparsers.add_parser("windows", help="List open/listened WeChat chat windows")
     windows_parser.set_defaults(func=command_windows)
-
-    groups_parser = subparsers.add_parser("chatlog-groups", help="List decrypted chatlog groups")
-    groups_parser.add_argument("--limit", type=int, default=0, help="Max groups, 0 means unlimited")
-    groups_parser.set_defaults(func=command_chatlog_groups)
-
-    decrypt_parser = subparsers.add_parser("decrypt", help="Decrypt WeChat DB records on the Gateway machine")
-    decrypt_parser.set_defaults(func=command_decrypt)
-
-    messages_parser = subparsers.add_parser("messages", help="Query decrypted chat records")
-    messages_parser.add_argument("--group", required=True, help="Chatroom ID or personal WeChat ID")
-    messages_parser.add_argument("--start", default=None, help="Start time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
-    messages_parser.add_argument("--end", default=None, help="End time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
-    messages_parser.add_argument("--limit", type=int, default=100, help="Max messages")
-    messages_parser.set_defaults(func=command_messages)
 
     send_parser = subparsers.add_parser("send", help="Send a text/image/file message")
     send_parser.add_argument("--group", required=True, help="Open chat window name")

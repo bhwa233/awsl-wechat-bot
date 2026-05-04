@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-gateway
-description: "Use when Codex needs to operate an AWSL WeChat Bot Gateway by HTTP API: connect with a Gateway base URL and optional Bearer token, decrypt WeChat chat records on the Gateway machine, list open/listened WeChat chat windows, query decrypted WeChat chatlog groups and messages, or send text/image/file messages through the Gateway."
+description: "Use when Codex needs to operate an AWSL WeChat Bot Gateway by HTTP API: connect with a Gateway base URL and optional Bearer token, list open/listened WeChat chat windows, or send text/image/file messages through the Gateway."
 ---
 
 # AWSL WeChat Gateway
@@ -26,10 +26,9 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 
 - Manage cached connection info with `config show|set|clear`.
 - List open/listened chat windows with `windows`, which calls `GET /api/groups`.
-- Decrypt WeChat chat records with `decrypt`, which calls `POST /api/chatlog/decrypt` and uses Gateway-side `.env` values.
-- List decrypted chatlog groups with `chatlog-groups`, which calls `GET /api/chatlog/groups`.
-- Query chat records with `messages --group <group_id>`, which calls `GET /api/chatlog/messages`. Use the `username` from `chatlog-groups` as `--group`.
 - Send messages with `send --group <window_name> --message <text>`. Use the visible/open window name from `windows` as `--group`.
+
+**Note:** Chatlog features (decrypt, groups, messages) have been moved to the `awsl-wechat-chatlog` skill. Use that skill for WeChat database operations.
 
 ## Examples
 
@@ -49,16 +48,6 @@ uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" windows
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
   --base-url http://127.0.0.1:8000 --no-save windows
 
-# Find chatlog group IDs
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" chatlog-groups --limit 20
-
-# Decrypt WeChat DB records on the Gateway machine
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" decrypt
-
-# Query records for a group ID
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" messages \
-  --group 12345@chatroom --start "2026-04-23" --limit 50
-
 # Send text to an open chat window
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message "收到"
@@ -70,4 +59,4 @@ uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
 
 ## Gateway Notes
 
-For endpoint details and response shapes, read `references/api.md`. Decrypt and chatlog queries require Gateway-side WeChat database configuration. Window sending requires the destination chat window to be detected by Gateway.
+For endpoint details and response shapes, read `references/api.md`. Window sending requires the destination chat window to be detected by Gateway.

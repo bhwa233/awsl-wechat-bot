@@ -15,6 +15,7 @@ from common.models import OutgoingMessage, TaskType
 if TYPE_CHECKING:
     from cortex.gateway_client import GatewayClient
     from cortex.services.scheduled_task import ScheduledTaskService
+    from cortex.services.summary_service import SummaryService
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,13 @@ class TaskScheduler:
         self,
         task_service: ScheduledTaskService,
         gateway_client: GatewayClient,
+        summary_service: SummaryService | None = None,
         gateway_base_url: str = "",
         gateway_token: str = "",
     ):
         self.task_service = task_service
         self._gateway_client = gateway_client
+        self._summary_service = summary_service
         self.gateway_base_url = gateway_base_url.rstrip("/")
         self.gateway_token = gateway_token
         self.running = False
@@ -107,15 +110,24 @@ class TaskScheduler:
             self._cleanup_executing_task(task.id)
 
     def _execute_summary_task(self, task):
+        if not self._summary_service:
+            logger.warning("[Scheduler] SummaryService 未配置，跳过总结任务")
+            return
         try:
+            from cortex.services.summary_service import SummaryConfig, SummaryGroup, SummaryResult
             config_dict = json.loads(task.message)
-            groups = config_dict.get("groups", [])
-            resp = self._gateway_post("/api/chatlog/summary", {"groups": groups})
-            if resp and resp.get("success"):
-                logger.info("[Scheduler] 群聊总结任务已提交")
-            else:
-                msg = resp.get("message", "unknown") if resp else "no response"
-                logger.warning(f"[Scheduler] 群聊总结提交失败: {msg}")
+            groups = [SummaryGroup(group_id=g["group_id"], group_name=g["group_name"]) for g in config_dict.get("groups", [])]
+            config = SummaryConfig(groups=groups, date=config_dict.get("date"))
+
+            def on_complete(result: SummaryResult):
+                if result.success:
+                    logger.info(f"[Scheduler] 群聊总结完成: {result.message}")
+                else:
+                    logger.warning(f"[Scheduler] 群聊总结失败: {result.message}")
+
+            result = self._summary_service.start_summary_async(config, on_complete)
+            if not result.success:
+                logger.warning(f"[Scheduler] 群聊总结启动失败: {result.message}")
         except Exception as e:
             logger.error(f"[Scheduler] 总结任务执行失败: {e}")
 
@@ -130,17 +142,6 @@ class TaskScheduler:
 
     def _send_message(self, outgoing: OutgoingMessage):
         self._gateway_client.send_message(outgoing)
-
-    def _gateway_post(self, path: str, body: dict) -> dict | None:
-        if not self._client:
-            logger.warning(f"[Scheduler] Gateway HTTP 未配置，跳过 POST {path}")
-            return None
-        try:
-            resp = self._client.post(path, json=body)
-            return resp.json()
-        except Exception as e:
-            logger.error(f"[Scheduler] Gateway POST {path} 失败: {e}")
-            return None
 
     def _gateway_get(self, path: str) -> list | dict | None:
         if not self._client:

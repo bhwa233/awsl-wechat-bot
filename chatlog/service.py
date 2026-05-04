@@ -3,13 +3,9 @@ ChatlogService - 聊天记录服务统一接口
 """
 
 from datetime import datetime
-from typing import Callable, Optional
+from typing import Optional
 
 from chatlog.wechat_db import ChatRoom, Message, WeChatDBDecryptor, WeChatDBReader, HAS_CRYPTO
-from chatlog.summary_service import (
-    SummaryConfig, SummaryResult,
-    run_chat_summary, start_chat_summary_async, is_summary_running,
-)
 
 
 class ChatlogService:
@@ -58,23 +54,6 @@ class ChatlogService:
             return reader.get_group_display_name(group_id)
         finally:
             reader.close()
-
-    def run_summary(self, config: SummaryConfig) -> SummaryResult:
-        """同步执行群聊总结"""
-        return run_chat_summary(config)
-
-    def start_summary_async(
-        self,
-        config: SummaryConfig,
-        on_complete: Callable | None = None,
-    ) -> SummaryResult:
-        """异步启动群聊总结"""
-        return start_chat_summary_async(config, on_complete)
-
-    @property
-    def is_summary_running(self) -> bool:
-        """总结任务是否正在运行"""
-        return is_summary_running()
 
     @staticmethod
     def has_crypto() -> bool:

@@ -2,7 +2,7 @@
 
 > **免责声明：本项目仅供学习交流，请勿用于商业或违规用途。使用本项目产生的任何后果由使用者自行承担。**
 
-跨平台微信群聊机器人，采用 Gateway + Cortex 微服务架构。Gateway 通过 Quartz/UIAutomation 与微信窗口交互，以 WebSocket 协议广播消息；Cortex 作为 WS 客户端，通过 MessageListener 模式处理 AI 回复、动态命令、定时任务和 Webhook 转发。
+跨平台微信群聊机器人，采用 Gateway + Chatlog + Cortex 微服务架构。Gateway 通过 Quartz/UIAutomation 与微信窗口交互，以 WebSocket 协议广播消息；Chatlog 作为独立数据层服务提供微信数据库解密/查询；Cortex 作为 WS 客户端，通过 MessageListener 模式处理 AI 回复、群聊总结、动态命令、定时任务和 Webhook 转发。
 
 ## 功能特性
 
@@ -42,6 +42,15 @@
 │          正则过滤 → ThreadPool(HTTP POST)             │
 │                                                      │
 │  TaskScheduler → GatewayClient.send_message (WS)     │
+│  SummaryService → ChatlogClient (HTTP) + LLM + 渲染  │
+└──────────────────────────────────────────────────────┘
+                    │
+                    ▼ HTTP
+┌──────────────────────────────────────────────────────┐
+│                   Chatlog (:7998)                     │
+│                                                      │
+│  微信数据库解密 / 群聊列表 / 消息查询                │
+│  (纯数据层，不依赖 Gateway/Cortex)                   │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -60,6 +69,8 @@
 | Cortex ThreadPool(4) | AI/命令等阻塞操作 | 独立线程 ✅ |
 | Webhook ThreadPool(3) | HTTP POST fire-and-forget | 独立线程 ✅ |
 | Scheduler | 定时任务轮询 (5s) | 独立线程 ✅ |
+| Summary worker | LLM 总结 + 渲染 + 发送 | daemon 线程 ✅ |
+| Chatlog 服务 | sync def 路由 (FastAPI 线程池) | 独立进程 ✅ |
 
 </details>
 
@@ -101,6 +112,7 @@ OPENAI_MODEL=gpt-4o-mini
 HTTP_API_PORT=8000
 HTTP_API_TOKEN=your-secret-token  # 留空不启用认证
 CORTEX_HTTP_PORT=7999
+CHATLOG_HTTP_PORT=7998
 TTYD_HOST=0.0.0.0
 TTYD_PORT=7681
 TTYD_CREDENTIALS=
@@ -109,11 +121,12 @@ TTYD_CREDENTIALS=
 ## 运行
 
 ```bash
-# 一体启动（Gateway + Cortex）
+# 一体启动（Gateway + Chatlog + Cortex）
 uv run main.py
 
 # 独立启动
 uv run -m gateway.main     # Gateway only (:8000)
+uv run -m chatlog.main     # Chatlog only (:7998)
 uv run -m cortex.main      # Cortex only (:7999)
 uv run run_daemon.py       # Daemon (:8001)
 ```
@@ -137,10 +150,16 @@ GET  /api/health              # 健康检查
 GET  /api/groups              # 群组列表
 POST /api/send                # 发送消息/图片
 WS   /ws                      # WebSocket（首条消息认证）
-POST /api/chatlog/decrypt     # 解密微信数据库
-GET  /api/chatlog/groups      # 群聊列表
-GET  /api/chatlog/messages    # 查询消息
-POST /api/chatlog/summary     # 群聊总结
+```
+
+### Chatlog (:7998)
+
+```
+GET  /api/chatlog/health           # 健康检查
+POST /api/chatlog/decrypt          # 解密微信数据库
+GET  /api/chatlog/groups           # 群聊列表
+GET  /api/chatlog/messages         # 查询消息
+GET  /api/chatlog/group-display-name  # 群聊显示名
 ```
 
 ### Cortex (:7999)
@@ -149,8 +168,12 @@ POST /api/chatlog/summary     # 群聊总结
 GET  /api/health                      # 健康检查
 GET/POST/PUT/DELETE /api/tasks        # 定时任务 CRUD
 GET/POST/PUT/DELETE /api/webhooks     # Webhook 管理
+POST /api/summary                     # 群聊总结
 GET  /api/groups                      # 群组列表（代理 Gateway）
 POST /api/send                        # 发送消息（代理 Gateway）
+GET  /api/chatlog/groups              # 群聊列表（代理 Chatlog）
+GET  /api/chatlog/messages            # 查询消息（代理 Chatlog）
+POST /api/chatlog/decrypt             # 解密（代理 Chatlog）
 ```
 
 ### Daemon (:8001)

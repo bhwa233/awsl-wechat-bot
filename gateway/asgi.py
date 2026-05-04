@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from gateway.routes import health, groups, messages, ws, chatlog
+from gateway.routes import health, groups, messages, ws
 
 
 def create_app(gateway_app) -> FastAPI:
@@ -22,5 +22,4 @@ def create_app(gateway_app) -> FastAPI:
     app.include_router(groups.create_routes(gateway_app))
     app.include_router(messages.create_routes(gateway_app.gateway))
     app.include_router(ws.create_routes(gateway_app.gateway))
-    app.include_router(chatlog.create_routes(gateway_app.gateway))
     return app

@@ -14,11 +14,12 @@ uv sync                    # 安装核心依赖
 uv sync --all-extras       # 安装全部依赖（含 decrypt/summary 可选组）
 cp .env.example .env
 
-# Run (Gateway :8000 + Cortex :7999)
+# Run (Gateway :8000 + Chatlog :7998 + Cortex :7999)
 uv run main.py
 
 # Run individually
 uv run -m gateway.main     # Gateway only (:8000)
+uv run -m chatlog.main     # Chatlog only (:7998)
 uv run -m cortex.main      # Cortex only (:7999)
 uv run run_daemon.py       # Daemon (:8001)
 
@@ -48,7 +49,10 @@ per group                              │ 广播
               CortexRuntime  WebhookService   ← MessageListener
               (AI/命令/触发)  (Webhook 转发)
                     │
-                    └── send_message via WS ──▶ Gateway ──▶ Sender
+                    ├── send_message via WS ──▶ Gateway ──▶ Sender
+                    │
+                    └── HTTP ──▶ Chatlog Service (:7998)
+                                (解密/查群/查消息)
 ```
 
 ### Services
@@ -56,8 +60,9 @@ per group                              │ 广播
 | Service | Port | Role |
 |---------|------|------|
 | Gateway | 8000 | WS 消息网关 + REST API + 微信窗口交互 |
+| Chatlog | 7998 | 微信数据库解密/查询（独立数据层服务） |
 | Daemon  | 8001 | Bot 子进程管理（启停/更新） |
-| Cortex  | 7999 | 业务逻辑（AI/命令/触发/Webhook/定时任务）+ Gateway API 代理 |
+| Cortex  | 7999 | 业务逻辑（AI/命令/触发/Webhook/定时任务/群聊总结）+ Gateway/Chatlog API 代理 |
 
 ### Key Components
 
@@ -81,28 +86,32 @@ per group                              │ 广播
 - `utils/screenshot.py` - 截图工具
 - `utils/accessibility.py` - macOS 辅助功能权限检查
 - `storage/message_db.py` - SQLModel ORM 消息去重 (SQLite)
-- `routes/` - REST (health, groups, messages, chatlog) + WS 端点 (`ws.py`)
+- `routes/` - REST (health, groups, messages) + WS 端点 (`ws.py`)
 
-**chatlog/** - 聊天记录模块（独立顶层模块）
+**chatlog/** - 聊天记录独立服务（纯数据层，不依赖 Gateway/Cortex）
 - `__init__.py` - 导出 ChatlogService 和相关模型
+- `asgi.py` - FastAPI app 工厂
+- `main.py` - 独立入口（`uv run -m chatlog.main`）
+- `routes.py` - HTTP 路由（decrypt/groups/messages/group-display-name/health）
 - `service.py` - ChatlogService 统一接口类
-- `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatSummaryRequest 等）
+- `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatlogMessageResponse）
 - `wechat_db.py` - 微信数据库解密 + 消息查询（WeChatDBDecryptor, WeChatDBReader）
-- `summary.py` - 群聊总结生成（LLM 总结 + Markdown → 图片渲染）
-- `summary_service.py` - 总结服务（异步任务调度，SummaryConfig/SummaryResult）
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
 - `runtime.py` - CortexRuntime (MessageListener)：先 trigger 匹配再滑动窗口限速 + ThreadPoolExecutor 处理 AI/命令
 - `asgi.py` - FastAPI app 工厂，组装 listener 注册 + scheduler + lifespan
 - `gateway_client.py` - GatewayClient：纯 WS 客户端，连接/重连/订阅/收发，add_listener 注册 MessageListener
-- `scheduler.py` - TaskScheduler：轮询定时任务，通过 GatewayClient WS 发消息，HTTP 仅用于 groups/summary 查询
+- `scheduler.py` - TaskScheduler：轮询定时任务，通过 GatewayClient WS 发消息，summary 任务本地异步执行
 - `services/ai.py` - httpx.Client 连接池调用 OpenAI API
 - `services/command.py` - httpx.Client 调用命令 API
 - `services/trigger.py` - TriggerMatcher 正则匹配（AI/命令/文本/图片触发）
 - `services/webhook.py` - WebhookService (MessageListener)：SQLModel ORM + ThreadPoolExecutor fire-and-forget
 - `services/scheduled_task.py` - ScheduledTaskService：SQLModel ORM CRUD + cron 调度
-- `routes/` - tasks, webhooks, health, gateway_proxy（代理 Gateway API，返回 (router, client) 由 lifespan 管理 AsyncClient 生命周期）
+- `services/chatlog_client.py` - ChatlogClient：httpx.Client 调用 Chatlog 服务 API
+- `services/summary.py` - 群聊总结核心算法（格式化/排行榜/LLM 调用/Markdown→图片渲染）
+- `services/summary_service.py` - SummaryService：调 chatlog 拉消息，本地 LLM + 渲染，通过 gateway_client WS 发出
+- `routes/` - tasks, webhooks, health, summary, gateway_proxy（代理 Gateway API）, chatlog_proxy（代理 Chatlog API）
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
@@ -129,13 +138,15 @@ per group                              │ 广播
 - **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
 - **comtypes 日志静默**: Windows 上 `comtypes` logger 设为 WARNING 级别，屏蔽 COM 类型库生成的 INFO 日志
 - **WS 订阅优先级**: subscribe 支持 `priority`（int，默认 0）和 `passive`（bool，默认 false）。广播时 passive 客户端始终收到消息，非 passive 只推送给匹配的最高优先级客户端。Cortex 默认 priority=10
-- **chatlog 回调解耦**: chatlog 模块不依赖 Gateway，通过 `SummaryConfig.on_group_complete: Callable[[GroupSummaryOutput], None]` 回调返回总结结果（图片 base64 + 文本），由调用方（gateway routes）决定如何投递消息。chatlog 必须部署在 Gateway 机器（需本地微信数据库访问）
+- **chatlog 独立服务**: chatlog 是纯数据层独立服务（:7998），不依赖 Gateway/Cortex。提供解密/查群/查消息 HTTP API。Cortex 通过 ChatlogClient 调用 chatlog 拉消息，本地跑 LLM 总结 + 渲染，再通过 gateway_client WS 发出。chatlog 需部署在微信数据库所在机器
 
 ## HTTP API
 
-Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`, chatlog 系列
+Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`
 
-Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `GET /api/groups`(代理), `POST /api/send`(代理)
+Chatlog (:7998): `GET /api/chatlog/health`, `POST /api/chatlog/decrypt`, `GET /api/chatlog/groups`, `GET /api/chatlog/messages`, `GET /api/chatlog/group-display-name`
+
+Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理), `POST /api/send`(代理), `GET /api/chatlog/groups`(代理), `GET /api/chatlog/messages`(代理), `POST /api/chatlog/decrypt`(代理)
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`, `GET /ttyd/status`, `POST /ttyd/start|stop|restart`
 
@@ -164,8 +175,10 @@ Server → Client:
 - **GatewayClient 线程**: 独立 asyncio 事件循环，只做 WS 收发 + listener 分发（listener 回调必须非阻塞）
 - **Cortex ThreadPoolExecutor(4)**: AI/命令等阻塞操作从 listener 回调提交到此线程池
 - **Webhook ThreadPoolExecutor(3)**: HTTP POST fire-and-forget
-- **Scheduler 线程**: 5s 轮询定时任务，阻塞操作在此线程内（不影响消息处理）
-- **main.py**: asyncio.gather 运行双 server，异常时通知对方退出
+- **Scheduler 线程**: 5s 轮询定时任务，summary 任务异步提交到 SummaryService worker 线程（不阻塞调度）
+- **Summary worker 线程**: daemon 线程，调 ChatlogClient HTTP 拉消息 + LLM + 渲染 + gateway_client WS 发出
+- **Chatlog 服务**: 独立 uvicorn 进程，sync def 路由（FastAPI 自动线程池），无外部出站网络
+- **main.py**: asyncio.gather 运行三个 server（Gateway + Chatlog + Cortex），异常时通知退出
 
 ## Development Notes
 

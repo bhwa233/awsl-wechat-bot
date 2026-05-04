@@ -1,13 +1,9 @@
 """代理 Gateway API - 供 Cortex 前端调用，避免跨端口请求"""
 
-import logging
-
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
 
 from common.auth import verify_token
-
-logger = logging.getLogger(__name__)
 
 
 def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter, httpx.AsyncClient]:
@@ -28,17 +24,6 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
     async def proxy_send(request: Request):
         body = await request.json()
         resp = await client.post("/api/send", json=body)
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
-
-    @router.get("/api/chatlog/groups", dependencies=[Depends(verify_token)])
-    async def proxy_chatlog_groups():
-        resp = await client.get("/api/chatlog/groups")
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
-
-    @router.post("/api/chatlog/summary", dependencies=[Depends(verify_token)])
-    async def proxy_chatlog_summary(request: Request):
-        body = await request.json()
-        resp = await client.post("/api/chatlog/summary", json=body, timeout=300)
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
     return router, client

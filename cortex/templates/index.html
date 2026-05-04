@@ -698,7 +698,7 @@
             btnText.innerHTML = '<span class="loading"></span> 生成中...';
 
             try {
-                const result = await apiRequest('/api/chatlog/summary', {
+                const result = await apiRequest('/api/summary', {
                     method: 'POST',
                     body: {
                         groups: [{ group_id: groupId, group_name: groupName }]
