@@ -271,9 +271,9 @@ select {
         width: 100%; border-right: none; border-bottom: 1px solid var(--border);
         max-height: none; flex: none; height: auto;
     }
-    .chat-sidebar .sidebar-section-label:last-of-type,
     .chat-sidebar .gateway-list { display: none; }
-    .group-list.chatlog-list { max-height: 35vh; flex: none; }
+    .chat-sidebar .chatlog-list + .sidebar-section-label { display: none; }
+    .group-list.chatlog-list { max-height: 30vh; flex: none; }
     .chat-main { flex: 1; min-height: 0; }
     .form-row { grid-template-columns: 1fr; }
     .info-grid { grid-template-columns: 1fr 1fr; }
