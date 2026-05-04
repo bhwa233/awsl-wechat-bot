@@ -115,8 +115,7 @@ per group                              │ 广播
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
-- `ttyd_manager.py` - TtydProcessManager：ttyd 子进程启停，自动检测 shell（pwsh/powershell/zsh）
-- `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs/ttyd)
+- `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs)
 
 ## Key Patterns
 
@@ -148,7 +147,7 @@ Chatlog (:7998): `GET /api/chatlog/health`, `POST /api/chatlog/decrypt`, `GET /a
 
 Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理), `POST /api/send`(代理), `GET /api/chatlog/groups`(代理), `GET /api/chatlog/messages`(代理), `POST /api/chatlog/decrypt`(代理)
 
-Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`, `GET /ttyd/status`, `POST /ttyd/start|stop|restart`
+Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 
 认证: REST `Authorization: Bearer <HTTP_API_TOKEN>`，WS 首条消息认证 `{"type": "auth", "token": "xxx"}`(hmac.compare_digest)
 

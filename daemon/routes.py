@@ -11,7 +11,6 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 from common.auth import verify_token
 from common.config import config
 from .manager import BotProcessManager
-from .ttyd_manager import TtydProcessManager
 
 logger = logging.getLogger("daemon")
 
@@ -19,14 +18,12 @@ DAEMON_HTML = Path(__file__).parent / "templates" / "index.html"
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 
 manager = BotProcessManager()
-ttyd_manager = TtydProcessManager()
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     manager.start_bot(reason="daemon startup")
     yield
-    ttyd_manager.shutdown()
     manager.shutdown()
 
 
@@ -62,26 +59,6 @@ def stop():
 @app.post("/restart", dependencies=[Depends(verify_token)])
 def restart():
     return manager.restart_bot(reason="API /restart")
-
-
-@app.get("/ttyd/status", dependencies=[Depends(verify_token)])
-def ttyd_status():
-    return ttyd_manager.get_status()
-
-
-@app.post("/ttyd/start", dependencies=[Depends(verify_token)])
-def ttyd_start():
-    return ttyd_manager.start_ttyd(reason="API /ttyd/start")
-
-
-@app.post("/ttyd/stop", dependencies=[Depends(verify_token)])
-def ttyd_stop():
-    return ttyd_manager.stop_ttyd()
-
-
-@app.post("/ttyd/restart", dependencies=[Depends(verify_token)])
-def ttyd_restart():
-    return ttyd_manager.restart_ttyd(reason="API /ttyd/restart")
 
 
 @app.post("/update", dependencies=[Depends(verify_token)])

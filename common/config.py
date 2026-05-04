@@ -90,9 +90,6 @@ class Config(BaseSettings):
     DAEMON_RESTART_DELAY: int = 5
     DAEMON_MAX_RETRIES: int = 10
     DAEMON_LOG_BUFFER_LINES: int = 5000
-    TTYD_HOST: str = "0.0.0.0"
-    TTYD_PORT: int = 7681
-    TTYD_CREDENTIALS: str = ""
 
     # 微信数据库解密/总结配置
     WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
