@@ -54,12 +54,17 @@
                         <input type="text" id="groupSearch" placeholder="搜索群聊..." class="search-input">
                         <button class="btn btn-ghost btn-sm" id="decryptBtn" style="display:none" onclick="decryptChatlog()">解密</button>
                     </div>
+                    <div class="sidebar-send-target" id="sidebarSendTarget" style="display:none">
+                        <select id="sendWindowSelect" class="send-target-select">
+                            <option value="">发送到...</option>
+                        </select>
+                    </div>
                     <div class="sidebar-section-label">聊天记录 (Chatlog)</div>
-                    <div class="group-list" id="chatlogGroupList">
+                    <div class="group-list chatlog-list" id="chatlogGroupList">
                         <div class="empty-hint">加载中...</div>
                     </div>
                     <div class="sidebar-section-label">发送窗口 (Gateway)</div>
-                    <div class="group-list" id="gatewayGroupList" style="max-height:150px">
+                    <div class="group-list gateway-list" id="gatewayGroupList">
                         <div class="empty-hint">加载中...</div>
                     </div>
                 </div>
@@ -80,9 +85,6 @@
                         </div>
                     </div>
                     <div class="chat-input" id="chatInput" style="display:none">
-                        <select id="sendWindowSelect" class="send-target-select">
-                            <option value="">发送到...</option>
-                        </select>
                         <select id="msgType" class="msg-type-select" onchange="toggleChatMsgType()">
                             <option value="text">文本</option>
                             <option value="image">图片</option>

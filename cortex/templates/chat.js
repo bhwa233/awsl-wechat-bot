@@ -105,6 +105,7 @@ function selectChatlogGroup(username) {
     $('chatInput').style.display = '';
     $('chatEmpty').style.display = 'none';
     $('chatlogSelect').style.display = 'none';
+    $('sidebarSendTarget').style.display = '';
 
     const displayName = groupMapping[username] || username;
     $('chatGroupName').textContent = displayName;

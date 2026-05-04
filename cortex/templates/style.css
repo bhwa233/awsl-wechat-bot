@@ -102,11 +102,17 @@ body {
     flex: 1; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
     font-size: 13px; background: var(--input-bg); color: var(--text);
 }
-.group-list { flex: 1; overflow-y: auto; }
+.group-list { overflow-y: auto; }
+.group-list.chatlog-list { flex: 1; min-height: 0; }
+.group-list.gateway-list { max-height: 150px; flex-shrink: 0; }
 .sidebar-section-label {
     font-size: 10px; font-weight: 700; color: var(--text2); text-transform: uppercase;
     letter-spacing: 0.5px; padding: 6px 14px 2px; border-bottom: 1px solid var(--border);
 }
+.sidebar-send-target {
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+}
+.sidebar-send-target .send-target-select { width: 100%; }
 .send-target-select {
     padding: 4px 8px; border: 1px solid var(--amber); border-radius: 6px;
     font-size: 11px; background: var(--input-bg); color: var(--text);
