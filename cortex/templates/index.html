@@ -2,1086 +2,189 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AWSL WeChat Bot</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#22c55e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="AWSL Bot">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
     <script>
-        (function() {
-            var saved = localStorage.getItem('bot_theme');
-            if (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches) saved = 'dark';
-            if (saved) document.documentElement.setAttribute('data-theme', saved);
-        })();
+        (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div class="container">
+    <div class="app">
         <div class="header">
-            <div class="header-top">
-                <div>
-                    <h1>AWSL WeChat Bot</h1>
-                    <p class="subtitle">微信机器人控制中心 &middot; 消息推送 & 定时任务管理</p>
-                </div>
-                <button class="theme-toggle" onclick="toggleTheme()" title="切换主题">
-                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="5"></circle>
-                        <line x1="12" y1="1" x2="12" y2="3"></line>
-                        <line x1="12" y1="21" x2="12" y2="23"></line>
-                        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
-                        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
-                        <line x1="1" y1="12" x2="3" y2="12"></line>
-                        <line x1="21" y1="12" x2="23" y2="12"></line>
-                        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
-                        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
-                    </svg>
-                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-                    </svg>
+            <div class="header-left">
+                <h1>AWSL WeChat Bot</h1>
+                <div class="status-row"><div class="status-dot"></div><span id="statusText">加载中...</span></div>
+            </div>
+            <div class="header-right">
+                <button class="theme-btn" onclick="toggleTheme()" title="切换主题">
+                    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 </button>
             </div>
-            <div class="status-row">
-                <div class="status-dot"></div>
-                <span id="statusText">加载中...</span>
-            </div>
+        </div>
 
-            <div id="authSection" class="auth-section">
-                <span class="auth-label">API Token</span>
-                <div class="auth-input-group">
-                    <input type="password" id="authToken" placeholder="输入 Bearer Token...">
-                    <button type="button" class="btn-auth" onclick="saveToken()">保存</button>
-                    <button type="button" class="btn-auth" onclick="clearToken()" style="background: var(--text-muted);">清除</button>
-                </div>
-                <div id="authStatus" class="auth-status"></div>
+        <div id="authSection" class="auth-bar" style="display:none">
+            <span class="auth-label" id="authStatus">API Token</span>
+            <div class="auth-row">
+                <input type="password" id="authToken" placeholder="输入 Bearer Token...">
+                <button class="btn btn-green btn-sm" onclick="saveToken()">保存</button>
+                <button class="btn btn-ghost btn-sm" onclick="clearToken()">清除</button>
             </div>
         </div>
 
         <div class="tabs">
-            <button class="tab active" data-tab="send">发送消息</button>
+            <button class="tab active" data-tab="chat">聊天</button>
             <button class="tab" data-tab="tasks">定时任务</button>
             <button class="tab" data-tab="webhooks">Webhook</button>
         </div>
 
-        <!-- 发送消息面板 -->
-        <div id="send-panel" class="content-panel active">
-            <div class="panel">
-                <h2 class="panel-title">发送消息到群聊</h2>
-                <form id="sendForm">
-                    <div class="form-group">
-                        <label for="groupSelect">选择群聊</label>
-                        <select id="groupSelect" required>
-                            <option value="">正在加载群聊列表...</option>
+        <!-- ==================== 聊天 Tab ==================== -->
+        <div class="panel active" id="chat-panel">
+            <div class="chat-layout">
+                <div class="chat-sidebar">
+                    <div class="sidebar-top">
+                        <input type="text" id="groupSearch" placeholder="搜索群聊..." class="search-input">
+                        <button class="btn btn-ghost btn-sm" id="decryptBtn" style="display:none" onclick="decryptChatlog()">解密</button>
+                    </div>
+                    <div class="sidebar-section-label">聊天记录 (Chatlog)</div>
+                    <div class="group-list" id="chatlogGroupList">
+                        <div class="empty-hint">加载中...</div>
+                    </div>
+                    <div class="sidebar-section-label">发送窗口 (Gateway)</div>
+                    <div class="group-list" id="gatewayGroupList" style="max-height:150px">
+                        <div class="empty-hint">加载中...</div>
+                    </div>
+                </div>
+                <div class="chat-main">
+                    <div class="chat-header" id="chatHeader" style="display:none">
+                        <div class="chat-header-left">
+                            <span id="chatGroupName" class="chat-title"></span>
+                            <input type="date" id="chatDate" onchange="onChatDateChange()" class="date-input">
+                        </div>
+                        <button class="btn btn-green btn-sm" id="summaryBtn" onclick="triggerSummary()">总结</button>
+                        <button class="btn btn-ghost btn-sm" onclick="refreshCurrentChat()">刷新</button>
+                    </div>
+                    <div id="chatlogSelect" style="display:none"></div>
+                    <div class="messages" id="messages">
+                        <div class="chat-empty" id="chatEmpty">
+                            <div class="chat-empty-icon">💬</div>
+                            <p>选择一个群聊开始</p>
+                        </div>
+                    </div>
+                    <div class="chat-input" id="chatInput" style="display:none">
+                        <select id="sendWindowSelect" class="send-target-select">
+                            <option value="">发送到...</option>
                         </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="sendMessageType">消息类型</label>
-                        <select id="sendMessageType" onchange="toggleSendMessageType()">
-                            <option value="text">文本消息</option>
-                            <option value="image">图片消息</option>
-                            <option value="file">文件消息</option>
-                            <option value="summary">群聊总结</option>
+                        <select id="msgType" class="msg-type-select" onchange="toggleChatMsgType()">
+                            <option value="text">文本</option>
+                            <option value="image">图片</option>
+                            <option value="file">文件</option>
                         </select>
-                    </div>
-
-                    <div class="form-group" id="sendTextGroup">
-                        <label for="messageText">消息内容</label>
-                        <textarea id="messageText" placeholder="输入要发送的消息..."></textarea>
-                    </div>
-
-                    <div class="form-group" id="sendImageGroup" style="display: none;">
-                        <label for="sendImageInput">选择图片</label>
-                        <input type="file" id="sendImageInput" accept="image/*" onchange="previewSendImage(event)">
-                        <div id="sendImagePreview" class="img-preview">
-                            <img id="sendImagePreviewImg">
+                        <div id="chatTextInput" class="chat-input-body">
+                            <textarea id="msgInput" placeholder="输入消息... (Enter 发送)" rows="1"></textarea>
                         </div>
-                    </div>
-
-                    <div class="form-group" id="sendFileGroup" style="display: none;">
-                        <label for="sendFileInput">选择文件</label>
-                        <input type="file" id="sendFileInput" onchange="previewSendFile(event)">
-                        <div id="sendFilePreview" class="cron-help" style="display: none; margin-top: 10px;">
-                            <div class="cron-help-title">已选择文件</div>
-                            <p id="sendFileName" style="font-size: 12px; color: var(--yellow); margin: 8px 0 0;"></p>
+                        <div id="chatFileInput" class="chat-input-body" style="display:none">
+                            <input type="file" id="chatFileSelect" onchange="onChatFileSelect(event)">
+                            <span id="chatFileInfo" class="file-info"></span>
                         </div>
+                        <button class="btn btn-green" id="sendMsgBtn" onclick="sendChatMessage()">发送</button>
                     </div>
-
-                    <div id="sendSummaryGroup" style="display: none;">
-                        <div class="cron-help" style="margin-bottom: 14px;">
-                            <div class="cron-help-title">群聊总结说明</div>
-                            <p style="font-size: 12px; color: var(--yellow); margin-bottom: 8px;">
-                                自动解密数据库、获取今日聊天记录、AI 生成总结并发送图片+文本到上方选择的群聊。
-                            </p>
-                            <p style="font-size: 11px; color: var(--yellow);">
-                                需要在服务器配置 WECHAT_DB_* 环境变量。群聊 ID 格式如 xxx@chatroom。
-                            </p>
-                        </div>
-                        <div class="form-group">
-                            <label for="summaryGroupId">来源群聊</label>
-                            <select id="summaryGroupId">
-                                <option value="">加载中...</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn" id="sendBtn">
-                        <span id="btnText">发送消息</span>
-                    </button>
-                </form>
-
-                <div id="sendResultMessage" class="message"></div>
+                </div>
             </div>
         </div>
 
-        <!-- 定时任务面板 -->
-        <div id="tasks-panel" class="content-panel">
-            <div class="panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2 class="panel-title" style="margin: 0;">定时任务列表</h2>
-                    <button class="btn btn-small" onclick="taskCrud.showForm()">+ 新建任务</button>
+        <!-- ==================== 定时任务 Tab ==================== -->
+        <div class="panel" id="tasks-panel">
+            <div class="panel-header">
+                <div>
+                    <span class="panel-title">定时任务</span>
+                    <span class="panel-sub" id="timezoneInfo"></span>
                 </div>
-
-                <div id="tasksList" class="tasks-list">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">&#9201;</div>
-                        <p>暂无定时任务</p>
-                    </div>
-                </div>
+                <button class="btn btn-green btn-sm" onclick="taskCrud.showForm(); updateTargetGroupsCheckboxes();">新建任务</button>
             </div>
-
-            <!-- 创建/编辑任务表单 -->
-            <div id="taskFormPanel" class="panel" style="display: none;">
-                <h2 class="panel-title" id="taskFormTitle">新建定时任务</h2>
-
-                <div class="cron-help">
-                    <div class="cron-help-title">Cron 表达式格式</div>
-                    <div class="cron-examples">
-                        <div class="cron-example"><code>* * * * *</code> 每分钟</div>
-                        <div class="cron-example"><code>0 * * * *</code> 每小时</div>
-                        <div class="cron-example"><code>0 9 * * *</code> 每天 9:00</div>
-                        <div class="cron-example"><code>0 9 * * 1</code> 每周一 9:00</div>
-                        <div class="cron-example"><code>0 9 1 * *</code> 每月1号 9:00</div>
-                        <div class="cron-example"><code>*/30 * * * *</code> 每30分钟</div>
-                    </div>
-                    <p style="margin-top: 10px; font-size: 11px; color: var(--yellow);">
-                        格式: <code style="background: rgba(251,191,36,0.15); padding: 1px 5px; border-radius: 4px;">分 时 日 月 星期</code>
-                    </p>
-                    <p id="timezoneInfo" style="margin-top: 8px; font-size: 11px; color: var(--yellow); font-weight: 600;">
-                        时区: 加载中...
-                    </p>
-                </div>
-
+            <div id="tasksList"></div>
+            <div id="taskFormPanel" class="form-panel" style="display:none">
+                <h3 id="taskFormTitle">新建定时任务</h3>
                 <form id="taskForm">
                     <input type="hidden" id="taskId">
-
+                    <div class="form-group"><label>任务名称</label><input type="text" id="taskName" required></div>
                     <div class="form-group">
-                        <label for="taskName">任务名称</label>
-                        <input type="text" id="taskName" placeholder="例如：每日早安问候" required>
+                        <label>Cron 表达式</label>
+                        <input type="text" id="cronExpression" placeholder="* * * * *" required>
+                        <div class="help-text">分 时 日 月 周 · 例: <code>0 9 * * *</code> = 每天9点 · <code>*/30 * * * *</code> = 每30分钟</div>
                     </div>
-
                     <div class="form-row">
-                        <div class="form-group">
-                            <label for="cronExpression">Cron 表达式</label>
-                            <input type="text" id="cronExpression" placeholder="0 9 * * *" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="taskEnabled">任务状态</label>
-                            <select id="taskEnabled">
-                                <option value="true">启用</option>
-                                <option value="false">禁用</option>
-                            </select>
-                        </div>
+                        <div class="form-group"><label>状态</label><select id="taskEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
+                        <div class="form-group"><label>任务类型</label><select id="taskType" onchange="toggleTaskFormMode()"><option value="send">发送消息</option><option value="summary">群聊总结</option></select></div>
                     </div>
-
-                    <div class="form-group">
-                        <label for="taskType">任务类型</label>
-                        <select id="taskType" onchange="toggleTaskFormMode()">
-                            <option value="send">发送消息</option>
-                            <option value="summary">群聊总结</option>
-                        </select>
+                    <div class="form-group" id="taskMessageTypeGroup"><label>消息类型</label><select id="taskMessageType" onchange="toggleTaskMessageType()"><option value="text">文本</option><option value="image">图片</option><option value="file">文件</option></select></div>
+                    <div class="form-group" id="taskTextGroup"><label>消息内容</label><textarea id="taskMessage" rows="3"></textarea></div>
+                    <div class="form-group" id="taskImageGroup" style="display:none"><label>图片</label><input type="file" accept="image/*" onchange="previewTaskImage(event)"><div id="taskImagePreview" style="display:none"><img id="taskImagePreviewImg" style="max-width:200px;max-height:120px;border-radius:4px;margin-top:8px"></div></div>
+                    <div class="form-group" id="taskFileGroup" style="display:none"><label>文件</label><input type="file" onchange="previewTaskFile(event)"><div id="taskFilePreview" style="display:none"><span id="taskFileName"></span></div></div>
+                    <div class="form-group" id="taskSummaryGroup" style="display:none">
+                        <label>总结配置</label>
+                        <div id="summaryRows"></div>
+                        <button type="button" class="btn btn-ghost btn-sm" onclick="addSummaryRow()">+ 添加群聊</button>
                     </div>
-
-                    <div class="form-group" id="taskMessageTypeGroup">
-                        <label for="taskMessageType">消息类型</label>
-                        <select id="taskMessageType" onchange="toggleTaskMessageType()">
-                            <option value="text">文本消息</option>
-                            <option value="image">图片消息</option>
-                            <option value="file">文件消息</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" id="taskTextGroup">
-                        <label for="taskMessage">消息内容</label>
-                        <textarea id="taskMessage" placeholder="输入要定时发送的消息内容..."></textarea>
-                    </div>
-
-                    <div class="form-group" id="taskImageGroup" style="display: none;">
-                        <label for="taskImageInput">选择图片</label>
-                        <input type="file" id="taskImageInput" accept="image/*" onchange="previewTaskImage(event)">
-                        <div id="taskImagePreview" class="img-preview">
-                            <img id="taskImagePreviewImg">
-                        </div>
-                    </div>
-
-                    <div class="form-group" id="taskFileGroup" style="display: none;">
-                        <label for="taskFileInput">选择文件</label>
-                        <input type="file" id="taskFileInput" onchange="previewTaskFile(event)">
-                        <div id="taskFilePreview" class="cron-help" style="display: none; margin-top: 10px;">
-                            <div class="cron-help-title">已选择文件</div>
-                            <p id="taskFileName" style="font-size: 12px; color: var(--yellow); margin: 8px 0 0;"></p>
-                        </div>
-                    </div>
-
-                    <div class="form-group" id="taskSummaryGroup" style="display: none;">
-                        <div class="cron-help" style="margin-bottom: 14px;">
-                            <div class="cron-help-title">群聊总结配置说明</div>
-                            <p style="font-size: 12px; color: var(--yellow); margin-bottom: 8px;">
-                                群聊总结会自动解密数据库、获取聊天记录、生成 AI 总结并发送图片到群聊。
-                            </p>
-                            <p style="font-size: 11px; color: var(--yellow);">
-                                数据库路径和密钥使用服务器环境变量配置 (WECHAT_DB_*)，此处只需配置目标群聊。
-                            </p>
-                        </div>
-                        <label for="taskSummaryConfig">目标群聊 (JSON)</label>
-                        <textarea id="taskSummaryConfig" style="min-height: 120px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace;" placeholder='{
-  "groups": [
-    {"group_id": "xxx@chatroom", "group_name": "群聊名称"}
-  ]
-}'></textarea>
-                    </div>
-
-                    <div class="form-group" id="taskTargetGroupsGroup">
-                        <label>目标群组（不选择则发送到所有群）</label>
-                        <div id="targetGroupsCheckboxes" class="checkbox-group"></div>
-                    </div>
-
-                    <div style="display: flex; gap: 10px;">
-                        <button type="submit" class="btn" id="taskFormBtn">
-                            <span id="taskFormBtnText">创建任务</span>
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="taskCrud.hideForm()">取消</button>
+                    <div class="form-group" id="taskTargetGroupsGroup"><label>目标群组（空=全部）</label><div id="targetGroupsCheckboxes" class="checkbox-group"></div></div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-green" id="taskFormBtn">创建任务</button>
+                        <button type="button" class="btn btn-ghost" onclick="taskCrud.hideForm()">取消</button>
                     </div>
                 </form>
-
-                <div id="taskFormResultMessage" class="message"></div>
             </div>
         </div>
 
-        <!-- Webhook 面板 -->
-        <div id="webhooks-panel" class="content-panel">
-            <div class="panel">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                    <h2 class="panel-title" style="margin: 0;">Webhook 列表</h2>
-                    <button class="btn btn-small" onclick="webhookCrud.showForm()">+ 新建 Webhook</button>
-                </div>
-
-                <div id="webhooksList" class="tasks-list">
-                    <div class="empty-state">
-                        <div class="empty-state-icon">&#128279;</div>
-                        <p>暂无 Webhook</p>
-                    </div>
-                </div>
+        <!-- ==================== Webhook Tab ==================== -->
+        <div class="panel" id="webhooks-panel">
+            <div class="panel-header">
+                <span class="panel-title">Webhook</span>
+                <button class="btn btn-green btn-sm" onclick="webhookCrud.showForm()">新建 Webhook</button>
             </div>
-
-            <!-- 创建/编辑 Webhook 表单 -->
-            <div id="webhookFormPanel" class="panel" style="display: none;">
-                <h2 class="panel-title" id="webhookFormTitle">新建 Webhook</h2>
-
-                <div class="cron-help">
-                    <div class="cron-help-title">占位符说明</div>
-                    <div class="cron-examples">
-                        <div class="cron-example"><code>{{group_name}}</code> 群名</div>
-                        <div class="cron-example"><code>{{message}}</code> 消息原文</div>
-                    </div>
-                    <p style="margin-top: 10px; font-size: 11px; color: var(--yellow);">
-                        Headers 和 Body 模板均支持占位符替换，Body 需为合法 JSON 字符串
-                    </p>
-                </div>
-
+            <div id="webhooksList"></div>
+            <div id="webhookFormPanel" class="form-panel" style="display:none">
+                <h3 id="webhookFormTitle">新建 Webhook</h3>
                 <form id="webhookForm">
                     <input type="hidden" id="webhookId">
-
-                    <div class="form-group">
-                        <label for="webhookName">名称</label>
-                        <input type="text" id="webhookName" placeholder="例如：消息转发到飞书" required>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="webhookUrl">URL</label>
-                        <input type="text" id="webhookUrl" placeholder="https://example.com/webhook" required>
-                    </div>
-
+                    <div class="form-group"><label>名称</label><input type="text" id="webhookName" required></div>
+                    <div class="form-group"><label>URL</label><input type="url" id="webhookUrl" required></div>
                     <div class="form-row">
-                        <div class="form-group">
-                            <label for="webhookGroupFilter">群聊过滤（正则，留空匹配全部）</label>
-                            <input type="text" id="webhookGroupFilter" placeholder="例如：测试群|开发群">
-                        </div>
-                        <div class="form-group">
-                            <label for="webhookMessageFilter">消息过滤（正则，留空匹配全部）</label>
-                            <input type="text" id="webhookMessageFilter" placeholder="例如：关键词|通知">
-                        </div>
+                        <div class="form-group"><label>群聊过滤 (正则)</label><input type="text" id="webhookGroupFilter" placeholder="空=全部"></div>
+                        <div class="form-group"><label>消息过滤 (正则)</label><input type="text" id="webhookMessageFilter" placeholder="空=全部"></div>
                     </div>
-
+                    <div class="form-group"><label>Headers (JSON)</label><textarea id="webhookHeaders" rows="2" style="font-family:monospace">{}</textarea></div>
                     <div class="form-group">
-                        <label for="webhookHeaders">Headers (JSON)</label>
-                        <textarea id="webhookHeaders" style="min-height: 60px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace;" placeholder='{"Content-Type": "application/json"}'>{}</textarea>
+                        <label>Body 模板 (JSON)</label>
+                        <textarea id="webhookBodyTemplate" rows="3" style="font-family:monospace">{}</textarea>
+                        <div class="help-text">占位符: <code>{{group_name}}</code> 群名 · <code>{{message}}</code> 消息原文</div>
                     </div>
-
-                    <div class="form-group">
-                        <label for="webhookBodyTemplate">Body 模板 (JSON)</label>
-                        <textarea id="webhookBodyTemplate" style="min-height: 100px; font-family: 'Cascadia Code','Fira Code','Consolas',monospace;" placeholder='{"group": "{{group_name}}", "text": "{{message}}"}'>{}</textarea>
+                    <div class="form-row">
+                        <div class="form-group"><label>状态</label><select id="webhookEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
+                        <div class="form-group"><label>回复模式</label><select id="webhookReplyMode" onchange="toggleReplyJsonPath()"><option value="none">不回复</option><option value="text">纯文本</option><option value="jsonpath">JSONPath</option></select></div>
                     </div>
-
-                    <div class="form-group">
-                        <label for="webhookEnabled">状态</label>
-                        <select id="webhookEnabled">
-                            <option value="true">启用</option>
-                            <option value="false">禁用</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="webhookReplyMode">回复模式</label>
-                        <select id="webhookReplyMode" onchange="toggleReplyJsonPath()">
-                            <option value="none">不回复</option>
-                            <option value="text">纯文本</option>
-                            <option value="jsonpath">JSONPath 提取</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" id="replyJsonPathGroup" style="display: none;">
-                        <label for="webhookReplyJsonPath">JSONPath 表达式</label>
-                        <input type="text" id="webhookReplyJsonPath" placeholder="例如：$.message 或 $.data.reply">
-                    </div>
-
-                    <div style="display: flex; gap: 10px;">
-                        <button type="submit" class="btn" id="webhookFormBtn">
-                            <span id="webhookFormBtnText">创建 Webhook</span>
-                        </button>
-                        <button type="button" class="btn btn-secondary" onclick="webhookCrud.hideForm()">取消</button>
+                    <div class="form-group" id="replyJsonPathGroup" style="display:none"><label>JSONPath 表达式</label><input type="text" id="webhookReplyJsonPath" placeholder="$.data.reply"></div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-green" id="webhookFormBtn">创建 Webhook</button>
+                        <button type="button" class="btn btn-ghost" onclick="webhookCrud.hideForm()">取消</button>
                     </div>
                 </form>
-
-                <div id="webhookFormResultMessage" class="message"></div>
             </div>
-        </div>
-
-        <div class="footer">
-            <p>API 文档: <a href="/docs" target="_blank">/docs</a> &middot; Powered by FastAPI + AWSL Bot</p>
         </div>
     </div>
 
-    <script>
-        const API_BASE = '';
-        let allGroups = [];
-        let authEnabled = false;
-
-        const $ = id => document.getElementById(id);
-
-        // ==================== Token 管理 ====================
-        function getToken() {
-            return localStorage.getItem('awsl_api_token') || '';
-        }
-
-        function saveToken() {
-            const token = $('authToken').value.trim();
-            if (token) {
-                localStorage.setItem('awsl_api_token', token);
-                updateAuthUI();
-                loadGroups();
-            }
-        }
-
-        function clearToken() {
-            localStorage.removeItem('awsl_api_token');
-            $('authToken').value = '';
-            updateAuthUI();
-            loadGroups();
-        }
-
-        function updateAuthUI() {
-            const token = getToken();
-            const authSection = $('authSection');
-            const authStatus = $('authStatus');
-
-            if (authEnabled) {
-                authSection.style.display = 'block';
-                if (token) {
-                    authSection.classList.add('authenticated');
-                    authStatus.textContent = 'Token 已保存';
-                    $('authToken').value = token;
-                } else {
-                    authSection.classList.remove('authenticated');
-                    authStatus.textContent = '服务器已启用认证，请输入 Token（必填）';
-                }
-            } else {
-                authSection.style.display = 'none';
-            }
-        }
-
-        // ==================== API 请求 ====================
-        function getAuthHeaders() {
-            const headers = { 'Content-Type': 'application/json' };
-            const token = getToken();
-            if (token) headers['Authorization'] = `Bearer ${token}`;
-            return headers;
-        }
-
-        async function apiRequest(endpoint, options = {}) {
-            const { method = 'GET', body = null, errorMsg = '请求失败' } = options;
-            try {
-                const fetchOptions = { method, headers: getAuthHeaders() };
-                if (body) fetchOptions.body = JSON.stringify(body);
-                const response = await fetch(`${API_BASE}${endpoint}`, fetchOptions);
-                if (response.status === 401) {
-                    return { ok: false, error: '认证失败，请检查 Token', status: 401 };
-                }
-                const data = await response.json();
-                return { ok: response.ok, data, status: response.status };
-            } catch (error) {
-                console.error(`${errorMsg}:`, error);
-                return { ok: false, error: '网络错误，请重试' };
-            }
-        }
-
-        // ==================== UI 工具 ====================
-        function showMessage(elementId, text, type) {
-            const msgEl = $(elementId);
-            msgEl.textContent = text;
-            msgEl.className = `message ${type}`;
-            msgEl.style.display = 'block';
-            setTimeout(() => { msgEl.style.display = 'none'; }, 5000);
-        }
-
-        function previewImage(event, base64Setter, previewImgId, previewContainerId) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                base64Setter(e.target.result.split(',')[1]);
-                $(previewImgId).src = e.target.result;
-                $(previewContainerId).style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-        }
-
-        function previewBinaryFile(event, state, nameElementId, previewContainerId) {
-            const file = event.target.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                state.message = e.target.result.split(',')[1];
-                state.filename = file.name;
-                $(nameElementId).textContent = file.name;
-                $(previewContainerId).style.display = 'block';
-            };
-            reader.readAsDataURL(file);
-        }
-
-        function resetUploadState(state, previewContainerId, extra = () => {}) {
-            state.message = '';
-            state.filename = '';
-            const previewEl = $(previewContainerId);
-            if (previewEl) previewEl.style.display = 'none';
-            extra();
-        }
-
-        const sendImageState = { message: '', filename: '' };
-        const sendFileState = { message: '', filename: '' };
-        const taskImageState = { message: '', filename: '' };
-        const taskFileState = { message: '', filename: '' };
-
-        function toggleSendMessageType() {
-            const messageType = $('sendMessageType').value;
-            $('sendTextGroup').style.display = messageType === 'text' ? 'block' : 'none';
-            $('sendImageGroup').style.display = messageType === 'image' ? 'block' : 'none';
-            $('sendFileGroup').style.display = messageType === 'file' ? 'block' : 'none';
-            $('sendSummaryGroup').style.display = messageType === 'summary' ? 'block' : 'none';
-            $('btnText').textContent = messageType === 'summary' ? '生成总结' : '发送消息';
-            if (messageType === 'summary') loadChatlogGroups();
-        }
-
-        function toggleTaskFormMode() {
-            const taskType = $('taskType').value;
-            $('taskMessageTypeGroup').style.display = taskType === 'send' ? 'block' : 'none';
-            $('taskSummaryGroup').style.display = taskType === 'summary' ? 'block' : 'none';
-            $('taskTargetGroupsGroup').style.display = taskType === 'send' ? 'block' : 'none';
-            if (taskType === 'send') {
-                toggleTaskMessageType();
-                return;
-            }
-            $('taskTextGroup').style.display = 'none';
-            $('taskImageGroup').style.display = 'none';
-            $('taskFileGroup').style.display = 'none';
-        }
-
-        function toggleTaskMessageType() {
-            const messageType = $('taskMessageType').value;
-            const taskType = $('taskType').value;
-            if (taskType !== 'send') {
-                $('taskTextGroup').style.display = 'none';
-                $('taskImageGroup').style.display = 'none';
-                $('taskFileGroup').style.display = 'none';
-                return;
-            }
-            $('taskTextGroup').style.display = messageType === 'text' ? 'block' : 'none';
-            $('taskImageGroup').style.display = messageType === 'image' ? 'block' : 'none';
-            $('taskFileGroup').style.display = messageType === 'file' ? 'block' : 'none';
-        }
-
-        function previewSendImage(event) {
-            previewImage(event, v => sendImageState.message = v, 'sendImagePreviewImg', 'sendImagePreview');
-            sendImageState.filename = '';
-        }
-
-        function previewTaskImage(event) {
-            previewImage(event, v => taskImageState.message = v, 'taskImagePreviewImg', 'taskImagePreview');
-            taskImageState.filename = '';
-        }
-
-        function previewSendFile(event) {
-            previewBinaryFile(event, sendFileState, 'sendFileName', 'sendFilePreview');
-        }
-
-        function previewTaskFile(event) {
-            previewBinaryFile(event, taskFileState, 'taskFileName', 'taskFilePreview');
-        }
-
-        // ==================== Tab 切换 ====================
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                const targetTab = tab.dataset.tab;
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                document.querySelectorAll('.content-panel').forEach(p => p.classList.remove('active'));
-                $(`${targetTab}-panel`).classList.add('active');
-                if (targetTab === 'tasks') {
-                    taskCrud.load();
-                    loadServerInfo();
-                } else if (targetTab === 'webhooks') {
-                    webhookCrud.load();
-                }
-            });
-        });
-
-        // ==================== 数据加载 ====================
-        async function loadServerInfo() {
-            const result = await apiRequest('/api/health', { errorMsg: '加载服务器信息失败' });
-            if (result.ok && result.data) {
-                const info = result.data;
-                if (info.auth_enabled !== undefined) {
-                    authEnabled = info.auth_enabled;
-                    updateAuthUI();
-                }
-                if (info.timezone && info.server_time) {
-                    const serverTime = new Date(info.server_time);
-                    const timeStr = serverTime.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-                    $('timezoneInfo').textContent =
-                        `服务器时区: ${info.timezone} (UTC${info.timezone_offset}) · 当前服务器时间: ${timeStr}`;
-                }
-            } else {
-                $('timezoneInfo').textContent = '时区: 服务器本地时区（所有时间基于服务器时区）';
-            }
-        }
-
-        async function loadGroups() {
-            const result = await apiRequest('/api/groups', { errorMsg: '加载群组失败' });
-
-            if (result.status === 401) {
-                $('statusText').textContent = '认证失败，请检查 Token';
-                showMessage('sendResultMessage', '认证失败，请输入正确的 Token', 'error');
-                return;
-            }
-
-            if (!result.ok) {
-                $('statusText').textContent = '连接失败';
-                showMessage('sendResultMessage', '无法连接到服务器', 'error');
-                return;
-            }
-
-            allGroups = result.data;
-            const select = $('groupSelect');
-            select.innerHTML = '';
-
-            if (allGroups.length === 0) {
-                select.innerHTML = '<option value="">暂无可用群聊</option>';
-                $('statusText').textContent = '未检测到群聊窗口';
-                return;
-            }
-
-            allGroups.forEach(group => {
-                const option = document.createElement('option');
-                option.value = group.name;
-                option.textContent = `${group.name} ${group.active ? '' : '(已关闭)'}`;
-                option.disabled = !group.active;
-                select.appendChild(option);
-            });
-
-            updateTargetGroupsCheckboxes();
-            $('statusText').textContent = `服务运行中 · ${allGroups.length} 个群聊`;
-        }
-
-        function updateTargetGroupsCheckboxes() {
-            const container = $('targetGroupsCheckboxes');
-            container.innerHTML = '';
-            allGroups.forEach(group => {
-                const label = document.createElement('label');
-                label.className = 'checkbox-item';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.value = group.name;
-                checkbox.name = 'targetGroups';
-                label.appendChild(checkbox);
-                label.appendChild(document.createTextNode(group.name));
-                container.appendChild(label);
-            });
-        }
-
-        // ==================== 消息发送 ====================
-        async function sendMessage(outgoing) {
-            const btn = $('sendBtn');
-            const btnText = $('btnText');
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="loading"></span> 发送中...';
-
-            try {
-                const result = await apiRequest('/api/send', {
-                    method: 'POST',
-                    body: outgoing,
-                    errorMsg: '发送失败'
-                });
-
-                if (result.ok) {
-                    showMessage('sendResultMessage', '消息发送成功', 'success');
-                    const messageTextEl = $('messageText');
-                    if (messageTextEl) messageTextEl.value = '';
-                    resetUploadState(sendImageState, 'sendImagePreview', () => {
-                        $('sendImagePreviewImg').src = '';
-                    });
-                    resetUploadState(sendFileState, 'sendFilePreview', () => {
-                        $('sendFileName').textContent = '';
-                    });
-                } else {
-                    showMessage('sendResultMessage', result.data?.detail || result.error || '发送失败', 'error');
-                }
-            } finally {
-                btn.disabled = false;
-                btnText.textContent = '发送消息';
-            }
-        }
-
-        // ==================== 群聊总结 ====================
-        let chatlogGroupsLoaded = false;
-
-        async function loadChatlogGroups() {
-            if (chatlogGroupsLoaded) return;
-            const select = $('summaryGroupId');
-            const result = await apiRequest('/api/chatlog/groups', { errorMsg: '加载群聊列表失败' });
-            if (!result.ok) {
-                select.innerHTML = '<option value="">加载失败</option>';
-                return;
-            }
-            const groups = result.data;
-            if (!groups || groups.length === 0) {
-                select.innerHTML = '<option value="">暂无群聊（请检查数据库配置）</option>';
-                return;
-            }
-            select.innerHTML = groups.map(g => {
-                const name = g.display_name || g.nick_name || g.username;
-                return `<option value="${g.username}" data-name="${name}">${name} (${g.username})</option>`;
-            }).join('');
-            chatlogGroupsLoaded = true;
-        }
-
-        async function triggerSummary(groupName, groupId) {
-            const btn = $('sendBtn');
-            const btnText = $('btnText');
-            btn.disabled = true;
-            btnText.innerHTML = '<span class="loading"></span> 生成中...';
-
-            try {
-                const result = await apiRequest('/api/summary', {
-                    method: 'POST',
-                    body: {
-                        groups: [{ group_id: groupId, group_name: groupName }]
-                    },
-                    errorMsg: '触发总结失败'
-                });
-
-                if (result.ok && result.data?.success) {
-                    showMessage('sendResultMessage', result.data.message || '总结任务已启动', 'success');
-                } else {
-                    showMessage('sendResultMessage', result.data?.message || result.data?.detail || result.error || '触发失败', 'error');
-                }
-            } finally {
-                btn.disabled = false;
-                btnText.textContent = '生成总结';
-            }
-        }
-
-        // ==================== CrudManager ====================
-        function infoItem(label, value, style) {
-            return `<div class="task-info-item"><div class="task-info-label">${label}</div><div class="task-info-value"${style ? ` style="${style}"` : ''}>${value}</div></div>`;
-        }
-
-        function itemHeader(name, enabled) {
-            return `<div class="task-header"><div><div class="task-title">${name}</div><span class="task-status ${enabled ? 'enabled' : 'disabled'}">${enabled ? '已启用' : '已禁用'}</span></div></div>`;
-        }
-
-        function itemActions(crudName, id, enabled, extraBtns) {
-            return `<div class="task-actions">${extraBtns || ''}<button class="btn btn-small" onclick="${crudName}.edit(${id})">编辑</button><button class="btn btn-small ${enabled ? 'btn-secondary' : ''}" onclick="${crudName}.toggle(${id}, ${enabled})">${enabled ? '禁用' : '启用'}</button><button class="btn btn-small btn-danger" onclick="${crudName}.delete(${id})">删除</button></div>`;
-        }
-
-        class CrudManager {
-            constructor(config) {
-                this.cfg = config;
-                this.editingId = null;
-                $(config.formId).addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const btn = $(config.formId.replace('Form', 'FormBtn'));
-                    const btnText = $(config.formBtnTextId);
-                    const originalText = btnText.textContent;
-                    btn.disabled = true;
-                    btnText.innerHTML = '<span class="loading"></span> 处理中...';
-                    try {
-                        const data = config.getFormData();
-                        if (data === null) return;
-                        const url = this.editingId ? `${config.apiPath}/${this.editingId}` : config.apiPath;
-                        const method = this.editingId ? 'PUT' : 'POST';
-                        const result = await apiRequest(url, { method, body: data, errorMsg: '提交失败' });
-                        if (result.ok) {
-                            showMessage(config.messageId, this.editingId ? config.updateSuccessText : config.createSuccessText, 'success');
-                            this.hideForm();
-                            if (config.onSuccess) config.onSuccess();
-                        } else {
-                            showMessage(config.messageId, result.data?.detail || result.error || '操作失败', 'error');
-                        }
-                    } finally {
-                        await this.load();
-                        btn.disabled = false;
-                        btnText.textContent = originalText;
-                    }
-                });
-            }
-
-            async load() {
-                const c = this.cfg;
-                const result = await apiRequest(c.apiPath, { errorMsg: `加载${c.name}列表失败` });
-                if (result.status === 401) { showMessage(c.messageId, '认证失败，请检查 Token', 'error'); return; }
-                if (!result.ok) { showMessage(c.messageId, result.error || '加载失败', 'error'); return; }
-                const container = $(c.listContainerId);
-                if (result.data.length === 0) {
-                    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">${c.emptyIcon}</div><p>${c.emptyText}</p></div>`;
-                } else {
-                    container.innerHTML = result.data.map(item => c.renderItem(item)).join('');
-                }
-            }
-
-            showForm() {
-                this.editingId = null;
-                const c = this.cfg;
-                $(c.formTitleId).textContent = c.formTitleCreate;
-                $(c.formBtnTextId).textContent = c.createText;
-                $(c.formId).reset();
-                if (c.resetForm) c.resetForm();
-                $(c.formPanelId).style.display = 'block';
-                $(c.formPanelId).scrollIntoView({ behavior: 'smooth' });
-            }
-
-            hideForm() {
-                const c = this.cfg;
-                $(c.formPanelId).style.display = 'none';
-                $(c.formId).reset();
-                if (c.resetForm) c.resetForm();
-                this.editingId = null;
-            }
-
-            async edit(id) {
-                const item = await this.cfg.fetchItem(id);
-                if (!item) return;
-                this.editingId = id;
-                const c = this.cfg;
-                $(c.formTitleId).textContent = c.formTitleEdit;
-                $(c.formBtnTextId).textContent = c.editText;
-                c.populateForm(item);
-                $(c.formPanelId).style.display = 'block';
-                $(c.formPanelId).scrollIntoView({ behavior: 'smooth' });
-            }
-
-            async delete(id) {
-                if (!confirm(this.cfg.deleteConfirm)) return;
-                const result = await apiRequest(`${this.cfg.apiPath}/${id}`, { method: 'DELETE', errorMsg: '删除失败' });
-                if (result.ok) { showMessage(this.cfg.messageId, this.cfg.deleteSuccessText, 'success'); this.load(); }
-                else showMessage(this.cfg.messageId, '删除失败', 'error');
-            }
-
-            async toggle(id, currentEnabled) {
-                const result = await apiRequest(`${this.cfg.apiPath}/${id}`, { method: 'PUT', body: { enabled: !currentEnabled }, errorMsg: '切换状态失败' });
-                if (result.ok) this.load();
-                else showMessage(this.cfg.messageId, '操作失败', 'error');
-            }
-        }
-
-        // ==================== 定时任务 CrudManager ====================
-        const taskCrud = new CrudManager({
-            name: '任务', apiPath: '/api/tasks',
-            listContainerId: 'tasksList', formPanelId: 'taskFormPanel', formId: 'taskForm',
-            formTitleId: 'taskFormTitle', formBtnTextId: 'taskFormBtnText', messageId: 'taskFormResultMessage',
-            emptyIcon: '&#9201;', emptyText: '暂无定时任务，点击"新建任务"创建',
-            createText: '创建任务', editText: '保存修改',
-            formTitleCreate: '新建定时任务', formTitleEdit: '编辑定时任务',
-            deleteConfirm: '确定要删除这个任务吗？',
-            createSuccessText: '任务已创建', updateSuccessText: '任务已更新', deleteSuccessText: '任务已删除',
-
-            renderItem: (task) => {
-                let taskTypeDisplay = task.task_type === 'summary' ? '群聊总结' : '发送消息';
-                let messageTypeDisplay = '文本';
-                let content = task.message;
-                let contentLabel = '消息内容';
-
-                if (task.task_type === 'summary') {
-                    try { const c = JSON.parse(task.message); content = `<div style="font-size: 12px;"><strong>目标群聊:</strong> ${c.groups ? c.groups.map(g => g.group_name).join(', ') : '未配置'}</div>`; }
-                    catch (e) { content = '<span style="color: var(--red);">配置解析失败</span>'; }
-                    contentLabel = '总结配置';
-                } else if (task.message_type === 'image') {
-                    messageTypeDisplay = '图片';
-                    content = task.message ? '<img src="data:image/png;base64,' + task.message + '" style="max-width: 200px; max-height: 100px; border-radius: 4px;">' : '无图片';
-                    contentLabel = '图片预览';
-                } else if (task.message_type === 'file') {
-                    messageTypeDisplay = '文件';
-                    content = task.filename || '未命名文件';
-                    contentLabel = '文件名';
-                }
-
-                const taskTypeInfo = infoItem('任务类型', taskTypeDisplay);
-                const messageTypeInfo = task.task_type === 'send' ? infoItem('消息类型', messageTypeDisplay) : '';
-                const targetGroupsInfo = task.task_type === 'send'
-                    ? infoItem('目标群组', task.target_groups.length > 0 ? task.target_groups.join(', ') : '所有群组')
-                    : '';
-                return `<div class="task-item">${itemHeader(task.name, task.enabled)}<div class="task-info">${infoItem('Cron 表达式', task.cron_expression)}${taskTypeInfo}${messageTypeInfo}${infoItem('最后运行', task.last_run || '从未运行')}${infoItem(contentLabel, content)}${targetGroupsInfo}</div>${itemActions('taskCrud', task.id, task.enabled)}</div>`;
-            },
-
-            async fetchItem(id) {
-                const r = await apiRequest(`/api/tasks/${id}`, { errorMsg: '加载任务详情失败' });
-                if (!r.ok) { showMessage('taskFormResultMessage', '加载任务详情失败', 'error'); return null; }
-                return r.data;
-            },
-
-            getFormData: () => {
-                const taskType = $('taskType').value;
-                const messageType = $('taskMessageType').value;
-                const data = {
-                    name: $('taskName').value, cron_expression: $('cronExpression').value,
-                    task_type: taskType, enabled: $('taskEnabled').value === 'true',
-                    target_groups: Array.from(document.querySelectorAll('input[name="targetGroups"]:checked')).map(cb => cb.value)
-                };
-                if (taskType === 'summary') {
-                    const configText = $('taskSummaryConfig').value.trim();
-                    if (!configText) { showMessage('taskFormResultMessage', '请输入总结配置', 'error'); return null; }
-                    try {
-                        const config = JSON.parse(configText);
-                        if (!config.groups || !Array.isArray(config.groups) || config.groups.length === 0) { showMessage('taskFormResultMessage', '配置缺少 groups 字段或 groups 为空', 'error'); return null; }
-                        data.message = configText;
-                    } catch (e) { showMessage('taskFormResultMessage', 'JSON 格式错误: ' + e.message, 'error'); return null; }
-                    data.message_type = 'text';
-                    data.filename = '';
-                    data.target_groups = [];
-                    return data;
-                }
-
-                data.message_type = messageType;
-                data.filename = '';
-                if (messageType === 'text') {
-                    data.message = $('taskMessage').value.trim();
-                } else if (messageType === 'image') {
-                    data.message = taskImageState.message;
-                } else if (messageType === 'file') {
-                    data.message = taskFileState.message;
-                    data.filename = taskFileState.filename;
-                }
-                if (!data.message) {
-                    showMessage('taskFormResultMessage', messageType === 'text' ? '请输入消息内容' : '请选择要发送的内容', 'error');
-                    return null;
-                }
-                if (messageType === 'file' && !data.filename) {
-                    showMessage('taskFormResultMessage', '请选择文件', 'error');
-                    return null;
-                }
-                return data;
-            },
-
-            populateForm: (task) => {
-                $('taskId').value = task.id; $('taskName').value = task.name;
-                $('cronExpression').value = task.cron_expression; $('taskEnabled').value = task.enabled.toString();
-                resetUploadState(taskImageState, 'taskImagePreview', () => { $('taskImagePreviewImg').src = ''; });
-                resetUploadState(taskFileState, 'taskFilePreview', () => { $('taskFileName').textContent = ''; });
-                $('taskType').value = task.task_type || 'send';
-                $('taskMessageType').value = task.message_type || 'text';
-                toggleTaskFormMode();
-                if (task.task_type === 'summary') {
-                    $('taskSummaryConfig').value = task.message;
-                    $('taskMessage').value = '';
-                } else {
-                    $('taskSummaryConfig').value = '';
-                    $('taskMessage').value = task.message_type === 'text' ? task.message : '';
-                }
-                if (task.task_type === 'send' && task.message_type === 'image' && task.message) {
-                    taskImageState.message = task.message;
-                    $('taskImagePreviewImg').src = 'data:image/png;base64,' + task.message;
-                    $('taskImagePreview').style.display = 'block';
-                }
-                if (task.task_type === 'send' && task.message_type === 'file' && task.message) {
-                    taskFileState.message = task.message;
-                    taskFileState.filename = task.filename || '';
-                    $('taskFileName').textContent = task.filename || '';
-                    $('taskFilePreview').style.display = 'block';
-                }
-                document.querySelectorAll('input[name="targetGroups"]').forEach(cb => { cb.checked = task.target_groups.includes(cb.value); });
-            },
-
-            resetForm: () => {
-                resetUploadState(taskImageState, 'taskImagePreview', () => { $('taskImagePreviewImg').src = ''; });
-                resetUploadState(taskFileState, 'taskFilePreview', () => { $('taskFileName').textContent = ''; });
-                $('taskType').value = 'send'; $('taskMessageType').value = 'text'; $('taskSummaryConfig').value = '';
-                toggleTaskFormMode();
-            },
-
-            onSuccess: () => {
-                resetUploadState(taskImageState, 'taskImagePreview', () => { $('taskImagePreviewImg').src = ''; });
-                resetUploadState(taskFileState, 'taskFilePreview', () => { $('taskFileName').textContent = ''; });
-                setTimeout(() => { $('tasksList').scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
-            }
-        });
-
-        // ==================== Webhook CrudManager ====================
-        const webhookCrud = new CrudManager({
-            name: 'Webhook', apiPath: '/api/webhooks',
-            listContainerId: 'webhooksList', formPanelId: 'webhookFormPanel', formId: 'webhookForm',
-            formTitleId: 'webhookFormTitle', formBtnTextId: 'webhookFormBtnText', messageId: 'webhookFormResultMessage',
-            emptyIcon: '&#128279;', emptyText: '暂无 Webhook，点击"新建 Webhook"创建',
-            createText: '创建 Webhook', editText: '保存修改',
-            formTitleCreate: '新建 Webhook', formTitleEdit: '编辑 Webhook',
-            deleteConfirm: '确定要删除这个 Webhook 吗？',
-            createSuccessText: 'Webhook 已创建', updateSuccessText: 'Webhook 已更新', deleteSuccessText: 'Webhook 已删除',
-
-            renderItem: (wh) => `<div class="task-item">${itemHeader(wh.name, wh.enabled)}<div class="task-info">${infoItem('URL', wh.url, 'word-break: break-all')}${infoItem('群聊过滤', wh.group_filter || '全部群聊')}${infoItem('消息过滤', wh.message_filter || '全部消息')}${infoItem('Body 模板', wh.body_template)}</div>${itemActions('webhookCrud', wh.id, wh.enabled, `<button class="btn btn-small" onclick="testWebhook(${wh.id})">测试</button>`)}</div>`,
-
-            async fetchItem(id) {
-                const all = await apiRequest('/api/webhooks', { errorMsg: '加载 webhook 失败' });
-                return all.ok ? (all.data.find(w => w.id === id) || null) : null;
-            },
-
-            getFormData: () => ({
-                name: $('webhookName').value, url: $('webhookUrl').value,
-                headers: $('webhookHeaders').value, body_template: $('webhookBodyTemplate').value,
-                group_filter: $('webhookGroupFilter').value, message_filter: $('webhookMessageFilter').value,
-                enabled: $('webhookEnabled').value === 'true',
-                reply_mode: $('webhookReplyMode').value,
-                reply_jsonpath: $('webhookReplyJsonPath').value
-            }),
-
-            populateForm: (wh) => {
-                $('webhookId').value = wh.id; $('webhookName').value = wh.name; $('webhookUrl').value = wh.url;
-                $('webhookHeaders').value = wh.headers; $('webhookBodyTemplate').value = wh.body_template;
-                $('webhookGroupFilter').value = wh.group_filter || ''; $('webhookMessageFilter').value = wh.message_filter || '';
-                $('webhookEnabled').value = wh.enabled.toString();
-                $('webhookReplyMode').value = wh.reply_mode || 'none';
-                $('webhookReplyJsonPath').value = wh.reply_jsonpath || '';
-                toggleReplyJsonPath();
-            },
-
-            resetForm: () => {
-                $('webhookHeaders').value = '{}'; $('webhookBodyTemplate').value = '{}';
-                $('webhookGroupFilter').value = ''; $('webhookMessageFilter').value = '';
-                $('webhookReplyMode').value = 'none';
-                $('webhookReplyJsonPath').value = '';
-                toggleReplyJsonPath();
-            }
-        });
-
-        function toggleReplyJsonPath() {
-            const mode = $('webhookReplyMode').value;
-            $('replyJsonPathGroup').style.display = mode === 'jsonpath' ? 'block' : 'none';
-        }
-
-        async function testWebhook(webhookId) {
-            const result = await apiRequest(`/api/webhooks/${webhookId}/test`, { method: 'POST', errorMsg: '测试失败' });
-            if (result.ok) showMessage('webhookFormResultMessage', '测试请求已发送', 'success');
-            else showMessage('webhookFormResultMessage', result.data?.detail || '测试失败', 'error');
-        }
-
-        // ==================== 表单提交 ====================
-        $('sendForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const groupName = $('groupSelect').value;
-            const messageType = $('sendMessageType').value;
-            if (!groupName) {
-                showMessage('sendResultMessage', '请选择群聊', 'error');
-                return;
-            }
-            if (messageType === 'summary') {
-                const select = $('summaryGroupId');
-                const groupId = select.value;
-                if (!groupId) {
-                    showMessage('sendResultMessage', '请选择群聊', 'error');
-                    return;
-                }
-                const summaryGroupName = select.options[select.selectedIndex].dataset.name || groupName;
-                await triggerSummary(summaryGroupName, groupId);
-            } else if (messageType === 'text') {
-                const message = $('messageText').value.trim();
-                if (!message) {
-                    showMessage('sendResultMessage', '请输入消息内容', 'error');
-                    return;
-                }
-                await sendMessage({ group_name: groupName, message_type: 'text', message });
-            } else if (messageType === 'image') {
-                if (!sendImageState.message) {
-                    showMessage('sendResultMessage', '请选择要发送的图片', 'error');
-                    return;
-                }
-                await sendMessage({ group_name: groupName, message_type: 'image', message: sendImageState.message });
-            } else {
-                if (!sendFileState.message || !sendFileState.filename) {
-                    showMessage('sendResultMessage', '请选择要发送的文件', 'error');
-                    return;
-                }
-                await sendMessage({
-                    group_name: groupName,
-                    message_type: 'file',
-                    message: sendFileState.message,
-                    filename: sendFileState.filename
-                });
-            }
-        });
-
-        // ==================== 主题切换 ====================
-        function getEffectiveTheme() {
-            const saved = localStorage.getItem('bot_theme');
-            if (saved === 'dark' || saved === 'light') return saved;
-            return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-
-        function applyTheme(theme) {
-            document.documentElement.setAttribute('data-theme', theme);
-        }
-
-        function toggleTheme() {
-            const current = getEffectiveTheme();
-            const next = current === 'dark' ? 'light' : 'dark';
-            localStorage.setItem('bot_theme', next);
-            applyTheme(next);
-        }
-
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-            if (!localStorage.getItem('bot_theme')) {
-                applyTheme(e.matches ? 'dark' : 'light');
-            }
-        });
-
-        // ==================== 初始化 ====================
-        loadGroups();
-        loadServerInfo();
-        toggleSendMessageType();
-        toggleTaskFormMode();
-    </script>
+    <div class="toast" id="toast"></div>
+
+    <script src="/app.js"></script>
+    <script src="/chat.js"></script>
+    <script src="/tasks.js"></script>
+    <script src="/webhooks.js"></script>
 </body>
 </html>
