@@ -326,6 +326,7 @@
                     <label><input type="checkbox" id="autoLog" checked> 自动</label>
                     <input type="number" id="logLines" value="200" min="1" max="10000">
                     <button class="btn btn-ghost" onclick="refreshLogs()">刷新</button>
+                    <button class="btn btn-ghost" onclick="$('logBox').textContent=''">清除</button>
                 </div>
             </div>
             <div class="log-box" id="logBox"></div>
