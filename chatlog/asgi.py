@@ -11,5 +11,6 @@ def create_app() -> FastAPI:
         version="1.0.0",
     )
     app.include_router(create_routes())
-    app.include_router(create_v2_routes())
+    for router in create_v2_routes():
+        app.include_router(router)
     return app

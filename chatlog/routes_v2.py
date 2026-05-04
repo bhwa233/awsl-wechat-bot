@@ -1,4 +1,4 @@
-"""Chatlog v2 HTTP 路由 - DLL 后端，前缀 /api/chatlog/v2"""
+"""Chatlog v2 HTTP 路由 - DLL 后端"""
 
 import logging
 import os
@@ -17,8 +17,8 @@ from common.config import config
 logger = logging.getLogger(__name__)
 
 
-def create_v2_routes() -> APIRouter:
-    router = APIRouter(prefix="/api/chatlog/v2", tags=["chatlog-v2"])
+def _build_router(prefix: str, tags: list[str]) -> APIRouter:
+    router = APIRouter(prefix=prefix, tags=tags)
     chatlog = ChatlogServiceV2()
 
     def _ensure_ready() -> None:
@@ -34,6 +34,14 @@ def create_v2_routes() -> APIRouter:
                 status_code=400,
                 detail=f"加密目录不存在: {config.WECHAT_DB_INPUT_PATH}",
             )
+
+    @router.post("/decrypt", dependencies=[Depends(verify_token)])
+    def decrypt_database():
+        return {
+            "success": True,
+            "message": "v2 后端无需解密，DLL 直接读取加密数据库",
+            "count": 0,
+        }
 
     @router.get(
         "/groups",
@@ -159,3 +167,10 @@ def create_v2_routes() -> APIRouter:
         return resp
 
     return router
+
+
+def create_v2_routes() -> list[APIRouter]:
+    return [
+        _build_router("/api/chatlog/v2", ["chatlog-v2"]),
+        _build_router("/api/chatlog", ["chatlog"]),
+    ]
