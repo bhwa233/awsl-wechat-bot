@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 
 from chatlog.routes import create_routes
+from chatlog.routes_v2 import create_v2_routes
 
 
 def create_app() -> FastAPI:
@@ -10,4 +11,5 @@ def create_app() -> FastAPI:
         version="1.0.0",
     )
     app.include_router(create_routes())
+    app.include_router(create_v2_routes())
     return app

@@ -92,10 +92,15 @@ per group                              │ 广播
 - `__init__.py` - 导出 ChatlogService 和相关模型
 - `asgi.py` - FastAPI app 工厂
 - `main.py` - 独立入口（`uv run -m chatlog.main`）
-- `routes.py` - HTTP 路由（decrypt/groups/messages/group-display-name/health）
-- `service.py` - ChatlogService 统一接口类
+- `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health）
+- `routes_v2.py` - v2 HTTP 路由（groups/messages/group-display-name/health，前缀 /api/chatlog/v2，仅 Windows）
+- `service.py` - v1 ChatlogService（pycryptodome 离线解密）
+- `service_v2.py` - v2 ChatlogServiceV2（DLL 在线读取）
 - `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatlogMessageResponse）
-- `wechat_db.py` - 微信数据库解密 + 消息查询（WeChatDBDecryptor, WeChatDBReader）
+- `wechat_db.py` - v1 实现（WeChatDBDecryptor + WeChatDBReader），含 ChatRoom/Message dataclass 和 protobuf 解析
+- `wechat_db_v2.py` - v2 实现（WeChatDBReaderV2），通过 DLL 跑 raw SQL，复用 v1 的 dataclass 和 protobuf 解析
+- `dll_loader.py` - awsl-wechat-chatlog DLL 的 ctypes 封装（query_raw_sql），单例懒加载，非 Windows fail-fast
+- `vendor/awsl_wechat_chatlog.dll` - awsl-wechat-chatlog 编译产物（11MB，Windows x86-64）
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
@@ -143,7 +148,9 @@ per group                              │ 广播
 
 Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`
 
-Chatlog (:7998): `GET /api/chatlog/health`, `POST /api/chatlog/decrypt`, `GET /api/chatlog/groups`, `GET /api/chatlog/messages`, `GET /api/chatlog/group-display-name`
+Chatlog (:7998):
+- v1: `GET /api/chatlog/health`, `POST /api/chatlog/decrypt`, `GET /api/chatlog/groups`, `GET /api/chatlog/messages`, `GET /api/chatlog/group-display-name`
+- v2 (DLL, Windows-only): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`（无 decrypt，DLL 在线读密文不落盘）
 
 Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理), `POST /api/send`(代理), `GET /api/chatlog/groups`(代理), `GET /api/chatlog/messages`(代理), `POST /api/chatlog/decrypt`(代理)
 
