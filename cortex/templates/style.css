@@ -148,6 +148,7 @@ body {
 .chat-input-row2 {
     display: flex; gap: 8px; align-items: flex-end;
 }
+.chat-input-row2 .btn { margin-left: auto; }
 .chat-input-row2.disabled {
     opacity: 0.4; pointer-events: none;
 }

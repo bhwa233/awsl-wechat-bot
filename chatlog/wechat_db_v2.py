@@ -156,7 +156,6 @@ class WeChatDBReaderV2:
             "WHERE username NOT LIKE '%@chatroom' "
             "AND username NOT LIKE '%@openim' "
             "AND username NOT LIKE 'gh_%' "
-            "AND type != 0 "
             "AND (nick_name != '' OR remark != '') "
             "ORDER BY remark, nick_name"
         )
