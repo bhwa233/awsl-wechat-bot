@@ -252,21 +252,22 @@ function formatMsgContent(m) {
         if (innerType === '57') {
             const text = extractXmlTag(content, 'title') || '';
             const refMsg = extractXmlTag(content, 'refermsg');
-            let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
+            let refHtml = '';
             const refName = refMsg ? extractXmlTag(refMsg, 'displayname') : '';
-            const trimmed = refContent.trim();
-            if (trimmed.includes('&lt;') || trimmed.includes('&gt;') || /^\s*</.test(trimmed)) {
+            const refType = refMsg ? parseInt(extractXmlTag(refMsg, 'type') || '1', 10) : 1;
+            let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
+            if (refContent) {
                 const decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
-                refContent = extractXmlTag(decoded, 'title')
-                    || extractXmlTag(decoded, 'nickname')
-                    || extractXmlTag(decoded, 'sourcedisplayname')
-                    || decoded.replace(/<[^>]+>/g, '').trim().slice(0, 80) || '[消息]';
+                if (refType !== 1 && decoded.trim().startsWith('<')) {
+                    refHtml = formatMsgContent({ msg_type: refType, content: decoded });
+                } else {
+                    const plain = decoded.replace(/<[^>]+>/g, '').trim() || decoded;
+                    const label = refName ? `${refName}: ${plain}` : plain;
+                    refHtml = `<div>${escapeHtml(label)}</div>`;
+                }
             }
             let html = '';
-            if (refContent) {
-                const quote = refName ? `${refName}: ${refContent}` : refContent;
-                html += `<div class="msg-quote">${escapeHtml(quote)}</div>`;
-            }
+            if (refHtml) html += `<div class="msg-quote">${refHtml}</div>`;
             html += `<div class="msg-text">${escapeHtml(text)}</div>`;
             return html;
         }
