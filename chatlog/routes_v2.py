@@ -106,7 +106,7 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
                 group,
                 start_time=start_time,
                 end_time=end_time,
-                text_only=True,
+                text_only=False,
                 limit=limit,
                 offset=offset,
                 desc=desc,

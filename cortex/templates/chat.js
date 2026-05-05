@@ -141,9 +141,9 @@ function renderPagination(count, hasMore) {
     if (!hasPrev && !hasMore) { el.style.display = 'none'; return; }
     el.style.display = '';
     el.innerHTML =
-        `<button class="btn btn-ghost btn-sm" ${hasMore ? '' : 'disabled'} onclick="chatPageNext()">更早</button>`
+        `<button class="btn btn-ghost btn-sm" ${hasMore ? '' : 'disabled'} onclick="chatPageNext()">◀</button>`
         + `<span class="page-info">第 ${chatPage + 1} 页</span>`
-        + `<button class="btn btn-ghost btn-sm" ${hasPrev ? '' : 'disabled'} onclick="chatPagePrev()">更新</button>`;
+        + `<button class="btn btn-ghost btn-sm" ${hasPrev ? '' : 'disabled'} onclick="chatPagePrev()">▶</button>`;
 }
 
 function chatPagePrev() {
@@ -156,6 +156,50 @@ function chatPageNext() {
     if (!selectedChatlogGroup) return;
     chatPage++;
     loadMessages(selectedChatlogGroup);
+}
+
+const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, VIDEO: 43, ANIMATION: 47, LOCATION: 48, SHARE: 49, SYSTEM: 10000, REVOKE: 10002 };
+
+function formatMsgContent(m) {
+    const type = m.msg_type;
+    const content = m.content || '';
+
+    if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE)
+        return `<div class="msg-system">${escapeHtml(content)}</div>`;
+
+    if (type === MSG_TYPE.IMAGE)
+        return `<div class="msg-text msg-media">[图片]</div>`;
+    if (type === MSG_TYPE.VOICE)
+        return `<div class="msg-text msg-media">[语音]</div>`;
+    if (type === MSG_TYPE.VIDEO)
+        return `<div class="msg-text msg-media">[视频]</div>`;
+    if (type === MSG_TYPE.ANIMATION)
+        return `<div class="msg-text msg-media">[动画表情]</div>`;
+    if (type === MSG_TYPE.LOCATION)
+        return `<div class="msg-text msg-media">[位置]</div>`;
+
+    if (type === MSG_TYPE.SHARE) {
+        const title = extractXmlTag(content, 'title') || '[链接]';
+        const url = extractXmlTag(content, 'url');
+        if (url) return `<div class="msg-text msg-link"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a></div>`;
+        return `<div class="msg-text msg-media">${escapeHtml(title)}</div>`;
+    }
+
+    if (type === 57) {
+        const ref = extractXmlTag(content, 'title') || '';
+        const text = extractXmlTag(content, 'content') || '';
+        let html = '';
+        if (ref) html += `<div class="msg-quote">${escapeHtml(ref)}</div>`;
+        html += `<div class="msg-text">${escapeHtml(text)}</div>`;
+        return html;
+    }
+
+    return `<div class="msg-text">${escapeHtml(content)}</div>`;
+}
+
+function extractXmlTag(xml, tag) {
+    const m = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+    return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
 }
 
 function renderMessages(msgs) {
@@ -173,11 +217,18 @@ function renderMessages(msgs) {
             lastDate = date;
         }
         const time = formatTime(m.time);
+        const type = m.msg_type;
+
+        if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE) {
+            html += `<div class="msg system">${formatMsgContent(m)}</div>`;
+            continue;
+        }
+
         if (m.is_self) {
-            html += `<div class="msg self"><div class="msg-bubble self"><div class="msg-text">${escapeHtml(m.content)}</div><div class="msg-time">${time}</div></div></div>`;
+            html += `<div class="msg self"><div class="msg-bubble self">${formatMsgContent(m)}<div class="msg-time">${time}</div></div></div>`;
         } else {
             const name = m.sender_name || m.sender || '?';
-            html += `<div class="msg other"><div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div><div class="msg-text">${escapeHtml(m.content)}</div><div class="msg-time">${time}</div></div></div>`;
+            html += `<div class="msg other"><div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(m)}<div class="msg-time">${time}</div></div></div>`;
         }
     }
     box.innerHTML = html;
