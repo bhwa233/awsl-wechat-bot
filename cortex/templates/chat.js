@@ -66,6 +66,11 @@ async function loadChatlogGroups() {
     chatlogGroups = r.data || [];
     buildGroupMapping();
     populateChatGroupSelect();
+    const cached = localStorage.getItem('chatlogGroup');
+    if (cached && chatlogGroups.some(g => g.username === cached)) {
+        $('chatGroupSelect').value = cached;
+        selectChatlogGroup(cached);
+    }
 }
 
 function buildGroupMapping() {
@@ -90,6 +95,7 @@ function findGatewayWindow(chatlogDisplayName) {
 
 function selectChatlogGroup(username) {
     selectedChatlogGroup = username;
+    localStorage.setItem('chatlogGroup', username);
     chatPage = 0;
     const emptyEl = $('chatEmpty');
     if (emptyEl) emptyEl.style.display = 'none';
@@ -182,6 +188,10 @@ function formatMsgContent(m) {
 
     if (type === MSG_TYPE.SHARE) {
         const innerType = extractXmlTag(content, 'type');
+        if (innerType === '62') {
+            const text = extractXmlTag(content, 'title') || '拍了拍';
+            return `<div class="msg-system">${escapeHtml(text)}</div>`;
+        }
         if (innerType === '57') {
             const text = extractXmlTag(content, 'title') || '';
             const refMsg = extractXmlTag(content, 'refermsg');
@@ -213,6 +223,12 @@ function extractXmlTag(xml, tag) {
     return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
 }
 
+function isSystemLike(m) {
+    if (m.msg_type === MSG_TYPE.SYSTEM || m.msg_type === MSG_TYPE.REVOKE) return true;
+    if (m.msg_type === MSG_TYPE.SHARE && extractXmlTag(m.content || '', 'type') === '62') return true;
+    return false;
+}
+
 function renderMessages(msgs) {
     const box = $('messages');
     if (!msgs.length) {
@@ -230,7 +246,7 @@ function renderMessages(msgs) {
         const time = formatTime(m.time);
         const type = m.msg_type;
 
-        if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE) {
+        if (isSystemLike(m)) {
             html += `<div class="msg system">${formatMsgContent(m)}</div>`;
             continue;
         }

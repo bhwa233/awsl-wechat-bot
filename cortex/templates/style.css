@@ -128,7 +128,7 @@ body {
 .msg-sender { font-size: 11px; color: var(--blue); margin-bottom: 2px; font-weight: 500; }
 .msg-time { font-size: 10px; color: var(--text2); margin-top: 3px; text-align: right; }
 .msg-date { text-align: center; margin: 12px 0; font-size: 11px; color: var(--text2); }
-.msg.system { text-align: center; margin: 6px 0; }
+.msg.system { text-align: center; margin: 6px 0; justify-content: center; }
 .msg-system { font-size: 11px; color: var(--text2); background: var(--stat-bg); display: inline-block; padding: 2px 10px; border-radius: 4px; }
 .msg-media { font-style: italic; color: var(--text2); }
 .msg-link a { color: var(--blue); text-decoration: underline; }
