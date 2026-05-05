@@ -36,7 +36,7 @@ function populateChatGroupSelect() {
 
 function onChatGroupSelect() {
     const username = $('chatGroupSelect').value;
-    if (!username) return;
+    if (!username || username === selectedChatlogGroup) return;
     selectChatlogGroup(username);
 }
 
@@ -265,3 +265,4 @@ $('msgInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
 });
 $('chatGroupSelect').addEventListener('change', onChatGroupSelect);
+$('chatGroupSelect').addEventListener('input', onChatGroupSelect);
