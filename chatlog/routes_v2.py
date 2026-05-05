@@ -249,18 +249,20 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         pattern = os.path.join(config.wechat_data_dir, "cache", "*", "Emoticon", md5[:2], md5)
         matches = _glob.glob(pattern)
         if not matches:
-            return {"found": False, "pattern": pattern}
+            return {"found": False}
 
         path = matches[0]
         data = open(path, "rb").read()
-        return {
+        import json as _json
+        body = _json.dumps({
             "found": True,
-            "path": path,
             "size": len(data),
             "head_hex": data[:64].hex(),
             "head_b64": _b64.b64encode(data[:256]).decode(),
             "full_b64": _b64.b64encode(data).decode() if len(data) <= 100_000 else None,
-        }
+        })
+        from fastapi.responses import Response as RawResponse
+        return RawResponse(content=body, media_type="application/json")
 
     @router.get("/health")
     async def health():
