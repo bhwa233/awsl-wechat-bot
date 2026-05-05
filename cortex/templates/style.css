@@ -260,20 +260,6 @@ body {
 .toast.error { background: var(--red); }
 .toast.info { background: var(--blue); }
 
-@media (min-width: 769px) {
-    select {
-        -webkit-appearance: none;
-        appearance: none;
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-        background-repeat: no-repeat;
-        background-position: right 8px center;
-        padding-right: 28px;
-    }
-    [data-theme="dark"] select {
-        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
-    }
-}
-
 @media (max-width: 768px) {
     .chat-layout { flex-direction: column; height: calc(100vh - 140px); }
     .chat-sidebar {
