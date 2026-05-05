@@ -254,9 +254,13 @@ function formatMsgContent(m) {
             const refMsg = extractXmlTag(content, 'refermsg');
             let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
             const refName = refMsg ? extractXmlTag(refMsg, 'displayname') : '';
-            if (refContent.startsWith('&lt;') || refContent.startsWith('<msg>') || refContent.startsWith('<?xml')) {
+            const trimmed = refContent.trim();
+            if (trimmed.includes('&lt;') || trimmed.includes('&gt;') || /^\s*</.test(trimmed)) {
                 const decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
-                refContent = extractXmlTag(decoded, 'title') || decoded.replace(/<[^>]+>/g, '').trim();
+                refContent = extractXmlTag(decoded, 'title')
+                    || extractXmlTag(decoded, 'nickname')
+                    || extractXmlTag(decoded, 'sourcedisplayname')
+                    || decoded.replace(/<[^>]+>/g, '').trim().slice(0, 80) || '[消息]';
             }
             let html = '';
             if (refContent) {
