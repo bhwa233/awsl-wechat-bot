@@ -276,7 +276,7 @@ class WeChatDBReaderV2:
                 sender = user_name or ""
                 if is_chatroom and ":\n" in content:
                     parts = content.split(":\n", 1)
-                    if len(parts) == 2:
+                    if len(parts) == 2 and " " not in parts[0] and "\n" not in parts[0]:
                         sender, content = parts
 
                 raw_messages.append((
