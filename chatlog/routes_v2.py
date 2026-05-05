@@ -198,8 +198,8 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
 
     @router.post("/debug/query", dependencies=[Depends(verify_token)])
     def debug_query(body: dict):
-        if not config.DEBUG:
-            raise HTTPException(status_code=404, detail="debug API 未启用，设置 DEBUG=true 开启")
+        if not config.CHATLOG_DEBUG:
+            raise HTTPException(status_code=404, detail="CHATLOG_DEBUG 未启用")
         _ensure_ready()
         import os as _os
 
@@ -236,8 +236,8 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
 
     @router.post("/debug/emoticon-cache", dependencies=[Depends(verify_token)])
     def debug_emoticon_cache(body: dict):
-        if not config.DEBUG:
-            raise HTTPException(status_code=404, detail="debug API 未启用")
+        if not config.CHATLOG_DEBUG:
+            raise HTTPException(status_code=404, detail="CHATLOG_DEBUG 未启用")
         _ensure_ready()
         import base64 as _b64
         import glob as _glob

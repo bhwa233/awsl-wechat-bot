@@ -34,6 +34,9 @@ class Config(BaseSettings):
     # 调试模式（输出每次检测到的所有消息）
     DEBUG: bool = False
 
+    # Chatlog 调试端点开关
+    CHATLOG_DEBUG: bool = True
+
     # AppleScript 超时配置（秒）
     APPLESCRIPT_TIMEOUT_SHORT: int = 10   # 简单操作: 窗口位置、图片复制
     APPLESCRIPT_TIMEOUT_MEDIUM: int = 20  # 中等操作: 消息获取
