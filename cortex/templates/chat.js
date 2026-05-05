@@ -164,8 +164,10 @@ function formatMsgContent(m) {
     const type = m.msg_type;
     const content = m.content || '';
 
-    if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE)
-        return `<div class="msg-system">${escapeHtml(content)}</div>`;
+    if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE) {
+        const text = content.startsWith('<') ? (extractXmlTag(content, 'content') || content.replace(/<[^>]+>/g, '')) : content;
+        return `<div class="msg-system">${escapeHtml(text)}</div>`;
+    }
 
     if (type === MSG_TYPE.IMAGE)
         return `<div class="msg-text msg-media">[图片]</div>`;
