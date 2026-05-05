@@ -273,7 +273,10 @@ function formatMsgContent(m) {
                 }
             }
             let html = '';
-            if (refHtml) html += `<div class="msg-quote">${refHtml}</div>`;
+            if (refHtml) {
+                const nameHtml = refName ? `<div class="msg-quote-name">${escapeHtml(refName)}</div>` : '';
+                html += `<div class="msg-quote">${nameHtml}${refHtml}</div>`;
+            }
             html += `<div class="msg-text">${escapeHtml(text)}</div>`;
             return html;
         }
