@@ -33,6 +33,8 @@ class ChatlogService:
         end_time: Optional[datetime] = None,
         text_only: bool = True,
         limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
     ) -> list[Message]:
         """查询聊天记录"""
         reader = WeChatDBReader(db_path)
@@ -43,6 +45,8 @@ class ChatlogService:
                 end_time=end_time,
                 text_only=text_only,
                 limit=limit,
+                offset=offset,
+                desc=desc,
             )
         finally:
             reader.close()

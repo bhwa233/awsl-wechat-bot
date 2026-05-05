@@ -23,6 +23,8 @@ class ChatlogServiceV2:
         end_time: Optional[datetime] = None,
         text_only: bool = True,
         limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
     ) -> list[Message]:
         return WeChatDBReaderV2(encrypted_dir, hex_key).get_messages(
             talker=talker,
@@ -30,6 +32,8 @@ class ChatlogServiceV2:
             end_time=end_time,
             text_only=text_only,
             limit=limit,
+            offset=offset,
+            desc=desc,
         )
 
     def get_group_display_name(

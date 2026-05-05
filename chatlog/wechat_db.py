@@ -471,7 +471,8 @@ class WeChatDBReader:
         end_time: Optional[datetime] = None,
         text_only: bool = True,
         limit: int = 0,
-        offset: int = 0
+        offset: int = 0,
+        desc: bool = False,
     ) -> list[Message]:
         """获取聊天记录"""
         start_time = start_time or datetime(2000, 1, 1)
@@ -504,7 +505,7 @@ class WeChatDBReader:
                 FROM {table_name} m
                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                 WHERE m.create_time >= ? AND m.create_time <= ?
-                ORDER BY m.sort_seq ASC
+                ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}
             """
             cursor.execute(query, (start_ts, end_ts))
 
@@ -536,7 +537,7 @@ class WeChatDBReader:
                     is_self=is_self
                 ))
 
-        messages.sort(key=lambda m: m.seq)
+        messages.sort(key=lambda m: m.seq, reverse=desc)
         if offset > 0:
             messages = messages[offset:]
         if limit > 0:

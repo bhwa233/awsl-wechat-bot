@@ -74,6 +74,8 @@ def create_routes() -> APIRouter:
         start: Optional[str] = Query(None, description="开始时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         end: Optional[str] = Query(None, description="结束时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         limit: int = Query(100, description="限制返回数量"),
+        offset: int = Query(0, ge=0, le=100000, description="跳过前 N 条消息"),
+        desc: bool = Query(False, description="是否倒序（最新消息优先）"),
     ):
         if not config.has_wechat_db_config():
             raise HTTPException(status_code=400, detail="微信数据库配置不完整")
@@ -101,6 +103,8 @@ def create_routes() -> APIRouter:
                 end_time=end_time,
                 text_only=True,
                 limit=limit,
+                offset=offset,
+                desc=desc,
             )
             return [
                 ChatlogMessageResponse(

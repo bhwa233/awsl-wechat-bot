@@ -54,11 +54,6 @@
                         <input type="text" id="groupSearch" placeholder="搜索群聊..." class="search-input">
                         <button class="btn btn-ghost btn-sm" id="decryptBtn" style="display:none" onclick="decryptChatlog()">解密</button>
                     </div>
-                    <div class="sidebar-send-target" id="sidebarSendTarget" style="display:none">
-                        <select id="sendWindowSelect" class="send-target-select">
-                            <option value="">发送到...</option>
-                        </select>
-                    </div>
                     <div class="sidebar-section-label">聊天记录 (Chatlog)</div>
                     <div class="group-list chatlog-list" id="chatlogGroupList">
                         <div class="empty-hint">加载中...</div>
@@ -72,12 +67,11 @@
                     <div class="chat-header" id="chatHeader" style="display:none">
                         <div class="chat-header-left">
                             <span id="chatGroupName" class="chat-title"></span>
-                            <input type="date" id="chatDate" onchange="onChatDateChange()" class="date-input">
                         </div>
-                        <button class="btn btn-green btn-sm" id="summaryBtn" onclick="triggerSummary()">总结</button>
                         <button class="btn btn-ghost btn-sm" onclick="refreshCurrentChat()">刷新</button>
                     </div>
                     <div id="chatlogSelect" style="display:none"></div>
+                    <div class="chat-pagination" id="chatPagination" style="display:none"></div>
                     <div class="messages" id="messages">
                         <div class="chat-empty" id="chatEmpty">
                             <div class="chat-empty-icon">💬</div>
@@ -85,19 +79,27 @@
                         </div>
                     </div>
                     <div class="chat-input" id="chatInput" style="display:none">
-                        <select id="msgType" class="msg-type-select" onchange="toggleChatMsgType()">
-                            <option value="text">文本</option>
-                            <option value="image">图片</option>
-                            <option value="file">文件</option>
-                        </select>
-                        <div id="chatTextInput" class="chat-input-body">
-                            <textarea id="msgInput" placeholder="输入消息... (Enter 发送)" rows="1"></textarea>
+                        <div class="chat-input-row1">
+                            <select id="sendWindowSelect" class="send-target-select" onchange="updateSendState()">
+                                <option value="">发送到...</option>
+                            </select>
+                            <select id="msgType" class="msg-type-select" onchange="toggleChatMsgType()">
+                                <option value="text">文本</option>
+                                <option value="image">图片</option>
+                                <option value="file">文件</option>
+                                <option value="summary">总结</option>
+                            </select>
                         </div>
-                        <div id="chatFileInput" class="chat-input-body" style="display:none">
-                            <input type="file" id="chatFileSelect" onchange="onChatFileSelect(event)">
-                            <span id="chatFileInfo" class="file-info"></span>
+                        <div class="chat-input-row2" id="chatInputRow2">
+                            <div id="chatTextInput" class="chat-input-body">
+                                <textarea id="msgInput" placeholder="输入消息... (Enter 发送)" rows="1"></textarea>
+                            </div>
+                            <div id="chatFileInput" class="chat-input-body" style="display:none">
+                                <input type="file" id="chatFileSelect" onchange="onChatFileSelect(event)">
+                                <span id="chatFileInfo" class="file-info"></span>
+                            </div>
+                            <button class="btn btn-green" id="sendMsgBtn" onclick="sendChatMessage()">发送</button>
                         </div>
-                        <button class="btn btn-green" id="sendMsgBtn" onclick="sendChatMessage()">发送</button>
                     </div>
                 </div>
             </div>

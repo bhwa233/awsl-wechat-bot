@@ -3,6 +3,9 @@ let chatlogBackend = null;
 let selectedChatlogGroup = null;
 let groupMapping = {};
 let chatFileState = { message: '', filename: '' };
+let chatPage = 0;
+const chatPageSize = 100;
+let loadGen = 0;
 
 function onGroupsLoaded() {
     renderGatewayList();
@@ -100,41 +103,75 @@ function findGatewayWindow(chatlogDisplayName) {
 
 function selectChatlogGroup(username) {
     selectedChatlogGroup = username;
+    chatPage = 0;
     renderChatlogList($('groupSearch').value);
     $('chatHeader').style.display = '';
     $('chatInput').style.display = '';
     $('chatEmpty').style.display = 'none';
     $('chatlogSelect').style.display = 'none';
-    $('sidebarSendTarget').style.display = '';
 
     const displayName = groupMapping[username] || username;
     $('chatGroupName').textContent = displayName;
 
     const gw = findGatewayWindow(displayName);
     const sel = $('sendWindowSelect');
-    if (gw) {
-        sel.value = gw.name;
-    } else {
-        sel.value = '';
-    }
+    sel.value = gw ? gw.name : '';
+    updateSendState();
 
     loadMessages(username);
 }
 
+function updateSendState() {
+    const hasTarget = !!$('sendWindowSelect').value;
+    $('chatInputRow2').classList.toggle('disabled', !hasTarget);
+}
+
 async function loadMessages(chatlogId) {
-    const dateInput = $('chatDate');
-    const params = new URLSearchParams({ group: chatlogId, limit: '500' });
-    if (dateInput.value) {
-        params.set('start', dateInput.value);
-        params.set('end', dateInput.value);
-    }
+    const gen = ++loadGen;
+    const params = new URLSearchParams({
+        group: chatlogId,
+        limit: String(chatPageSize + 1),
+        offset: String(chatPage * chatPageSize),
+        desc: 'true',
+    });
     $('messages').innerHTML = '<div class="loading-hint">加载中...</div>';
     const r = await api('GET', `/api/chatlog/messages?${params}`);
+    if (gen !== loadGen) return;
     if (!r.ok) {
         $('messages').innerHTML = `<div class="empty-hint">${r.error || '加载失败'}</div>`;
+        renderPagination(0, false);
         return;
     }
-    renderMessages(r.data || []);
+    const msgs = r.data || [];
+    const hasMore = msgs.length > chatPageSize;
+    if (hasMore) msgs.pop();
+    msgs.reverse();
+    renderMessages(msgs);
+    renderPagination(msgs.length, hasMore);
+}
+
+function renderPagination(count, hasMore) {
+    let el = $('chatPagination');
+    if (!el) return;
+    const hasPrev = chatPage > 0;
+    if (!hasPrev && !hasMore) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML =
+        `<button class="btn btn-ghost btn-sm" ${hasMore ? '' : 'disabled'} onclick="chatPageNext()">更早</button>`
+        + `<span class="page-info">第 ${chatPage + 1} 页</span>`
+        + `<button class="btn btn-ghost btn-sm" ${hasPrev ? '' : 'disabled'} onclick="chatPagePrev()">更新</button>`;
+}
+
+function chatPagePrev() {
+    if (chatPage <= 0 || !selectedChatlogGroup) return;
+    chatPage--;
+    loadMessages(selectedChatlogGroup);
+}
+
+function chatPageNext() {
+    if (!selectedChatlogGroup) return;
+    chatPage++;
+    loadMessages(selectedChatlogGroup);
 }
 
 function renderMessages(msgs) {
@@ -165,13 +202,16 @@ function renderMessages(msgs) {
 
 function toggleChatMsgType() {
     const t = $('msgType').value;
+    const isSummary = t === 'summary';
     $('chatTextInput').style.display = t === 'text' ? '' : 'none';
-    $('chatFileInput').style.display = t !== 'text' ? '' : 'none';
-    if (t !== 'text') {
+    $('chatFileInput').style.display = (t === 'image' || t === 'file') ? '' : 'none';
+    $('sendMsgBtn').textContent = isSummary ? '生成总结' : '发送';
+    if (t === 'image' || t === 'file') {
         $('chatFileSelect').accept = t === 'image' ? 'image/*' : '';
         chatFileState = { message: '', filename: '' };
         $('chatFileInfo').textContent = '';
     }
+    updateSendState();
 }
 
 function onChatFileSelect(event) {
@@ -192,6 +232,17 @@ async function sendChatMessage() {
     const type = $('msgType').value;
     const btn = $('sendMsgBtn');
     btn.disabled = true;
+
+    if (type === 'summary') {
+        if (!selectedChatlogGroup) { toast('请先选择群聊', 'error'); btn.disabled = false; return; }
+        btn.textContent = '生成中...';
+        const r = await api('POST', '/api/summary', { body: { groups: [{ group_id: selectedChatlogGroup, group_name: target }] } });
+        btn.disabled = false;
+        btn.textContent = '生成总结';
+        if (r.ok && r.data?.success) toast(r.data.message || '总结已启动', 'success');
+        else toast(r.data?.message || r.data?.detail || r.error || '失败', 'error');
+        return;
+    }
 
     let body;
     if (type === 'text') {
@@ -231,26 +282,9 @@ async function decryptChatlog() {
     }
 }
 
-async function triggerSummary() {
-    const target = $('sendWindowSelect').value;
-    if (!selectedChatlogGroup || !target) { toast('请选择群聊和发送窗口', 'error'); return; }
-    const btn = $('summaryBtn');
-    btn.disabled = true;
-    btn.textContent = '生成中...';
-    const r = await api('POST', '/api/summary', { body: { groups: [{ group_id: selectedChatlogGroup, group_name: target }] } });
-    btn.disabled = false;
-    btn.textContent = '总结';
-    if (r.ok && r.data?.success) toast(r.data.message || '总结已启动', 'success');
-    else toast(r.data?.message || r.data?.detail || r.error || '失败', 'error');
-}
-
 function refreshCurrentChat() {
     if (!selectedChatlogGroup) return;
-    loadMessages(selectedChatlogGroup);
-}
-
-function onChatDateChange() {
-    if (!selectedChatlogGroup) return;
+    chatPage = 0;
     loadMessages(selectedChatlogGroup);
 }
 

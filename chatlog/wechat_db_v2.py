@@ -217,6 +217,7 @@ class WeChatDBReaderV2:
         text_only: bool = True,
         limit: int = 0,
         offset: int = 0,
+        desc: bool = False,
     ) -> list[Message]:
         _validate_username(talker)
         start_time = start_time or datetime(2000, 1, 1)
@@ -254,7 +255,7 @@ class WeChatDBReaderV2:
                     f"LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
                     f"WHERE m.create_time >= {start_ts} AND m.create_time <= {end_ts}"
                     f"{type_filter} "
-                    f"ORDER BY m.sort_seq ASC{sql_limit}"
+                    f"ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}{sql_limit}"
                 )
                 _, rows = self._query(db_path, sql)
             except Exception as e:
@@ -277,7 +278,7 @@ class WeChatDBReaderV2:
                     int(create_time), status == 2 or (not is_chatroom and talker != sender),
                 ))
 
-        raw_messages.sort(key=lambda m: m[0])
+        raw_messages.sort(key=lambda m: m[0], reverse=desc)
         if offset > 0:
             raw_messages = raw_messages[offset:]
         if limit > 0:

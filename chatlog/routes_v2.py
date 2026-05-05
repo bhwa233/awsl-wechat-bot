@@ -82,6 +82,8 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         start: Optional[str] = Query(None, description="开始时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         end: Optional[str] = Query(None, description="结束时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         limit: int = Query(100, ge=1, le=10000, description="限制返回数量"),
+        offset: int = Query(0, ge=0, le=100000, description="跳过前 N 条消息"),
+        desc: bool = Query(False, description="是否倒序（最新消息优先）"),
     ):
         _ensure_ready()
         start_time = end_time = None
@@ -106,6 +108,8 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
                 end_time=end_time,
                 text_only=True,
                 limit=limit,
+                offset=offset,
+                desc=desc,
             )
             return [
                 ChatlogMessageResponse(
