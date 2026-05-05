@@ -187,7 +187,7 @@ function formatMsgContent(m) {
         const md5Match = content.match(/md5="([0-9a-fA-F]{32})"/);
         const md5 = md5Match ? md5Match[1] : '';
         if (md5) {
-            return `<div class="msg-emoji"><img data-emoticon-md5="${md5}" data-emoticon-content="${escapeHtml(content)}" alt="[动画表情]" loading="lazy"></div>`;
+            return `<div class="msg-emoji"><img data-emoticon-md5="${md5}" data-emoticon-content="${escapeHtml(content)}" alt="[动画表情]" loading="lazy" onerror="this.style.display='none';this.parentElement.textContent='[动画表情]'"></div>`;
         }
         return `<div class="msg-text msg-media">[动画表情]</div>`;
     }

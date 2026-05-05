@@ -186,6 +186,8 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
             raise HTTPException(status_code=500, detail="表情解码失败")
 
         ct = _detect_content_type(data)
+        if ct == "application/octet-stream":
+            raise HTTPException(status_code=400, detail="表情解码结果不是有效图片格式")
         if cache_key:
             if len(_emoticon_cache) > 500:
                 _emoticon_cache.clear()
