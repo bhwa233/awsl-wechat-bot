@@ -137,10 +137,10 @@ body {
 .msg-media { font-style: italic; color: var(--text2); }
 .msg-link a { color: var(--blue); text-decoration: underline; }
 .msg-quote { font-size: 12px; color: var(--text2); border-left: 2px solid var(--border); padding-left: 6px; margin-bottom: 4px; }
-.msg-bubble:has(.msg-card) { background: var(--card-bg); padding: 0; border: 1px solid var(--border); overflow: hidden; }
-.msg-bubble:has(.msg-card) > .msg-time { padding: 0 10px 4px; }
-.msg-bubble:has(.msg-card) > .msg-sender { padding: 6px 10px 0; }
-.msg-bubble.self:has(.msg-card) { border-color: var(--border); }
+.msg-bubble:has(> .msg-card) { background: var(--card-bg); padding: 0; border: 1px solid var(--border); overflow: hidden; }
+.msg-bubble:has(> .msg-card) > .msg-time { padding: 0 10px 4px; }
+.msg-bubble:has(> .msg-card) > .msg-sender { padding: 6px 10px 0; }
+.msg-bubble.self:has(> .msg-card) { border-color: var(--border); }
 .msg-card {
     display: flex; align-items: flex-start; gap: 8px;
     padding: 10px 12px; min-width: 160px;
