@@ -257,7 +257,9 @@ function formatMsgContent(m) {
             const refType = refMsg ? parseInt(extractXmlTag(refMsg, 'type') || '1', 10) : 1;
             let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
             if (refContent) {
-                const decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+                let decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+                // Strip "wxid_xxx:\n" prefix that chatlog v2 prepends
+                decoded = decoded.replace(/^[a-zA-Z0-9_]+:\s*/, '');
                 if (decoded.trim().startsWith('<')) {
                     refHtml = formatMsgContent({ msg_type: refType, content: decoded });
                 } else if (refType === 1) {
