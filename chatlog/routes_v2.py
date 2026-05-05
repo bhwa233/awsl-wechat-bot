@@ -234,6 +234,34 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e))
 
+    @router.post("/debug/emoticon-cache", dependencies=[Depends(verify_token)])
+    def debug_emoticon_cache(body: dict):
+        if not config.DEBUG:
+            raise HTTPException(status_code=404, detail="debug API 未启用")
+        _ensure_ready()
+        import base64 as _b64
+        import glob as _glob
+
+        md5 = body.get("md5", "").lower().strip()
+        if not md5 or len(md5) != 32:
+            raise HTTPException(status_code=400, detail="md5 is required (32 hex chars)")
+
+        pattern = os.path.join(config.wechat_data_dir, "cache", "*", "Emoticon", md5[:2], md5)
+        matches = _glob.glob(pattern)
+        if not matches:
+            return {"found": False, "pattern": pattern}
+
+        path = matches[0]
+        data = open(path, "rb").read()
+        return {
+            "found": True,
+            "path": path,
+            "size": len(data),
+            "head_hex": data[:64].hex(),
+            "head_b64": _b64.b64encode(data[:256]).decode(),
+            "full_b64": _b64.b64encode(data).decode() if len(data) <= 100_000 else None,
+        }
+
     @router.get("/health")
     async def health():
         ready = True
