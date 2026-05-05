@@ -165,7 +165,7 @@ function formatMsgContent(m) {
     const content = m.content || '';
 
     if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE) {
-        const text = content.startsWith('<') ? (extractXmlTag(content, 'content') || content.replace(/<[^>]+>/g, '')) : content;
+        const text = content.startsWith('<') ? (extractXmlTag(content, 'content') || extractXmlTag(content, 'plain') || content.replace(/<[^>]+>/g, '').trim()) : content;
         return `<div class="msg-system">${escapeHtml(text)}</div>`;
     }
 
@@ -181,19 +181,28 @@ function formatMsgContent(m) {
         return `<div class="msg-text msg-media">[位置]</div>`;
 
     if (type === MSG_TYPE.SHARE) {
+        const innerType = extractXmlTag(content, 'type');
+        if (innerType === '57') {
+            const text = extractXmlTag(content, 'title') || '';
+            const refMsg = extractXmlTag(content, 'refermsg');
+            let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
+            const refName = refMsg ? extractXmlTag(refMsg, 'displayname') : '';
+            if (refContent.startsWith('&lt;') || refContent.startsWith('<msg>') || refContent.startsWith('<?xml')) {
+                const decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+                refContent = extractXmlTag(decoded, 'title') || decoded.replace(/<[^>]+>/g, '').trim();
+            }
+            let html = '';
+            if (refContent) {
+                const quote = refName ? `${refName}: ${refContent}` : refContent;
+                html += `<div class="msg-quote">${escapeHtml(quote)}</div>`;
+            }
+            html += `<div class="msg-text">${escapeHtml(text)}</div>`;
+            return html;
+        }
         const title = extractXmlTag(content, 'title') || '[链接]';
         const url = extractXmlTag(content, 'url');
         if (url) return `<div class="msg-text msg-link"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a></div>`;
         return `<div class="msg-text msg-media">${escapeHtml(title)}</div>`;
-    }
-
-    if (type === 57) {
-        const ref = extractXmlTag(content, 'title') || '';
-        const text = extractXmlTag(content, 'content') || '';
-        let html = '';
-        if (ref) html += `<div class="msg-quote">${escapeHtml(ref)}</div>`;
-        html += `<div class="msg-text">${escapeHtml(text)}</div>`;
-        return html;
     }
 
     return `<div class="msg-text">${escapeHtml(content)}</div>`;
