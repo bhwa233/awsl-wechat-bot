@@ -40,3 +40,8 @@ class ChatlogServiceV2:
         self, encrypted_dir: str, hex_key: str, group_id: str
     ) -> str | None:
         return WeChatDBReaderV2(encrypted_dir, hex_key).get_group_display_name(group_id)
+
+    @staticmethod
+    def decode_emoticon(message_xml: str, wechat_data_dir: str) -> bytes:
+        from chatlog.dll_loader import decode_emoticon
+        return decode_emoticon(message_xml, wechat_data_dir)

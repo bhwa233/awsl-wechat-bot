@@ -38,6 +38,13 @@ def _load_library() -> ctypes.CDLL:
         dll.AwslWechatChatlogQueryRawSQL.restype = ctypes.c_void_p
         dll.AwslWechatChatlogFreeString.argtypes = [ctypes.c_void_p]
         dll.AwslWechatChatlogFreeString.restype = None
+        dll.AwslWechatChatlogDecodeEmoticonMessage.argtypes = [
+            ctypes.c_char_p, ctypes.c_char_p,
+            ctypes.POINTER(ctypes.c_longlong), ctypes.POINTER(ctypes.c_char_p),
+        ]
+        dll.AwslWechatChatlogDecodeEmoticonMessage.restype = ctypes.c_void_p
+        dll.AwslWechatChatlogFreeBytes.argtypes = [ctypes.c_void_p]
+        dll.AwslWechatChatlogFreeBytes.restype = None
         _lib = dll
         return _lib
 
@@ -65,3 +72,29 @@ def query_raw_sql(db_path: str | Path, hex_key: str, sql: str) -> dict[str, Any]
     if result.get("error"):
         raise RuntimeError(result["error"])
     return result
+
+
+def decode_emoticon(message_xml: str, wechat_data_dir: str) -> bytes:
+    """解码表情包消息 XML 为图片 bytes。"""
+    lib = _load_library()
+    out_len = ctypes.c_longlong(0)
+    out_error = ctypes.c_char_p(None)
+
+    ptr = lib.AwslWechatChatlogDecodeEmoticonMessage(
+        message_xml.encode("utf-8"),
+        wechat_data_dir.encode("utf-8"),
+        ctypes.byref(out_len),
+        ctypes.byref(out_error),
+    )
+
+    if not ptr:
+        err_msg = "decode_emoticon 返回 NULL"
+        if out_error.value:
+            err_msg = out_error.value.decode("utf-8")
+            lib.AwslWechatChatlogFreeString(ctypes.cast(out_error, ctypes.c_void_p))
+        raise RuntimeError(err_msg)
+
+    try:
+        return ctypes.string_at(ptr, out_len.value)
+    finally:
+        lib.AwslWechatChatlogFreeBytes(ptr)

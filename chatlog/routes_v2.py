@@ -148,6 +148,52 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
             logger.error(f"[ChatlogV2] 获取群名失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败")
 
+    _emoticon_cache: dict[str, tuple[bytes, str]] = {}
+
+    def _detect_content_type(data: bytes) -> str:
+        if data[:4] == b'GIF8':
+            return "image/gif"
+        if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+            return "image/webp"
+        if data[:8] == b'\x89PNG\r\n\x1a\n':
+            return "image/png"
+        if data[:2] == b'\xff\xd8':
+            return "image/jpeg"
+        return "application/octet-stream"
+
+    @router.post("/emoticon", dependencies=[Depends(verify_token)])
+    def decode_emoticon(body: dict):
+        _ensure_ready()
+        content_xml = body.get("content", "")
+        if not content_xml:
+            raise HTTPException(status_code=400, detail="content is required")
+
+        import re as _re
+        md5_match = _re.search(r'md5="([0-9a-fA-F]{32})"', content_xml)
+        cache_key = md5_match.group(1) if md5_match else ""
+
+        if cache_key and cache_key in _emoticon_cache:
+            data, ct = _emoticon_cache[cache_key]
+            from fastapi.responses import Response as RawResponse
+            return RawResponse(content=data, media_type=ct)
+
+        try:
+            data = chatlog.decode_emoticon(content_xml, config.wechat_data_dir)
+        except RuntimeError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"[ChatlogV2] 表情解码失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="表情解码失败")
+
+        ct = _detect_content_type(data)
+        if cache_key:
+            if len(_emoticon_cache) > 500:
+                _emoticon_cache.clear()
+            _emoticon_cache[cache_key] = (data, ct)
+
+        from fastapi.responses import Response as RawResponse
+        return RawResponse(content=data, media_type=ct)
+
     @router.post("/debug/query", dependencies=[Depends(verify_token)])
     def debug_query(body: dict):
         if not config.DEBUG:

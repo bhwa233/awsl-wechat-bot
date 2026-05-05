@@ -111,6 +111,17 @@ class Config(BaseSettings):
         """检查微信数据库配置是否完整"""
         return bool(self.WECHAT_DB_INPUT_PATH and self.WECHAT_DB_OUTPUT_PATH and self.WECHAT_DB_KEY)
 
+    @property
+    def wechat_data_dir(self) -> str:
+        """从 WECHAT_DB_INPUT_PATH 向上推导微信用户数据目录（含 wxid_ 的层级）"""
+        import os
+        p = os.path.abspath(self.WECHAT_DB_INPUT_PATH)
+        while p and p != os.path.dirname(p):
+            if os.path.basename(p).startswith("wxid_"):
+                return p
+            p = os.path.dirname(p)
+        return self.WECHAT_DB_INPUT_PATH
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

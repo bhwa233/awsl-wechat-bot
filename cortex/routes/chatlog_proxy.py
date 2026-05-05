@@ -66,4 +66,13 @@ def create_routes(chatlog_base_url: str, chatlog_token: str) -> tuple[APIRouter,
         resp = await client.get("/api/chatlog/health")
         return _proxy_response(resp)
 
+    @router.post("/api/chatlog/emoticon", dependencies=[Depends(verify_token)])
+    async def proxy_chatlog_emoticon(request: Request):
+        body = await request.body()
+        resp = await client.post("/api/chatlog/emoticon", content=body, headers={"Content-Type": "application/json"}, timeout=30)
+        if resp.status_code >= 500:
+            logger.error(f"[ChatlogProxy] emoticon 上游返回 {resp.status_code}")
+            return Response(content=b'{"detail":"chatlog emoticon error"}', status_code=502, media_type="application/json")
+        return Response(content=resp.content, status_code=resp.status_code, media_type=resp.headers.get("content-type", "application/octet-stream"))
+
     return router, client

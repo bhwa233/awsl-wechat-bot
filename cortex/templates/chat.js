@@ -183,8 +183,14 @@ function formatMsgContent(m) {
         return `<div class="msg-text msg-media">[语音]</div>`;
     if (type === MSG_TYPE.VIDEO)
         return `<div class="msg-text msg-media">[视频]</div>`;
-    if (type === MSG_TYPE.ANIMATION)
+    if (type === MSG_TYPE.ANIMATION) {
+        const md5Match = content.match(/md5="([0-9a-fA-F]{32})"/);
+        const md5 = md5Match ? md5Match[1] : '';
+        if (md5) {
+            return `<div class="msg-emoji"><img data-emoticon-md5="${md5}" data-emoticon-content="${escapeHtml(content)}" alt="[动画表情]" loading="lazy"></div>`;
+        }
         return `<div class="msg-text msg-media">[动画表情]</div>`;
+    }
     if (type === MSG_TYPE.NAMECARD) {
         const nick = content.match(/nickname="([^"]*)"/);
         const certinfo = content.match(/certinfo="([^"]*)"/);
@@ -331,7 +337,34 @@ function renderMessages(msgs) {
         }
     }
     box.innerHTML = html;
+    loadEmoticons(box);
     box.scrollTop = box.scrollHeight;
+}
+
+const _emoticonCache = new Map();
+async function loadEmoticons(container) {
+    const imgs = container.querySelectorAll('img[data-emoticon-md5]');
+    for (const img of imgs) {
+        const md5 = img.dataset.emoticonMd5;
+        const content = img.dataset.emoticonContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+        if (_emoticonCache.has(md5)) {
+            img.src = _emoticonCache.get(md5);
+            continue;
+        }
+        try {
+            const token = getToken();
+            const resp = await fetch('/api/chatlog/emoticon', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+                body: JSON.stringify({ content }),
+            });
+            if (!resp.ok) { img.alt = '[表情加载失败]'; continue; }
+            const blob = await resp.blob();
+            const url = URL.createObjectURL(blob);
+            _emoticonCache.set(md5, url);
+            img.src = url;
+        } catch { img.alt = '[表情加载失败]'; }
+    }
 }
 
 function toggleChatMsgType() {
