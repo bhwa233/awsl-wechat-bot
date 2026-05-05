@@ -142,7 +142,7 @@ class WeChatDBReaderV2:
         if limit > 0:
             sql += f" LIMIT {int(limit)}"
         _, rows = self._query(contact_db, sql)
-        return [
+        results = [
             ChatRoom(
                 username=row[0] or "",
                 owner=row[1] or "",
@@ -151,6 +151,28 @@ class WeChatDBReaderV2:
             )
             for row in rows
         ]
+        contact_sql = (
+            "SELECT username, '', nick_name, remark FROM contact "
+            "WHERE username NOT LIKE '%@chatroom' "
+            "AND username NOT LIKE '%@openim' "
+            "AND username NOT LIKE 'gh_%' "
+            "AND type != 0 "
+            "AND (nick_name != '' OR remark != '') "
+            "ORDER BY remark, nick_name"
+        )
+        if limit > 0:
+            contact_sql += f" LIMIT {int(limit)}"
+        _, contact_rows = self._query(contact_db, contact_sql)
+        for row in contact_rows:
+            results.append(
+                ChatRoom(
+                    username=row[0] or "",
+                    owner=row[1] or "",
+                    nick_name=row[2] or "",
+                    remark=row[3] or "",
+                )
+            )
+        return results
 
     def get_group_display_name(self, group_id: str) -> str:
         _validate_username(group_id)

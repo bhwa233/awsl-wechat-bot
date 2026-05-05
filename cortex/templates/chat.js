@@ -264,3 +264,4 @@ function refreshCurrentChat() {
 $('msgInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
 });
+$('chatGroupSelect').addEventListener('change', onChatGroupSelect);
