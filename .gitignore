@@ -30,3 +30,4 @@ logs/
 
 # Scripts with sensitive config
 tools/daily_summary.sh
+dev-server.ts

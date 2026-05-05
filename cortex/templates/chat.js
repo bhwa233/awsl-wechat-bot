@@ -26,10 +26,19 @@ function onTabSwitch(name) {
 function populateChatGroupSelect() {
     const sel = $('chatGroupSelect');
     const prev = sel.value;
+    const activeNames = new Set((allGroups || []).filter(g => g.active).map(g => g.name));
+    const sorted = [...chatlogGroups].sort((a, b) => {
+        const na = a.display_name || a.nick_name || a.username;
+        const nb = b.display_name || b.nick_name || b.username;
+        const ha = activeNames.has(na) ? 0 : 1;
+        const hb = activeNames.has(nb) ? 0 : 1;
+        return ha - hb;
+    });
     sel.innerHTML = `<option value="">选择群聊...</option>`
-        + chatlogGroups.map(g => {
+        + sorted.map(g => {
             const name = g.display_name || g.nick_name || g.username;
-            return `<option value="${escapeHtml(g.username)}">${escapeHtml(name)}</option>`;
+            const active = activeNames.has(name);
+            return `<option value="${escapeHtml(g.username)}">${active ? '● ' : ''}${escapeHtml(name)}</option>`;
         }).join('');
     if (prev) sel.value = prev;
 }
