@@ -88,7 +88,9 @@ extern "C" {
 #endif
 
 extern __declspec(dllexport) char* AwslWechatChatlogQueryRawSQL(char* dbPath, char* hexKey, char* sqlText);
+extern __declspec(dllexport) void* AwslWechatChatlogDecodeEmoticonMessage(char* messageText, char* wechatDataDir, long long int* outLen, char** outError);
 extern __declspec(dllexport) void AwslWechatChatlogFreeString(char* s);
+extern __declspec(dllexport) void AwslWechatChatlogFreeBytes(void* p);
 
 #ifdef __cplusplus
 }

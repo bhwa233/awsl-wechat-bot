@@ -38,13 +38,16 @@ def _load_library() -> ctypes.CDLL:
         dll.AwslWechatChatlogQueryRawSQL.restype = ctypes.c_void_p
         dll.AwslWechatChatlogFreeString.argtypes = [ctypes.c_void_p]
         dll.AwslWechatChatlogFreeString.restype = None
-        dll.AwslWechatChatlogDecodeEmoticonMessage.argtypes = [
-            ctypes.c_char_p, ctypes.c_char_p,
-            ctypes.POINTER(ctypes.c_longlong), ctypes.POINTER(ctypes.c_char_p),
-        ]
-        dll.AwslWechatChatlogDecodeEmoticonMessage.restype = ctypes.c_void_p
-        dll.AwslWechatChatlogFreeBytes.argtypes = [ctypes.c_void_p]
-        dll.AwslWechatChatlogFreeBytes.restype = None
+        try:
+            dll.AwslWechatChatlogDecodeEmoticonMessage.argtypes = [
+                ctypes.c_char_p, ctypes.c_char_p,
+                ctypes.POINTER(ctypes.c_longlong), ctypes.POINTER(ctypes.c_char_p),
+            ]
+            dll.AwslWechatChatlogDecodeEmoticonMessage.restype = ctypes.c_void_p
+            dll.AwslWechatChatlogFreeBytes.argtypes = [ctypes.c_void_p]
+            dll.AwslWechatChatlogFreeBytes.restype = None
+        except AttributeError:
+            pass
         _lib = dll
         return _lib
 
