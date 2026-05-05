@@ -148,14 +148,16 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
             logger.error(f"[ChatlogV2] 获取群名失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败")
 
-    @router.get("/debug/query", dependencies=[Depends(verify_token)])
-    def debug_query(
-        db: str = Query("contact", description="数据库名: contact 或 message_0 等"),
-        sql: str = Query(..., description="SQL 查询语句"),
-        limit: int = Query(50, ge=1, le=500),
-    ):
+    @router.post("/debug/query", dependencies=[Depends(verify_token)])
+    def debug_query(body: dict):
         _ensure_ready()
         import os as _os
+
+        db = body.get("db", "contact")
+        sql = body.get("sql", "")
+        limit = min(max(body.get("limit", 50), 1), 500)
+        if not sql:
+            raise HTTPException(status_code=400, detail="sql is required")
 
         if db == "contact":
             db_path = _os.path.join(
