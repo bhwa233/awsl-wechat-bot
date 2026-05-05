@@ -1,12 +1,17 @@
 """Chatlog v2 HTTP 路由 - DLL 后端"""
 
+import base64
+import glob
+import json
 import logging
 import os
+import re
 import sys
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response as RawResponse
 
 from chatlog.dll_loader import _DLL_PATH
 from chatlog.models import ChatlogGroupResponse, ChatlogMessageResponse
@@ -168,13 +173,12 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         if not content_xml:
             raise HTTPException(status_code=400, detail="content is required")
 
-        import re as _re
-        md5_match = _re.search(r'md5="([0-9a-fA-F]{32})"', content_xml)
+
+        md5_match = re.search(r'md5="([0-9a-fA-F]{32})"', content_xml)
         cache_key = md5_match.group(1) if md5_match else ""
 
         if cache_key and cache_key in _emoticon_cache:
             data, ct = _emoticon_cache[cache_key]
-            from fastapi.responses import Response as RawResponse
             return RawResponse(content=data, media_type=ct)
 
         try:
@@ -193,7 +197,6 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
                 _emoticon_cache.clear()
             _emoticon_cache[cache_key] = (data, ct)
 
-        from fastapi.responses import Response as RawResponse
         return RawResponse(content=data, media_type=ct)
 
     @router.post("/debug/query", dependencies=[Depends(verify_token)])
@@ -201,7 +204,6 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         if not config.CHATLOG_DEBUG:
             raise HTTPException(status_code=404, detail="CHATLOG_DEBUG 未启用")
         _ensure_ready()
-        import os as _os
 
         db = body.get("db", "contact")
         sql = body.get("sql", "")
@@ -210,14 +212,14 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
             raise HTTPException(status_code=400, detail="sql is required")
 
         if db == "contact":
-            db_path = _os.path.join(
+            db_path = os.path.join(
                 config.WECHAT_DB_INPUT_PATH, "db_storage", "contact", "contact.db"
             )
         else:
-            db_path = _os.path.join(
+            db_path = os.path.join(
                 config.WECHAT_DB_INPUT_PATH, "db_storage", "message", f"{db}.db"
             )
-        if not _os.path.isfile(db_path):
+        if not os.path.isfile(db_path):
             raise HTTPException(status_code=404, detail=f"数据库不存在: {db_path}")
         from chatlog.dll_loader import query_raw_sql
 
@@ -239,29 +241,25 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         if not config.CHATLOG_DEBUG:
             raise HTTPException(status_code=404, detail="CHATLOG_DEBUG 未启用")
         _ensure_ready()
-        import base64 as _b64
-        import glob as _glob
 
         md5 = body.get("md5", "").lower().strip()
         if not md5 or len(md5) != 32:
             raise HTTPException(status_code=400, detail="md5 is required (32 hex chars)")
 
         pattern = os.path.join(config.wechat_data_dir, "cache", "*", "Emoticon", md5[:2], md5)
-        matches = _glob.glob(pattern)
+        matches = glob.glob(pattern)
         if not matches:
             return {"found": False}
 
         path = matches[0]
         data = open(path, "rb").read()
-        import json as _json
-        body = _json.dumps({
+        body = json.dumps({
             "found": True,
             "size": len(data),
             "head_hex": data[:64].hex(),
-            "head_b64": _b64.b64encode(data[:256]).decode(),
-            "full_b64": _b64.b64encode(data).decode() if len(data) <= 100_000 else None,
+            "head_b64": base64.b64encode(data[:256]).decode(),
+            "full_b64": base64.b64encode(data).decode() if len(data) <= 100_000 else None,
         })
-        from fastapi.responses import Response as RawResponse
         return RawResponse(content=body, media_type="application/json")
 
     @router.get("/health")
