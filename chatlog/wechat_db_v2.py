@@ -153,9 +153,7 @@ class WeChatDBReaderV2:
         ]
         contact_sql = (
             "SELECT username, '', nick_name, remark FROM contact "
-            "WHERE username NOT LIKE '%@chatroom' "
-            "AND username NOT LIKE '%@openim' "
-            "AND username NOT LIKE 'gh_%' "
+            "WHERE username LIKE 'wxid_%' "
             "AND (nick_name != '' OR remark != '') "
             "ORDER BY remark, nick_name"
         )

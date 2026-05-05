@@ -148,6 +148,40 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
             logger.error(f"[ChatlogV2] 获取群名失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败")
 
+    @router.get("/debug/query", dependencies=[Depends(verify_token)])
+    def debug_query(
+        db: str = Query("contact", description="数据库名: contact 或 message_0 等"),
+        sql: str = Query(..., description="SQL 查询语句"),
+        limit: int = Query(50, ge=1, le=500),
+    ):
+        _ensure_ready()
+        import os as _os
+
+        if db == "contact":
+            db_path = _os.path.join(
+                config.WECHAT_DB_INPUT_PATH, "db_storage", "contact", "contact.db"
+            )
+        else:
+            db_path = _os.path.join(
+                config.WECHAT_DB_INPUT_PATH, "db_storage", "message", f"{db}.db"
+            )
+        if not _os.path.isfile(db_path):
+            raise HTTPException(status_code=404, detail=f"数据库不存在: {db_path}")
+        from chatlog.dll_loader import query_raw_sql
+
+        safe_sql = sql.strip().rstrip(";")
+        if "LIMIT" not in safe_sql.upper():
+            safe_sql += f" LIMIT {limit}"
+        try:
+            result = query_raw_sql(db_path, config.WECHAT_DB_KEY, safe_sql)
+            return {
+                "columns": result.get("columns", []),
+                "rows": (result.get("rows", []) or [])[:limit],
+                "count": len(result.get("rows", []) or []),
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     @router.get("/health")
     async def health():
         ready = True
