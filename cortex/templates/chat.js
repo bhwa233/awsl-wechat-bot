@@ -82,8 +82,10 @@ function findGatewayWindow(chatlogDisplayName) {
 function selectChatlogGroup(username) {
     selectedChatlogGroup = username;
     chatPage = 0;
-    $('chatEmpty').style.display = 'none';
-    $('chatlogSelect').style.display = 'none';
+    const emptyEl = $('chatEmpty');
+    if (emptyEl) emptyEl.style.display = 'none';
+    const selEl = $('chatlogSelect');
+    if (selEl) selEl.style.display = 'none';
 
     const displayName = groupMapping[username] || username;
     const gw = findGatewayWindow(displayName);
