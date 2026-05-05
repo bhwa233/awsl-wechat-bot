@@ -82,7 +82,6 @@ function findGatewayWindow(chatlogDisplayName) {
 function selectChatlogGroup(username) {
     selectedChatlogGroup = username;
     chatPage = 0;
-    $('chatInput').style.display = '';
     $('chatEmpty').style.display = 'none';
     $('chatlogSelect').style.display = 'none';
 
