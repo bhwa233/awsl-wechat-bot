@@ -134,16 +134,21 @@ def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, t
     lines = []
     sender_stats: dict[str, tuple[int, int]] = {}
 
+    _type_labels = {3: '[图片]', 34: '[语音]', 42: '[名片]', 43: '[视频]', 47: '[动画表情]', 48: '[位置]', 49: '[链接]'}
+
     for msg in messages:
         if msg.get("is_self"):
             continue
         time_str = msg.get("time", "")[11:19]
         sender = msg.get("sender_name") or "未知"
+        msg_type = msg.get("msg_type", 1)
         content = msg.get("content", "")
-        lines.append(f"[{time_str}] {sender}: {content}")
+        display = _type_labels.get(msg_type, content) if msg_type != 1 else content
+        lines.append(f"[{time_str}] {sender}: {display}")
 
         count, chars = sender_stats.get(sender, (0, 0))
-        sender_stats[sender] = (count + 1, chars + len(content))
+        text_len = len(content) if msg_type == 1 else len(display)
+        sender_stats[sender] = (count + 1, chars + text_len)
 
     return "\n".join(lines), len(lines), sender_stats
 
