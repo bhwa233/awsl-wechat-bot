@@ -3,6 +3,8 @@ let chatlogBackend = null;
 let selectedChatlogGroup = null;
 let groupMapping = {};
 let chatFileState = { message: '', filename: '' };
+let _recordContents = {};
+let _recordSeq = 0;
 let chatPage = 0;
 const chatPageSize = 100;
 let loadGen = 0;
@@ -164,7 +166,7 @@ function chatPageNext() {
     loadMessages(selectedChatlogGroup);
 }
 
-const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, VIDEO: 43, ANIMATION: 47, LOCATION: 48, SHARE: 49, SYSTEM: 10000, REVOKE: 10002 };
+const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, NAMECARD: 42, VIDEO: 43, ANIMATION: 47, LOCATION: 48, SHARE: 49, SYSTEM: 10000, REVOKE: 10002 };
 
 function formatMsgContent(m) {
     const type = m.msg_type;
@@ -183,6 +185,17 @@ function formatMsgContent(m) {
         return `<div class="msg-text msg-media">[视频]</div>`;
     if (type === MSG_TYPE.ANIMATION)
         return `<div class="msg-text msg-media">[动画表情]</div>`;
+    if (type === MSG_TYPE.NAMECARD) {
+        const nick = content.match(/nickname="([^"]*)"/);
+        const certinfo = content.match(/certinfo="([^"]*)"/);
+        let html = `<div class="msg-card namecard-card">`;
+        html += `<div class="msg-card-icon">👤</div>`;
+        html += `<div class="msg-card-body">`;
+        html += `<div class="msg-card-title">${escapeHtml(nick ? nick[1] : '名片')}</div>`;
+        if (certinfo && certinfo[1]) html += `<div class="msg-card-desc">${escapeHtml(certinfo[1])}</div>`;
+        html += `</div></div>`;
+        return html;
+    }
     if (type === MSG_TYPE.LOCATION)
         return `<div class="msg-text msg-media">[位置]</div>`;
 
@@ -191,6 +204,50 @@ function formatMsgContent(m) {
         if (innerType === '62') {
             const text = extractXmlTag(content, 'title') || '拍了拍';
             return `<div class="msg-system">${escapeHtml(text)}</div>`;
+        }
+        if (innerType === '51') {
+            const feed = extractXmlTag(content, 'finderFeed');
+            const nick = feed ? extractXmlTag(feed, 'nickname') : '';
+            const desc = feed ? extractXmlTag(feed, 'desc') : '';
+            let html = `<div class="msg-card finder-card">`;
+            html += `<div class="msg-card-icon">📺</div>`;
+            html += `<div class="msg-card-body">`;
+            html += `<div class="msg-card-title">${escapeHtml(nick || '视频号')}</div>`;
+            if (desc) html += `<div class="msg-card-desc">${escapeHtml(desc.length > 80 ? desc.slice(0, 80) + '…' : desc)}</div>`;
+            html += `</div></div>`;
+            return html;
+        }
+        if (innerType === '3') {
+            const title = extractXmlTag(content, 'title') || '未知歌曲';
+            const des = extractXmlTag(content, 'des') || '';
+            const url = extractXmlTag(content, 'url');
+            let html = `<div class="msg-card music-card">`;
+            html += `<div class="msg-card-icon">♫</div>`;
+            html += `<div class="msg-card-body">`;
+            html += `<div class="msg-card-title">${escapeHtml(title)}</div>`;
+            if (des) html += `<div class="msg-card-desc">${escapeHtml(des)}</div>`;
+            html += `</div></div>`;
+            if (url) html = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">${html}</a>`;
+            return html;
+        }
+        if (innerType === '8')
+            return `<div class="msg-text msg-media">[动画表情]</div>`;
+        if (innerType === '6' || innerType === '36') {
+            const title = extractXmlTag(content, 'title') || '[文件]';
+            return `<div class="msg-text msg-media">${escapeHtml(title)}</div>`;
+        }
+        if (innerType === '19') {
+            const title = extractXmlTag(content, 'title') || '[聊天记录]';
+            const des = extractXmlTag(content, 'des');
+            const rid = 'rec_' + (++_recordSeq);
+            _recordContents[rid] = content;
+            let html = `<div class="msg-card chatlog-card" onclick="showRecordDetail('${rid}')" style="cursor:pointer">`;
+            html += `<div class="msg-card-icon">📋</div>`;
+            html += `<div class="msg-card-body">`;
+            html += `<div class="msg-card-title">${escapeHtml(title)}</div>`;
+            if (des) html += `<div class="msg-card-desc">${escapeHtml(des.length > 100 ? des.slice(0, 100) + '…' : des)}</div>`;
+            html += `</div></div>`;
+            return html;
         }
         if (innerType === '57') {
             const text = extractXmlTag(content, 'title') || '';
@@ -355,3 +412,64 @@ $('msgInput').addEventListener('keydown', e => {
 });
 $('chatGroupSelect').addEventListener('change', onChatGroupSelect);
 $('chatGroupSelect').addEventListener('input', onChatGroupSelect);
+
+function showRecordDetail(rid) {
+    const content = _recordContents[rid];
+    if (!content) return;
+    const decoded = content.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+    const recordItem = extractXmlTag(decoded, 'recorditem') || decoded;
+    const decoded2 = recordItem.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+    const title = extractXmlTag(content, 'title') || '聊天记录';
+    const items = decoded2.match(/<dataitem[\s\S]*?<\/dataitem>/g) || [];
+    let body = '';
+    let lastTime = '';
+    for (const item of items) {
+        const name = item.match(/dataitemsource\s*=\s*"([^"]*)"/)?.[1] || extractXmlTag(item, 'sourcename') || '';
+        const ts = extractXmlTag(item, 'sourcetime') || '';
+        const desc = (extractXmlTag(item, 'datadesc') || '').replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCharCode(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCharCode(d));
+        const dataType = item.match(/datatype\s*=\s*"(\d+)"/)?.[1] || '';
+        if (ts) {
+            const timeStr = new Date(parseInt(ts) * 1000).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            if (timeStr !== lastTime) {
+                body += `<div class="record-time-divider">${timeStr}</div>`;
+                lastTime = timeStr;
+            }
+        }
+        let content = '';
+        if (desc) {
+            content = escapeHtml(desc);
+        } else if (dataType === '3') {
+            content = '🖼️ [图片]';
+        } else if (dataType === '34') {
+            content = '🎤 [语音]';
+        } else if (dataType === '43') {
+            content = '🎬 [视频]';
+        } else if (dataType === '47') {
+            content = '😀 [表情]';
+        } else if (dataType === '49') {
+            content = '📎 [链接]';
+        } else {
+            const dtTitle = extractXmlTag(item, 'datatitle');
+            content = dtTitle ? escapeHtml(dtTitle) : '📎 [消息]';
+        }
+        body += `<div class="record-msg">`;
+        body += `<div class="record-name">${escapeHtml(name)}</div>`;
+        body += `<div class="record-bubble">${content}</div>`;
+        body += `</div>`;
+    }
+    if (!body) body = `<div class="empty-hint">无法解析聊天记录内容</div>`;
+    let modal = document.getElementById('recordModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'recordModal';
+        modal.className = 'modal-overlay';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') modal.style.display = 'none'; });
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `<div class="modal-content">
+        <div class="modal-header"><span>${escapeHtml(title)}</span><button onclick="document.getElementById('recordModal').style.display='none'" class="modal-close">✕</button></div>
+        <div class="modal-body">${body}</div>
+    </div>`;
+    modal.style.display = 'flex';
+}
