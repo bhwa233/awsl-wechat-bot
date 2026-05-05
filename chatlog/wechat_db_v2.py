@@ -135,14 +135,20 @@ class WeChatDBReaderV2:
     def list_groups(self, limit: int = 0) -> list[ChatRoom]:
         contact_db = self._contact_db_path()
         sql = (
-            "SELECT cr.username, cr.owner, c.nick_name, c.remark "
-            "FROM chat_room cr LEFT JOIN contact c ON cr.username = c.username "
-            "ORDER BY cr.username"
+            "SELECT c.username, COALESCE(cr.owner, ''), c.nick_name, c.remark "
+            "FROM contact c "
+            "LEFT JOIN chat_room cr ON c.username = cr.username "
+            "WHERE c.local_type IN (1, 2) "
+            "AND c.username NOT LIKE 'gh_%' "
+            "AND c.username NOT IN "
+            "('filehelper','fmessage','floatbottle','medianote','newsapp','weixin','weixinpay') "
+            "AND c.delete_flag = 0 "
+            "ORDER BY c.local_type, c.remark, c.nick_name"
         )
         if limit > 0:
             sql += f" LIMIT {int(limit)}"
         _, rows = self._query(contact_db, sql)
-        results = [
+        return [
             ChatRoom(
                 username=row[0] or "",
                 owner=row[1] or "",
@@ -151,25 +157,6 @@ class WeChatDBReaderV2:
             )
             for row in rows
         ]
-        contact_sql = (
-            "SELECT username, '', nick_name, remark FROM contact "
-            "WHERE username LIKE 'wxid_%' "
-            "AND (nick_name != '' OR remark != '') "
-            "ORDER BY remark, nick_name"
-        )
-        if limit > 0:
-            contact_sql += f" LIMIT {int(limit)}"
-        _, contact_rows = self._query(contact_db, contact_sql)
-        for row in contact_rows:
-            results.append(
-                ChatRoom(
-                    username=row[0] or "",
-                    owner=row[1] or "",
-                    nick_name=row[2] or "",
-                    remark=row[3] or "",
-                )
-            )
-        return results
 
     def get_group_display_name(self, group_id: str) -> str:
         _validate_username(group_id)
