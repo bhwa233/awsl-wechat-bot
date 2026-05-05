@@ -256,12 +256,13 @@ function formatMsgContent(m) {
             const refName = refMsg ? extractXmlTag(refMsg, 'displayname') : '';
             const refType = refMsg ? parseInt(extractXmlTag(refMsg, 'type') || '1', 10) : 1;
             let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
+            let isCard = false;
             if (refContent) {
                 let decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
-                // Strip "wxid_xxx:\n" prefix that chatlog v2 prepends
                 decoded = decoded.replace(/^[a-zA-Z0-9_]+:\s*/, '');
                 if (decoded.trim().startsWith('<')) {
                     refHtml = formatMsgContent({ msg_type: refType, content: decoded });
+                    isCard = true;
                 } else if (refType === 1) {
                     const label = refName ? `${refName}: ${decoded}` : decoded;
                     refHtml = `<div>${escapeHtml(label)}</div>`;
@@ -274,7 +275,7 @@ function formatMsgContent(m) {
             }
             let html = '';
             if (refHtml) {
-                const nameHtml = refName ? `<div class="msg-quote-name">${escapeHtml(refName)}</div>` : '';
+                const nameHtml = isCard && refName ? `<div class="msg-quote-name">${escapeHtml(refName)}</div>` : '';
                 html += `<div class="msg-quote">${nameHtml}${refHtml}</div>`;
             }
             html += `<div class="msg-text">${escapeHtml(text)}</div>`;
