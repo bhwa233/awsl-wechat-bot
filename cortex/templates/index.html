@@ -49,24 +49,13 @@
         <!-- ==================== 聊天 Tab ==================== -->
         <div class="panel active" id="chat-panel">
             <div class="chat-layout">
-                <div class="chat-sidebar">
-                    <div class="sidebar-top">
-                        <input type="text" id="groupSearch" placeholder="搜索群聊..." class="search-input">
-                        <button class="btn btn-ghost btn-sm" id="decryptBtn" style="display:none" onclick="decryptChatlog()">解密</button>
-                    </div>
-                    <div class="sidebar-section-label">聊天记录 (Chatlog)</div>
-                    <div class="group-list chatlog-list" id="chatlogGroupList">
-                        <div class="empty-hint">加载中...</div>
-                    </div>
-                    <div class="sidebar-section-label">发送窗口 (Gateway)</div>
-                    <div class="group-list gateway-list" id="gatewayGroupList">
-                        <div class="empty-hint">加载中...</div>
-                    </div>
-                </div>
                 <div class="chat-main">
-                    <div class="chat-header" id="chatHeader" style="display:none">
+                    <div class="chat-header">
                         <div class="chat-header-left">
-                            <span id="chatGroupName" class="chat-title"></span>
+                            <select id="chatGroupSelect" class="chat-group-select" onchange="onChatGroupSelect()">
+                                <option value="">选择群聊...</option>
+                            </select>
+                            <button class="btn btn-ghost btn-sm" id="decryptBtn" style="display:none" onclick="decryptChatlog()">解密</button>
                         </div>
                         <button class="btn btn-ghost btn-sm" onclick="refreshCurrentChat()">刷新</button>
                     </div>

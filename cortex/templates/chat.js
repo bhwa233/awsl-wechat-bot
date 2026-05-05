@@ -8,7 +8,6 @@ const chatPageSize = 100;
 let loadGen = 0;
 
 function onGroupsLoaded() {
-    renderGatewayList();
     populateSendWindowSelect();
 }
 
@@ -24,42 +23,21 @@ function onTabSwitch(name) {
     if (name === 'webhooks' && typeof webhookCrud !== 'undefined') webhookCrud.load();
 }
 
-function renderChatlogList(filter = '') {
-    const list = $('chatlogGroupList');
-    if (!chatlogGroups.length) {
-        list.innerHTML = '<div class="empty-hint">无 chatlog 群</div>';
-        return;
-    }
-    const f = filter.toLowerCase();
-    const filtered = f ? chatlogGroups.filter(g => {
-        const name = g.display_name || g.nick_name || g.username;
-        return name.toLowerCase().includes(f) || g.username.toLowerCase().includes(f);
-    }) : chatlogGroups;
-    list.innerHTML = filtered.map(g => {
-        const name = g.display_name || g.nick_name || g.username;
-        return `<div class="group-item${selectedChatlogGroup === g.username ? ' active' : ''}" data-username="${escapeHtml(g.username)}">`
-            + `<div class="group-name">${escapeHtml(name)}</div>`
-            + `</div>`;
-    }).join('');
+function populateChatGroupSelect() {
+    const sel = $('chatGroupSelect');
+    const prev = sel.value;
+    sel.innerHTML = `<option value="">选择群聊...</option>`
+        + chatlogGroups.map(g => {
+            const name = g.display_name || g.nick_name || g.username;
+            return `<option value="${escapeHtml(g.username)}">${escapeHtml(name)}</option>`;
+        }).join('');
+    if (prev) sel.value = prev;
 }
 
-$('chatlogGroupList').addEventListener('click', e => {
-    const item = e.target.closest('.group-item[data-username]');
-    if (item) selectChatlogGroup(item.dataset.username);
-});
-
-function renderGatewayList() {
-    const list = $('gatewayGroupList');
-    if (!allGroups.length) {
-        list.innerHTML = '<div class="empty-hint">无窗口</div>';
-        return;
-    }
-    list.innerHTML = allGroups.map(g =>
-        `<div class="group-item${g.active ? '' : ' inactive'}" style="padding:6px 14px">`
-        + `<div class="group-name" style="font-size:12px">${escapeHtml(g.name)}</div>`
-        + `${g.active ? '' : '<div class="group-badge">离线</div>'}`
-        + `</div>`
-    ).join('');
+function onChatGroupSelect() {
+    const username = $('chatGroupSelect').value;
+    if (!username) return;
+    selectChatlogGroup(username);
 }
 
 async function detectChatlogBackend() {
@@ -78,7 +56,7 @@ async function loadChatlogGroups() {
     if (!r.ok) return;
     chatlogGroups = r.data || [];
     buildGroupMapping();
-    renderChatlogList($('groupSearch').value);
+    populateChatGroupSelect();
 }
 
 function buildGroupMapping() {
@@ -104,15 +82,11 @@ function findGatewayWindow(chatlogDisplayName) {
 function selectChatlogGroup(username) {
     selectedChatlogGroup = username;
     chatPage = 0;
-    renderChatlogList($('groupSearch').value);
-    $('chatHeader').style.display = '';
     $('chatInput').style.display = '';
     $('chatEmpty').style.display = 'none';
     $('chatlogSelect').style.display = 'none';
 
     const displayName = groupMapping[username] || username;
-    $('chatGroupName').textContent = displayName;
-
     const gw = findGatewayWindow(displayName);
     const sel = $('sendWindowSelect');
     sel.value = gw ? gw.name : '';
@@ -288,7 +262,6 @@ function refreshCurrentChat() {
     loadMessages(selectedChatlogGroup);
 }
 
-$('groupSearch').addEventListener('input', e => renderChatlogList(e.target.value));
 $('msgInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
 });
