@@ -258,11 +258,15 @@ function formatMsgContent(m) {
             let refContent = refMsg ? extractXmlTag(refMsg, 'content') : '';
             if (refContent) {
                 const decoded = refContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
-                if (refType !== 1 && decoded.trim().startsWith('<')) {
+                if (decoded.trim().startsWith('<')) {
                     refHtml = formatMsgContent({ msg_type: refType, content: decoded });
+                } else if (refType === 1) {
+                    const label = refName ? `${refName}: ${decoded}` : decoded;
+                    refHtml = `<div>${escapeHtml(label)}</div>`;
                 } else {
-                    const plain = decoded.replace(/<[^>]+>/g, '').trim() || decoded;
-                    const label = refName ? `${refName}: ${plain}` : plain;
+                    const typeLabels = { 3: '[图片]', 34: '[语音]', 42: '[名片]', 43: '[视频]', 47: '[动画表情]', 48: '[位置]', 49: '[链接]' };
+                    const tag = typeLabels[refType] || '[消息]';
+                    const label = refName ? `${refName}: ${tag}` : tag;
                     refHtml = `<div>${escapeHtml(label)}</div>`;
                 }
             }
