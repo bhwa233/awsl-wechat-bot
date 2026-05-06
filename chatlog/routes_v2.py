@@ -1,17 +1,12 @@
 """Chatlog v2 HTTP 路由 - DLL 后端"""
 
-import base64
-import glob
-import json
 import logging
 import os
-import re
 import sys
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response as RawResponse
 
 from chatlog.dll_loader import _DLL_PATH
 from chatlog.models import ChatlogGroupResponse, ChatlogMessageResponse
@@ -152,115 +147,6 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         except Exception as e:
             logger.error(f"[ChatlogV2] 获取群名失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败")
-
-    _emoticon_cache: dict[str, tuple[bytes, str]] = {}
-
-    def _detect_content_type(data: bytes) -> str:
-        if data[:4] == b'GIF8':
-            return "image/gif"
-        if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
-            return "image/webp"
-        if data[:8] == b'\x89PNG\r\n\x1a\n':
-            return "image/png"
-        if data[:2] == b'\xff\xd8':
-            return "image/jpeg"
-        return "application/octet-stream"
-
-    @router.post("/emoticon", dependencies=[Depends(verify_token)])
-    def decode_emoticon(body: dict):
-        _ensure_ready()
-        content_xml = body.get("content", "")
-        if not content_xml:
-            raise HTTPException(status_code=400, detail="content is required")
-
-
-        md5_match = re.search(r'md5="([0-9a-fA-F]{32})"', content_xml)
-        cache_key = md5_match.group(1) if md5_match else ""
-
-        if cache_key and cache_key in _emoticon_cache:
-            data, ct = _emoticon_cache[cache_key]
-            return RawResponse(content=data, media_type=ct)
-
-        try:
-            data = chatlog.decode_emoticon(content_xml, config.wechat_data_dir)
-        except RuntimeError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"[ChatlogV2] 表情解码失败: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="表情解码失败")
-
-        ct = _detect_content_type(data)
-        if ct == "application/octet-stream":
-            raise HTTPException(status_code=400, detail="表情解码结果不是有效图片格式")
-        if cache_key:
-            if len(_emoticon_cache) > 500:
-                _emoticon_cache.clear()
-            _emoticon_cache[cache_key] = (data, ct)
-
-        return RawResponse(content=data, media_type=ct)
-
-    @router.post("/debug/query", dependencies=[Depends(verify_token)])
-    def debug_query(body: dict):
-        if not config.CHATLOG_DEBUG:
-            raise HTTPException(status_code=404, detail="CHATLOG_DEBUG 未启用")
-        _ensure_ready()
-
-        db = body.get("db", "contact")
-        sql = body.get("sql", "")
-        limit = min(max(body.get("limit", 50), 1), 500)
-        if not sql:
-            raise HTTPException(status_code=400, detail="sql is required")
-
-        if db == "contact":
-            db_path = os.path.join(
-                config.WECHAT_DB_INPUT_PATH, "db_storage", "contact", "contact.db"
-            )
-        else:
-            db_path = os.path.join(
-                config.WECHAT_DB_INPUT_PATH, "db_storage", "message", f"{db}.db"
-            )
-        if not os.path.isfile(db_path):
-            raise HTTPException(status_code=404, detail=f"数据库不存在: {db_path}")
-        from chatlog.dll_loader import query_raw_sql
-
-        safe_sql = sql.strip().rstrip(";")
-        if "LIMIT" not in safe_sql.upper():
-            safe_sql += f" LIMIT {limit}"
-        try:
-            result = query_raw_sql(db_path, config.WECHAT_DB_KEY, safe_sql)
-            return {
-                "columns": result.get("columns", []),
-                "rows": (result.get("rows", []) or [])[:limit],
-                "count": len(result.get("rows", []) or []),
-            }
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e))
-
-    @router.post("/debug/emoticon-cache", dependencies=[Depends(verify_token)])
-    def debug_emoticon_cache(body: dict):
-        if not config.CHATLOG_DEBUG:
-            raise HTTPException(status_code=404, detail="CHATLOG_DEBUG 未启用")
-        _ensure_ready()
-
-        md5 = body.get("md5", "").lower().strip()
-        if not md5 or len(md5) != 32:
-            raise HTTPException(status_code=400, detail="md5 is required (32 hex chars)")
-
-        pattern = os.path.join(config.wechat_data_dir, "cache", "*", "Emoticon", md5[:2], md5)
-        matches = glob.glob(pattern)
-        if not matches:
-            return {"found": False}
-
-        path = matches[0]
-        data = open(path, "rb").read()
-        body = json.dumps({
-            "found": True,
-            "size": len(data),
-            "head_hex": data[:64].hex(),
-            "head_b64": base64.b64encode(data[:256]).decode(),
-            "full_b64": base64.b64encode(data).decode() if len(data) <= 100_000 else None,
-        })
-        return RawResponse(content=body, media_type="application/json")
 
     @router.get("/health")
     async def health():

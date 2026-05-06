@@ -34,9 +34,6 @@ class Config(BaseSettings):
     # 调试模式（输出每次检测到的所有消息）
     DEBUG: bool = False
 
-    # Chatlog 调试端点开关
-    CHATLOG_DEBUG: bool = True
-
     # AppleScript 超时配置（秒）
     APPLESCRIPT_TIMEOUT_SHORT: int = 10   # 简单操作: 窗口位置、图片复制
     APPLESCRIPT_TIMEOUT_MEDIUM: int = 20  # 中等操作: 消息获取
@@ -113,17 +110,6 @@ class Config(BaseSettings):
     def has_wechat_db_config(self) -> bool:
         """检查微信数据库配置是否完整"""
         return bool(self.WECHAT_DB_INPUT_PATH and self.WECHAT_DB_OUTPUT_PATH and self.WECHAT_DB_KEY)
-
-    @property
-    def wechat_data_dir(self) -> str:
-        """从 WECHAT_DB_INPUT_PATH 向上推导微信用户数据目录（含 wxid_ 的层级）"""
-        import os
-        p = os.path.abspath(self.WECHAT_DB_INPUT_PATH)
-        while p and p != os.path.dirname(p):
-            if os.path.basename(p).startswith("wxid_"):
-                return p
-            p = os.path.dirname(p)
-        return self.WECHAT_DB_INPUT_PATH
 
     model_config = SettingsConfigDict(
         env_file=".env",
