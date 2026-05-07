@@ -27,6 +27,7 @@ class Gateway:
         self.sender = sender
         self.gateway_queue: queue.Queue[GatewayMessage] = queue.Queue(maxsize=100)
         self._ws_clients: dict[WebSocket, WSSubscription] = {}
+        self._ws_locks: dict[WebSocket, asyncio.Lock] = {}
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._running = False
@@ -55,13 +56,26 @@ class Gateway:
         """注册 WS 连接（无过滤，需 subscribe 后才收消息）"""
         with self._lock:
             self._ws_clients[ws] = WSSubscription()
+            self._ws_locks[ws] = asyncio.Lock()
         logger.info(f"WS 客户端已连接 (当前 {len(self._ws_clients)} 个)")
 
     def ws_disconnect(self, ws: WebSocket):
         """移除 WS 连接"""
         with self._lock:
             self._ws_clients.pop(ws, None)
+            self._ws_locks.pop(ws, None)
         logger.info(f"WS 客户端已断开 (当前 {len(self._ws_clients)} 个)")
+
+    async def safe_send(self, ws: WebSocket, payload: str):
+        """串行化对单个 WS 的 send_text，避免广播线程与路由协程并发 send。"""
+        lock = self._ws_locks.get(ws)
+        if lock is None:
+            return
+        async with lock:
+            try:
+                await ws.send_text(payload)
+            except Exception as e:
+                logger.warning(f"WS 发送失败: {e}")
 
     def ws_subscribe(self, ws: WebSocket, msg: WSSubscribe) -> str | None:
         """设置订阅过滤条件，返回错误信息或 None"""
@@ -151,7 +165,7 @@ class Gateway:
         )
         for ws, _ in send_to:
             try:
-                asyncio.run_coroutine_threadsafe(ws.send_text(payload), self._loop)
+                asyncio.run_coroutine_threadsafe(self.safe_send(ws, payload), self._loop)
             except Exception as e:
                 logger.warning(f"WS 发送失败: {e}")
 

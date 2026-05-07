@@ -492,6 +492,9 @@ class WeChatDBReader:
         # 获取群昵称映射
         display_names = self._get_chatroom_display_names(talker) if is_chatroom else {}
 
+        # 单 db 内 sort_seq 单调，最多需要 offset + limit 条；合并排序后再切片
+        per_db_cap = (offset + limit) if limit > 0 else 0
+
         for db_path in db_paths:
             db = self._get_message_db(db_path)
             cursor = db.cursor()
@@ -505,9 +508,16 @@ class WeChatDBReader:
                 FROM {table_name} m
                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                 WHERE m.create_time >= ? AND m.create_time <= ?
-                ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}
             """
-            cursor.execute(query, (start_ts, end_ts))
+            params: tuple = (start_ts, end_ts)
+            if text_only:
+                query += " AND (m.local_type & 0xFFFFFFFF) = ?"
+                params = params + (MESSAGE_TYPE_TEXT,)
+            query += f" ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}"
+            if per_db_cap > 0:
+                query += " LIMIT ?"
+                params = params + (per_db_cap,)
+            cursor.execute(query, params)
 
             for sort_seq, server_id, local_type, user_name, create_time, message_content, status in cursor.fetchall():
                 msg_type = local_type & 0xFFFFFFFF

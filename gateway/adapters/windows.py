@@ -2,6 +2,7 @@ import time
 import logging
 import re
 import os
+import shutil
 import threading
 
 logging.getLogger("comtypes").setLevel(logging.WARNING)
@@ -23,6 +24,26 @@ _WINDOWS_DROPFILE_CLEANUP_RETRIES = 10
 
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
+    _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+    _RESERVED_NAMES = {
+        "CON", "PRN", "AUX", "NUL",
+        *(f"COM{i}" for i in range(1, 10)),
+        *(f"LPT{i}" for i in range(1, 10)),
+    }
+
+    @classmethod
+    def _sanitize_windows_filename(cls, filename: str | None, default: str = "attachment.bin") -> str:
+        name = os.path.basename((filename or "").strip())
+        name = cls._ILLEGAL_FILENAME_CHARS.sub("_", name)
+        name = name.rstrip(" .")
+        if not name:
+            return default
+        stem, ext = os.path.splitext(name)
+        if stem.upper() in cls._RESERVED_NAMES:
+            stem = "_" + stem
+            name = stem + ext
+        return name[:200]
+
     def __init__(self):
         self._send_lock = threading.Lock()  # 仅发送需要锁（激活窗口+剪贴板+按键）
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
@@ -450,13 +471,15 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             self.activate_specific_window(window)
 
             temp_path = None
+            temp_dir = None
             try:
                 file_data = base64.b64decode(file_base64)
 
-                suffix = os.path.splitext(filename or "")[1] or ".bin"
+                safe_name = self._sanitize_windows_filename(filename)
 
-                fd, temp_path = tempfile.mkstemp(suffix=suffix)
-                with os.fdopen(fd, 'wb') as f:
+                temp_dir = tempfile.mkdtemp(prefix="awsl-wechat-")
+                temp_path = os.path.join(temp_dir, safe_name)
+                with open(temp_path, "wb") as f:
                     f.write(file_data)
 
                 temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
@@ -484,3 +507,5 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                             time.sleep(1)
                         except Exception:
                             break
+                if temp_dir:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
