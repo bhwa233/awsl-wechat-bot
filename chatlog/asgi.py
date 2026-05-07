@@ -11,10 +11,10 @@ def create_app() -> FastAPI:
         title="AWSL Chatlog API",
         version="1.0.0",
     )
-    v1 = create_routes()
-    v2 = create_v2_router()
+    pycrypto_router = create_routes()
+    dll_router = create_v2_router()
 
-    app.include_router(v1, prefix="/api/chatlog/v1", tags=["chatlog-v1"])
-    app.include_router(v2, prefix="/api/chatlog/v2", tags=["chatlog-v2"])
-    app.include_router(v2 if config.CHATLOG_USE_V2 else v1, prefix="/api/chatlog", tags=["chatlog"])
+    app.include_router(pycrypto_router, prefix="/api/chatlog/v1", tags=["chatlog-v1"])
+    app.include_router(dll_router, prefix="/api/chatlog/v2", tags=["chatlog-v2"])
+    app.include_router(dll_router if config.CHATLOG_USE_V2 else pycrypto_router, prefix="/api/chatlog", tags=["chatlog"])
     return app
