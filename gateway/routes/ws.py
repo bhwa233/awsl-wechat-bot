@@ -77,16 +77,16 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
     try:
         msg = parse_client_message(raw)
     except (ValueError, ValidationError) as e:
-        await gateway.safe_send(ws, WSError(detail=str(e)).model_dump_json())
+        await ws.send_text(WSError(detail=str(e)).model_dump_json())
         return
 
     match msg:
         case WSSubscribe():
             err = gateway.ws_subscribe(ws, msg)
             if err:
-                await gateway.safe_send(ws, WSError(request_id=msg.request_id, detail=err).model_dump_json())
+                await ws.send_text(WSError(request_id=msg.request_id, detail=err).model_dump_json())
             else:
-                await gateway.safe_send(ws, WSSubscribeOk(
+                await ws.send_text(WSSubscribeOk(
                     request_id=msg.request_id,
                     group_filter=msg.group_filter,
                     message_filter=msg.message_filter,
@@ -99,11 +99,11 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
 
         case WSSendMessage():
             if not gateway.send_message(msg.to_outgoing_message()):
-                await gateway.safe_send(ws, WSError(
+                await ws.send_text(WSError(
                     request_id=msg.request_id,
                     detail="发送队列已满，请稍后重试",
                 ).model_dump_json())
                 return
-            await gateway.safe_send(ws, WSSendOk(
+            await ws.send_text(WSSendOk(
                 request_id=msg.request_id,
             ).model_dump_json())
