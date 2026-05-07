@@ -342,6 +342,7 @@ function toggleChatMsgType() {
     $('sendMsgBtn').textContent = isSummary ? '生成总结' : '发送';
     if (t === 'image' || t === 'file') {
         $('chatFileSelect').accept = t === 'image' ? 'image/*' : '';
+        $('chatFileSelect').value = '';
         chatFileState = { message: '', filename: '' };
         resetChatFileUI();
     }
