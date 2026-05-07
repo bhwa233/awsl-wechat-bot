@@ -343,7 +343,7 @@ function toggleChatMsgType() {
     if (t === 'image' || t === 'file') {
         $('chatFileSelect').accept = t === 'image' ? 'image/*' : '';
         chatFileState = { message: '', filename: '' };
-        $('chatFileInfo').textContent = '';
+        $('chatFileInfo').textContent = t === 'image' ? '可点击选择或 Ctrl+V 粘贴图片' : '可点击选择或 Ctrl+V 粘贴文件';
     }
     updateSendState();
 }
@@ -351,14 +351,48 @@ function toggleChatMsgType() {
 function onChatFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
+    loadChatFile(file);
+}
+
+function loadChatFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
         chatFileState.message = e.target.result.split(',')[1];
         chatFileState.filename = file.name;
         $('chatFileInfo').textContent = file.name;
+        updateSendState();
     };
     reader.readAsDataURL(file);
 }
+
+document.addEventListener('paste', e => {
+    const t = $('msgType')?.value;
+    if (t !== 'image' && t !== 'file') return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+        if (t === 'image' && item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+                e.preventDefault();
+                const ext = item.type.split('/')[1] || 'png';
+                const named = new File([file], `pasted-${Date.now()}.${ext}`, { type: item.type });
+                loadChatFile(named);
+                toast('已粘贴图片', 'success');
+                return;
+            }
+        }
+        if (t === 'file' && item.kind === 'file') {
+            const file = item.getAsFile();
+            if (file) {
+                e.preventDefault();
+                loadChatFile(file);
+                toast('已粘贴文件', 'success');
+                return;
+            }
+        }
+    }
+});
 
 async function sendChatMessage() {
     const target = $('sendWindowSelect').value;
