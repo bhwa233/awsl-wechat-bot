@@ -2,7 +2,8 @@
 from fastapi import FastAPI
 
 from chatlog.routes import create_routes
-from chatlog.routes_v2 import create_v2_routes
+from chatlog.routes_v2 import create_v2_router
+from common.config import config
 
 
 def create_app() -> FastAPI:
@@ -10,7 +11,12 @@ def create_app() -> FastAPI:
         title="AWSL Chatlog API",
         version="1.0.0",
     )
-    app.include_router(create_routes())
-    for router in create_v2_routes():
-        app.include_router(router)
+    v1 = create_routes()
+    v2 = create_v2_router()
+
+    app.include_router(v1, prefix="/api/chatlog/v1", tags=["chatlog-v1"])
+    app.include_router(v2, prefix="/api/chatlog/v2", tags=["chatlog-v2"])
+
+    default = create_v2_router() if config.CHATLOG_USE_V2 else create_routes()
+    app.include_router(default, prefix="/api/chatlog", tags=["chatlog"])
     return app

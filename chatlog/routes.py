@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_routes() -> APIRouter:
-    router = APIRouter(prefix="/api/chatlog/v1", tags=["chatlog-v1"])
+    router = APIRouter()
     chatlog = ChatlogService()
 
     @router.post("/decrypt", dependencies=[Depends(verify_token)])

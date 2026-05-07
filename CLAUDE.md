@@ -92,8 +92,8 @@ per group                              │ 广播
 - `__init__.py` - 导出 ChatlogService 和相关模型
 - `asgi.py` - FastAPI app 工厂
 - `main.py` - 独立入口（`uv run -m chatlog.main`）
-- `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health）
-- `routes_v2.py` - v2 HTTP 路由（groups/messages/group-display-name/health，前缀 /api/chatlog/v2，仅 Windows）
+- `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health，挂载在 `/api/chatlog/v1`）
+- `routes_v2.py` - v2 HTTP 路由（同 v1 接口集合，挂载在 `/api/chatlog/v2`，仅 Windows）
 - `service.py` - v1 ChatlogService（pycryptodome 离线解密）
 - `service_v2.py` - v2 ChatlogServiceV2（DLL 在线读取）
 - `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatlogMessageResponse）
@@ -116,7 +116,8 @@ per group                              │ 广播
 - `services/chatlog_client.py` - ChatlogClient：httpx.Client 调用 Chatlog 服务 API
 - `services/summary.py` - 群聊总结核心算法（格式化/排行榜/LLM 调用/Markdown→图片渲染）
 - `services/summary_service.py` - SummaryService：调 chatlog 拉消息，本地 LLM + 渲染，通过 gateway_client WS 发出
-- `routes/` - tasks, webhooks, health, summary, gateway_proxy（代理 Gateway API）, chatlog_proxy（代理 Chatlog API）
+- `routes/` - tasks, webhooks, health（含 webui 入口 `/` + 静态资源 `/style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json`）, summary, gateway_proxy（代理 Gateway API）, chatlog_proxy（代理 Chatlog API）
+- `templates/` - Cortex Web UI（SPA：聊天/定时任务/Webhook 三个 tab，由 `routes/health.py` 提供静态文件服务）
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）

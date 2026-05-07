@@ -17,8 +17,8 @@ from common.config import config
 logger = logging.getLogger(__name__)
 
 
-def _build_router(prefix: str, tags: list[str]) -> APIRouter:
-    router = APIRouter(prefix=prefix, tags=tags)
+def create_v2_router() -> APIRouter:
+    router = APIRouter()
     chatlog = ChatlogServiceV2()
 
     def _ensure_ready() -> None:
@@ -174,10 +174,3 @@ def _build_router(prefix: str, tags: list[str]) -> APIRouter:
         return resp
 
     return router
-
-
-def create_v2_routes() -> list[APIRouter]:
-    return [
-        _build_router("/api/chatlog/v2", ["chatlog-v2"]),
-        _build_router("/api/chatlog", ["chatlog"]),
-    ]
