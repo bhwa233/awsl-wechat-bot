@@ -16,7 +16,5 @@ def create_app() -> FastAPI:
 
     app.include_router(v1, prefix="/api/chatlog/v1", tags=["chatlog-v1"])
     app.include_router(v2, prefix="/api/chatlog/v2", tags=["chatlog-v2"])
-
-    default = create_v2_router() if config.CHATLOG_USE_V2 else create_routes()
-    app.include_router(default, prefix="/api/chatlog", tags=["chatlog"])
+    app.include_router(v2 if config.CHATLOG_USE_V2 else v1, prefix="/api/chatlog", tags=["chatlog"])
     return app
