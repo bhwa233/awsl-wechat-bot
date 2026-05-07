@@ -150,10 +150,13 @@ per group                              │ 广播
 Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`
 
 Chatlog (:7998):
-- v1: `GET /api/chatlog/health`, `POST /api/chatlog/decrypt`, `GET /api/chatlog/groups`, `GET /api/chatlog/messages`, `GET /api/chatlog/group-display-name`
-- v2 (DLL, Windows-only): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`（无 decrypt，DLL 在线读密文不落盘）
+- v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`
+- v2 (DLL 在线读取，Windows-only): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`（v2 也有 `/decrypt` 但是 no-op，DLL 直接读密文）
+- 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
 
-Cortex (:7999): `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理), `POST /api/send`(代理), `GET /api/chatlog/groups`(代理), `GET /api/chatlog/messages`(代理), `POST /api/chatlog/decrypt`(代理)
+Cortex (:7999):
+- Web UI: `GET /` (HTML), `GET /style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json`
+- API: `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理 Gateway), `POST /api/send`(代理 Gateway), `GET /api/chatlog/groups`(代理 Chatlog), `GET /api/chatlog/messages`(代理 Chatlog), `POST /api/chatlog/decrypt`(代理 Chatlog)
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 
@@ -192,7 +195,7 @@ Server → Client:
 - **No test suite**: 项目当前没有配置 pytest / ruff / mypy 等工具，无自动化测试
 - **Python 3.11+**: `requires-python = ">=3.11"`
 - **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖，可选依赖组：`decrypt`、`summary`
-- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `DEBUG`）
+- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `DEBUG`）
 
 ## Platform Notes
 

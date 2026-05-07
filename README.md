@@ -10,48 +10,54 @@
 - **自动窗口发现**：自动扫描微信群聊窗口，动态增删检测线程
 - **WebSocket 消息网关**：统一消息广播，支持正则过滤订阅
 - **多群并发处理**：每群独立检测线程，全局限速发送
+- **内置 Web UI**：访问 Cortex `:7999/` 即可使用聊天、定时任务、Webhook 管理（图片/文件支持点击/拖拽/Ctrl+V 粘贴）
+- **Chatlog 双后端**：v1（pycryptodome 离线解密）/ v2（DLL 在线读 SQLCipher v4，仅 Windows），默认走 v2
 - **定时任务 / 群聊总结 / @触发 / 动态命令 / Webhook 转发**
 
 <details>
 <summary>架构设计</summary>
 
-```
-┌──────────────────────────────────────────────────────┐
-│                    Gateway (:8000)                    │
-│                                                      │
-│  Detector (n) ──▶ gateway_queue ──▶ Gateway (WS)     │
-│  per group          (Queue)          │  广播          │
-│                                ┌─────┼─────┐         │
-│  Window Scanner                │     │     │         │
-│  (自动发现窗口)                ▼     ▼     ▼         │
-│                            WS Client A  B  C ...     │
-│  MessageSender ◀── send_message ◀──┘                 │
-│  (全局限速)                                          │
-└──────────────────────────────────────────────────────┘
-                                 │
-                    ┌────────────┘
-                    ▼
-┌──────────────────────────────────────────────────────┐
-│                    Cortex (:7999)                     │
-│                                                      │
-│  GatewayClient (纯 WS 客户端, 指数退避重连)          │
-│    │  add_listener()                                 │
-│    ├── CortexRuntime (MessageListener)               │
-│    │     冷却/触发匹配(同步) → ThreadPool(AI/命令)    │
-│    └── WebhookService (MessageListener)              │
-│          正则过滤 → ThreadPool(HTTP POST)             │
-│                                                      │
-│  TaskScheduler → GatewayClient.send_message (WS)     │
-│  SummaryService → ChatlogClient (HTTP) + LLM + 渲染  │
-└──────────────────────────────────────────────────────┘
-                    │
-                    ▼ HTTP
-┌──────────────────────────────────────────────────────┐
-│                   Chatlog (:7998)                     │
-│                                                      │
-│  微信数据库解密 / 群聊列表 / 消息查询                │
-│  (纯数据层，不依赖 Gateway/Cortex)                   │
-└──────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Gateway["Gateway (:8000)"]
+        Scanner[Window Scanner<br/>自动发现窗口]
+        Detectors[Detector × N<br/>per group]
+        Queue[(gateway_queue)]
+        WSHub[WS Hub<br/>正则过滤广播]
+        Sender[MessageSender<br/>全局限速]
+        Scanner --> Detectors
+        Detectors --> Queue --> WSHub
+        WSHub --> Sender
+    end
+
+    subgraph Cortex["Cortex (:7999)"]
+        WebUI[Web UI<br/>聊天 / 任务 / Webhook]
+        GWClient[GatewayClient<br/>纯 WS, 指数退避重连]
+        Runtime[CortexRuntime<br/>Listener: 触发匹配 + AI/命令]
+        Webhook[WebhookService<br/>Listener: HTTP POST]
+        Scheduler[TaskScheduler<br/>5s 轮询]
+        Summary[SummaryService<br/>LLM + Markdown 渲染]
+        GWClient --> Runtime
+        GWClient --> Webhook
+        Scheduler --> GWClient
+        Summary --> GWClient
+    end
+
+    subgraph Chatlog["Chatlog (:7998)"]
+        ChatlogAPI[v1: pycryptodome 离线解密<br/>v2: DLL 在线读取 SQLCipher v4<br/>默认走 CHATLOG_USE_V2]
+    end
+
+    subgraph Daemon["Daemon (:8001)"]
+        Manager[BotProcessManager<br/>启停 / 更新 / 日志]
+    end
+
+    WeChat[微信窗口] -.OCR / UIA.-> Detectors
+    Sender -.剪贴板 / AppleScript / UIA.-> WeChat
+
+    WSHub <==WebSocket==> GWClient
+    Summary -.HTTP.-> ChatlogAPI
+    WebUI -.HTTP 代理.-> Gateway
+    WebUI -.HTTP 代理.-> Chatlog
 ```
 
 </details>
@@ -113,6 +119,9 @@ HTTP_API_PORT=8000
 HTTP_API_TOKEN=your-secret-token  # 留空不启用认证
 CORTEX_HTTP_PORT=7999
 CHATLOG_HTTP_PORT=7998
+
+# Chatlog 默认后端（true→v2 DLL Windows-only，false→v1 pycryptodome）
+CHATLOG_USE_V2=true
 ```
 
 ## 运行
@@ -152,17 +161,32 @@ WS   /ws                      # WebSocket（首条消息认证）
 ### Chatlog (:7998)
 
 ```
-GET  /api/chatlog/health           # 健康检查
-POST /api/chatlog/decrypt          # 解密微信数据库
-GET  /api/chatlog/groups           # 群聊列表
-GET  /api/chatlog/messages         # 查询消息
-GET  /api/chatlog/group-display-name  # 群聊显示名
+# v1 (pycryptodome 离线解密)
+GET  /api/chatlog/v1/health
+POST /api/chatlog/v1/decrypt
+GET  /api/chatlog/v1/groups
+GET  /api/chatlog/v1/messages
+GET  /api/chatlog/v1/group-display-name
+
+# v2 (DLL 在线读 SQLCipher v4，Windows-only)
+GET  /api/chatlog/v2/health
+GET  /api/chatlog/v2/groups
+GET  /api/chatlog/v2/messages
+GET  /api/chatlog/v2/group-display-name
+
+# 无版本前缀走 CHATLOG_USE_V2 配置（默认 true→v2）
+GET  /api/chatlog/health 等
 ```
 
 ### Cortex (:7999)
 
 ```
-GET  /api/health                      # 健康检查
+# Web UI
+GET  /                                # 主页（聊天 / 任务 / Webhook 三个 tab）
+GET  /style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json
+
+# API
+GET  /api/health
 GET/POST/PUT/DELETE /api/tasks        # 定时任务 CRUD
 GET/POST/PUT/DELETE /api/webhooks     # Webhook 管理
 POST /api/summary                     # 群聊总结
