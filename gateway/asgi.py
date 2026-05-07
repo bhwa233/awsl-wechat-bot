@@ -3,12 +3,14 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from common.logging import setup_uvicorn_logging
 from gateway.routes import health, groups, messages, ws
 
 
 def create_app(gateway_app) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        setup_uvicorn_logging()
         gateway_app.start()
         yield
         gateway_app.stop()

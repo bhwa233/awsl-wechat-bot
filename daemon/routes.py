@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from common.auth import verify_token
 from common.config import config
+from common.logging import setup_uvicorn_logging
 from .manager import BotProcessManager
 
 logger = logging.getLogger("daemon")
@@ -30,6 +31,7 @@ def _with_lifecycle_lock(op: str):
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
+    setup_uvicorn_logging()
     manager.start_bot(reason="daemon startup")
     yield
     manager.shutdown()

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from common.config import config
+from common.logging import setup_uvicorn_logging
 from cortex.scheduler import TaskScheduler
 from cortex.routes import health, tasks, webhooks, gateway_proxy, chatlog_proxy, summary
 from cortex.services.chatlog_client import ChatlogClient
@@ -45,6 +46,7 @@ def create_app(cortex_app) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        setup_uvicorn_logging()
         try:
             cortex_app.start()
             scheduler.start()
