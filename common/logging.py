@@ -4,7 +4,7 @@ import logging
 import re
 
 _NOISY_ACCESS_RE = re.compile(
-    r'"(?:GET|HEAD) (?:/health|/api/health|/status|/logs(?:\?[^ ]*)?|/) '
+    r'"(?:GET|HEAD) (?:/health|/api/health|/status|/logs(?:\?[^ ]*)?|/|/manifest\.json|/[^/ ?]+\.(?:css|js|map|ico|png|svg|woff2?))(?:\?[^ ]*)? '
 )
 
 

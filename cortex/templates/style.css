@@ -100,7 +100,7 @@ body {
     font-size: 13px; background: var(--input-bg); color: var(--text);
 }
 .send-target-select {
-    padding: 4px 8px; border: 1px solid var(--amber); border-radius: 6px;
+    padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px;
     font-size: 11px; background: var(--input-bg); color: var(--text);
 }
 
