@@ -84,8 +84,11 @@
                                 <textarea id="msgInput" placeholder="输入消息... (Enter 发送)" rows="1"></textarea>
                             </div>
                             <div id="chatFileInput" class="chat-input-body" style="display:none">
-                                <input type="file" id="chatFileSelect" onchange="onChatFileSelect(event)">
-                                <span id="chatFileInfo" class="file-info"></span>
+                                <label class="file-dropzone" id="chatFileDropzone">
+                                    <input type="file" id="chatFileSelect" onchange="onChatFileSelect(event)" hidden>
+                                    <img id="chatFilePreview" alt="" hidden>
+                                    <span id="chatFileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
+                                </label>
                             </div>
                             <button class="btn btn-green" id="sendMsgBtn" onclick="sendChatMessage()">发送</button>
                         </div>

@@ -343,7 +343,7 @@ function toggleChatMsgType() {
     if (t === 'image' || t === 'file') {
         $('chatFileSelect').accept = t === 'image' ? 'image/*' : '';
         chatFileState = { message: '', filename: '' };
-        $('chatFileInfo').textContent = t === 'image' ? '可点击选择或 Ctrl+V 粘贴图片' : '可点击选择或 Ctrl+V 粘贴文件';
+        resetChatFileUI();
     }
     updateSendState();
 }
@@ -354,16 +354,47 @@ function onChatFileSelect(event) {
     loadChatFile(file);
 }
 
+function resetChatFileUI() {
+    const dz = $('chatFileDropzone');
+    const preview = $('chatFilePreview');
+    dz.classList.remove('has-file');
+    preview.hidden = true;
+    preview.removeAttribute('src');
+    $('chatFileInfo').textContent = '点击选择 / 拖拽 / Ctrl+V 粘贴';
+}
+
 function loadChatFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
         chatFileState.message = e.target.result.split(',')[1];
         chatFileState.filename = file.name;
-        $('chatFileInfo').textContent = file.name;
+        const dz = $('chatFileDropzone');
+        const preview = $('chatFilePreview');
+        dz.classList.add('has-file');
+        if (file.type.startsWith('image/')) {
+            preview.src = e.target.result;
+            preview.hidden = false;
+        } else {
+            preview.hidden = true;
+        }
+        $('chatFileInfo').textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
         updateSendState();
     };
     reader.readAsDataURL(file);
 }
+
+(function setupDropzone() {
+    const dz = document.getElementById('chatFileDropzone');
+    if (!dz) return;
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+    dz.addEventListener('drop', e => {
+        e.preventDefault();
+        dz.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) loadChatFile(file);
+    });
+})();
 
 document.addEventListener('paste', e => {
     const t = $('msgType')?.value;
@@ -427,7 +458,7 @@ async function sendChatMessage() {
     btn.disabled = false;
     if (r.ok) {
         if (type === 'text') $('msgInput').value = '';
-        else { chatFileState = { message: '', filename: '' }; $('chatFileInfo').textContent = ''; $('chatFileSelect').value = ''; }
+        else { chatFileState = { message: '', filename: '' }; $('chatFileSelect').value = ''; resetChatFileUI(); }
         toast('已发送', 'success');
         if (selectedChatlogGroup) setTimeout(() => loadMessages(selectedChatlogGroup), 1000);
     } else {
