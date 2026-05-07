@@ -166,9 +166,6 @@ def create_v2_router() -> APIRouter:
             detail = f"DLL 不存在: {_DLL_PATH}"
         status = "ok" if ready else "unavailable"
         resp = {"status": status, "backend": "v2", "platform": sys.platform}
-        if ready:
-            resp["wechat_data_dir"] = config.wechat_data_dir
-            resp["input_path"] = config.WECHAT_DB_INPUT_PATH
         if detail:
             resp["detail"] = detail
         return resp
