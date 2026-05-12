@@ -18,5 +18,8 @@ def get_wechat_adapter() -> BaseWeChatAdapter:
         except ImportError:
             logger.error("未找到 Windows 适配器依赖,请确保已安装 uiautomation 库")
             raise
+    elif sys.platform.startswith("linux"):
+        from gateway.adapters.linux import LinuxWeChatAdapter
+        return LinuxWeChatAdapter()
     else:
         raise NotImplementedError(f"目前不支持该操作系统: {sys.platform}")

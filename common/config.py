@@ -99,6 +99,12 @@ class Config(BaseSettings):
     WECHAT_DB_OUTPUT_PATH: str = ""  # 解密后输出目录
     WECHAT_DB_KEY: str = ""          # Windows: 64位密钥;Linux: per-db 密钥 JSON 字符串
 
+    # Linux 微信 Gateway 配置
+    LINUX_WECHAT_DISPLAY: str = ":10"
+    LINUX_WECHAT_XAUTHORITY: str = "~/.Xauthority"
+    LINUX_CHATLOG_MESSAGE_LIMIT: int = 20
+    LINUX_CHATLOG_GROUP_CACHE_TTL: float = 30.0
+
     # Webhook 配置
     WEBHOOK_POOL_SIZE: int = 5            # Webhook worker 数量
     WEBHOOK_QUEUE_SIZE: int = 100         # Webhook 待处理队列容量
