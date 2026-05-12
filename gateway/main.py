@@ -10,9 +10,10 @@ logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(mes
 
 def main():
     import uvicorn
+
     from common.logging import setup_uvicorn_logging
-    from gateway.runtime import GatewayRuntime
     from gateway.asgi import create_app
+    from gateway.runtime import GatewayRuntime
 
     setup_uvicorn_logging()
     uvicorn.run(create_app(GatewayRuntime()), host=config.HTTP_API_HOST, port=config.HTTP_API_PORT)

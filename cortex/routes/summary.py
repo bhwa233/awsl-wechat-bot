@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from common.auth import verify_token
-from cortex.services.summary_service import SummaryService, SummaryConfig, SummaryGroup, SummaryResult
+from cortex.services.summary_service import SummaryConfig, SummaryGroup, SummaryResult, SummaryService
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,6 @@ def create_routes(summary_service: SummaryService) -> APIRouter:
             return SummaryResponse(success=False, message=result.message)
 
         logger.info(f"[Summary] 已启动总结任务: {group_names}")
-        return SummaryResponse(success=True, message=f"已启动群聊总结任务，目标群聊: {', '.join(group_names)}")
+        return SummaryResponse(success=True, message=f"已启动群聊总结任务,目标群聊: {', '.join(group_names)}")
 
     return router

@@ -4,11 +4,11 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from common.auth import verify_token
-from gateway.models import SendMessageRequest, SendMessageResponse
 from gateway.core.gateway import Gateway
+from gateway.models import SendMessageRequest, SendMessageResponse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -21,7 +21,7 @@ def create_routes(gateway: Gateway):
     async def send_message(request: SendMessageRequest):
         """向指定聊天窗口发送文本、图片或文件"""
         if not gateway.send_message(request):
-            raise HTTPException(status_code=503, detail="发送队列已满，请稍后重试")
+            raise HTTPException(status_code=503, detail="发送队列已满,请稍后重试")
 
         return SendMessageResponse(success=True, message="消息已加入发送队列")
 

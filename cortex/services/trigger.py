@@ -1,5 +1,6 @@
 """触发词匹配逻辑"""
 from typing import Any
+
 from common.config import config
 from cortex.models import TriggerType
 
@@ -22,25 +23,25 @@ class TriggerMatcher:
 
         content = text.strip()
 
-        # @BOT_NAMES 触发 -> 转换为 TRIGGER_KEYWORD + 空格 + 内容，走统一匹配流程
+        # @BOT_NAMES 触发 -> 转换为 TRIGGER_KEYWORD + 空格 + 内容,走统一匹配流程
         for bot_name in config.BOT_NAMES:
             if not bot_name:
                 continue
             at_pattern = f"@{bot_name}"
             if content.lower().startswith(at_pattern.lower()):
                 after_at = content[len(at_pattern):].strip()
-                # 转换为 "a xxx" 格式，继续走后续匹配逻辑
+                # 转换为 "a xxx" 格式,继续走后续匹配逻辑
                 content = f"a {after_at}"
                 break
 
         content_lower = content.lower()
         keyword_lower = config.TRIGGER_KEYWORD.lower()
 
-        # 刷新命令（keyword 为空则跳过）
+        # 刷新命令(keyword 为空则跳过)
         if keyword_lower and content_lower == f"{keyword_lower} hp":
             return (TriggerType.COMMAND_REFRESH, ("hp", ""))
 
-        # AI 触发（keyword 为空则跳过）
+        # AI 触发(keyword 为空则跳过)
         if keyword_lower and content_lower.startswith(keyword_lower):
             after_keyword = content[len(config.TRIGGER_KEYWORD):].strip()
             if after_keyword:

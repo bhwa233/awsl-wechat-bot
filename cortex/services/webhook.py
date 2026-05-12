@@ -12,18 +12,17 @@ import threading
 import time
 from collections import deque
 from datetime import datetime
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
 from urllib.parse import urlparse
 
 import httpx
 from jsonpath_ng.exceptions import JsonPathParserError
 from jsonpath_ng.ext import parse as parse_jsonpath
 from pydantic import BaseModel, field_validator, model_validator
-from sqlmodel import SQLModel, Field, Session, create_engine, select
+from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from common.config import config
-from common.models import OutgoingMessage, WSMessageBroadcast, MAX_REGEX_LEN
+from common.models import MAX_REGEX_LEN, OutgoingMessage, WSMessageBroadcast
 from common.sqlite_migrator import SQLiteMigrator
 from cortex.models import MessageListener
 
@@ -76,7 +75,7 @@ def _stringify_jsonpath_value(value: object) -> str:
 # ==================== Models ====================
 
 
-class ReplyMode(str, Enum):
+class ReplyMode(StrEnum):
     NONE = "none"
     TEXT = "text"
     JSONPATH = "jsonpath"
@@ -90,8 +89,8 @@ class WebhookBase(SQLModel):
     group_filter: str = ""
     message_filter: str = ""
     enabled: bool = True
-    reply_mode: Optional[str] = ReplyMode.NONE.value
-    reply_jsonpath: Optional[str] = ""
+    reply_mode: str | None = ReplyMode.NONE.value
+    reply_jsonpath: str | None = ""
 
     @field_validator("reply_mode")
     @classmethod
@@ -110,9 +109,9 @@ class WebhookBase(SQLModel):
 
 
 class Webhook(WebhookBase, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: Optional[str] = Field(default_factory=_now_local)
-    updated_at: Optional[str] = Field(default_factory=_now_local)
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: str | None = Field(default_factory=_now_local)
+    updated_at: str | None = Field(default_factory=_now_local)
 
 
 class WebhookCreate(WebhookBase):
@@ -123,15 +122,15 @@ class WebhookCreate(WebhookBase):
 
 
 class WebhookUpdate(SQLModel):
-    name: Optional[str] = None
-    url: Optional[str] = None
-    headers: Optional[str] = None
-    body_template: Optional[str] = None
-    group_filter: Optional[str] = None
-    message_filter: Optional[str] = None
-    enabled: Optional[bool] = None
-    reply_mode: Optional[str] = None
-    reply_jsonpath: Optional[str] = None
+    name: str | None = None
+    url: str | None = None
+    headers: str | None = None
+    body_template: str | None = None
+    group_filter: str | None = None
+    message_filter: str | None = None
+    enabled: bool | None = None
+    reply_mode: str | None = None
+    reply_jsonpath: str | None = None
 
     @field_validator("url")
     @classmethod
@@ -167,10 +166,10 @@ class WebhookResponse(BaseModel):
     group_filter: str
     message_filter: str
     enabled: bool
-    reply_mode: Optional[str] = ReplyMode.NONE.value
-    reply_jsonpath: Optional[str] = ""
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    reply_mode: str | None = ReplyMode.NONE.value
+    reply_jsonpath: str | None = ""
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 # ==================== Service ====================
@@ -252,7 +251,7 @@ class WebhookService(MessageListener):
             self._invalidate_cache()
             return webhook
 
-    def get(self, webhook_id: int) -> Optional[Webhook]:
+    def get(self, webhook_id: int) -> Webhook | None:
         with Session(self.engine) as session:
             return session.get(Webhook, webhook_id)
 
@@ -260,7 +259,7 @@ class WebhookService(MessageListener):
         with Session(self.engine) as session:
             return list(session.exec(select(Webhook).order_by(Webhook.id.desc())).all())
 
-    def update(self, webhook_id: int, data: WebhookUpdate) -> Optional[Webhook]:
+    def update(self, webhook_id: int, data: WebhookUpdate) -> Webhook | None:
         with Session(self.engine) as session:
             webhook = session.get(Webhook, webhook_id)
             if not webhook:
@@ -313,7 +312,7 @@ class WebhookService(MessageListener):
         return list(webhooks)
 
     def _safe_regex_match(self, pattern: str, text: str) -> bool | None:
-        """安全正则匹配，返回 None 表示正则无效"""
+        """安全正则匹配,返回 None 表示正则无效"""
         if len(pattern) > MAX_REGEX_LEN:
             return None
         try:
@@ -327,13 +326,13 @@ class WebhookService(MessageListener):
     def _enqueue_send(self, wh: Webhook, group_name: str, message: str) -> bool:
         webhook_id = wh.id
         if webhook_id is None:
-            logger.warning(f"Webhook [{wh.name}] 缺少 ID，丢弃任务: {group_name}")
+            logger.warning(f"Webhook [{wh.name}] 缺少 ID,丢弃任务: {group_name}")
             return False
 
         task: WebhookTask = (wh, group_name, message)
         with self._dispatch_lock:
             if self._queued_task_count >= config.WEBHOOK_QUEUE_SIZE:
-                logger.warning(f"Webhook [{wh.name}] 队列已满，丢弃任务: {group_name}")
+                logger.warning(f"Webhook [{wh.name}] 队列已满,丢弃任务: {group_name}")
                 return False
 
             if webhook_id in self._active_webhooks:
@@ -344,7 +343,7 @@ class WebhookService(MessageListener):
             try:
                 self._task_queue.put_nowait(task)
             except queue.Full:
-                logger.warning(f"Webhook [{wh.name}] worker 队列已满，丢弃任务: {group_name}")
+                logger.warning(f"Webhook [{wh.name}] worker 队列已满,丢弃任务: {group_name}")
                 return False
 
             self._active_webhooks.add(webhook_id)
@@ -428,7 +427,7 @@ class WebhookService(MessageListener):
 
     @staticmethod
     def _replace_placeholders(template: str, group_name: str, message: str) -> str:
-        # JSON 转义：json.dumps 生成带引号的安全字符串，[1:-1] 取内部转义后的内容
+        # JSON 转义:json.dumps 生成带引号的安全字符串,[1:-1] 取内部转义后的内容
         replacements = {
             "{{group_name}}": json.dumps(group_name, ensure_ascii=False)[1:-1],
             "{{message}}": json.dumps(message, ensure_ascii=False)[1:-1],
@@ -510,11 +509,11 @@ class WebhookService(MessageListener):
 
             if self._gateway_client:
                 if reply_mode == ReplyMode.NONE.value:
-                    logger.debug(f"Webhook [{wh.name}] reply_mode=none，跳过回复")
+                    logger.debug(f"Webhook [{wh.name}] reply_mode=none,跳过回复")
                     return
 
                 if reply_mode not in {e.value for e in ReplyMode}:
-                    logger.warning(f"Webhook [{wh.name}] reply_mode 非法值: {reply_mode}，跳过回复")
+                    logger.warning(f"Webhook [{wh.name}] reply_mode 非法值: {reply_mode},跳过回复")
                     return
 
                 reply_text = None
@@ -566,7 +565,7 @@ class WebhookService(MessageListener):
                 try:
                     self._task_queue.put_nowait(_STOP_WEBHOOK_TASK)
                 except queue.Full:
-                    logger.warning("Webhook 队列已满，关闭信号入队失败，将等待线程按空队列超时退出")
+                    logger.warning("Webhook 队列已满,关闭信号入队失败,将等待线程按空队列超时退出")
             for worker in self._workers:
                 worker.join(timeout=5)
             self._workers.clear()

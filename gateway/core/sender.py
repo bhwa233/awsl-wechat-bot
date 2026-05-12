@@ -1,8 +1,8 @@
 """消息发送器 - 全局限速"""
-import time
-import queue
 import logging
+import queue
 import threading
+import time
 from typing import Any
 
 from common.config import config
@@ -15,7 +15,7 @@ _STOP_SENDER = object()
 
 
 class MessageSender:
-    """串行消息发送器，支持全局限速"""
+    """串行消息发送器,支持全局限速"""
 
     def __init__(self, adapter: BaseWeChatAdapter, group_windows: dict[str, Any],
                  sent_store: SentMessageStore | None = None):
@@ -38,7 +38,7 @@ class MessageSender:
         try:
             self.send_queue.put_nowait(_STOP_SENDER)
         except queue.Full:
-            logger.warning("发送队列已满，停止信号入队失败，将等待线程按空队列超时退出")
+            logger.warning("发送队列已满,停止信号入队失败,将等待线程按空队列超时退出")
         if self._thread:
             self._thread.join(timeout=2)
 
@@ -47,7 +47,7 @@ class MessageSender:
             self.send_queue.put_nowait(task)
             return True
         except queue.Full:
-            logger.warning(f"[{task.group_name}] 发送队列已满，丢弃消息")
+            logger.warning(f"[{task.group_name}] 发送队列已满,丢弃消息")
             return False
 
     def _loop(self):
@@ -66,11 +66,11 @@ class MessageSender:
             try:
                 window = self.group_windows.get(task.group_name)
                 if not window:
-                    logger.warning(f"[{task.group_name}] 群组不存在，跳过发送")
+                    logger.warning(f"[{task.group_name}] 群组不存在,跳过发送")
                     continue
 
                 if not window.Exists(0.5):
-                    logger.warning(f"[{task.group_name}] 窗口已关闭，跳过发送")
+                    logger.warning(f"[{task.group_name}] 窗口已关闭,跳过发送")
                     continue
 
                 self._wait_for_rate_limit()
@@ -80,7 +80,7 @@ class MessageSender:
                     preview = "[图片]"
                 elif task.message_type == MessageType.FILE:
                     if not task.filename:
-                        logger.warning(f"[{task.group_name}] 文件消息缺少文件名，跳过发送")
+                        logger.warning(f"[{task.group_name}] 文件消息缺少文件名,跳过发送")
                         continue
                     send_ok = self.adapter.send_file_to_window(window, task.message, task.filename)
                     preview = f"[文件] {task.filename}"

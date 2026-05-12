@@ -1,4 +1,4 @@
-"""Chatlog 平台特性工厂。"""
+"""Chatlog 平台特性工厂."""
 
 from __future__ import annotations
 

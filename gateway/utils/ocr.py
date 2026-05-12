@@ -1,8 +1,9 @@
 """
-OCR 工具 - 使用 macOS Vision 框架，支持 CGImage 直接识别
+OCR 工具 - 使用 macOS Vision 框架,支持 CGImage 直接识别
 """
 
 import logging
+
 import Vision
 
 from common.config import config
@@ -13,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def ocr_image(cg_image) -> list:
     """
-    使用 macOS Vision 框架对 CGImage 进行 OCR（无磁盘 I/O）
+    使用 macOS Vision 框架对 CGImage 进行 OCR(无磁盘 I/O)
 
     Args:
         cg_image: Quartz CGImageRef
@@ -21,7 +22,7 @@ def ocr_image(cg_image) -> list:
     Returns:
         list: [{'text': str, 'confidence': float, 'x': float, 'y': float, 'width': float}, ...]
               x, y, width 为 0-1 的比例值
-              x < 0.5 表示左侧（他人消息），x >= 0.5 表示右侧（自己消息）
+              x < 0.5 表示左侧(他人消息),x >= 0.5 表示右侧(自己消息)
     """
     handler = Vision.VNImageRequestHandler.alloc().initWithCGImage_options_(cg_image, None)
 
@@ -50,23 +51,23 @@ def ocr_image(cg_image) -> list:
             'width': bbox.size.width,
         })
 
-    # 按 y 坐标排序（从上到下）
+    # 按 y 坐标排序(从上到下)
     results.sort(key=lambda r: -r['y'])
     return results
 
 
 def get_others_messages(ocr_results: list) -> list:
     """
-    从 OCR 结果中提取他人消息（左侧消息），合并同一行碎片和多行消息。
+    从 OCR 结果中提取他人消息(左侧消息),合并同一行碎片和多行消息.
 
-    处理流程：
+    处理流程:
     1. 筛选左侧文本
-    2. 合并同一行的 OCR 碎片（y 差值 < OCR_SAME_LINE_Y_GAP，按 x 排序拼接）
-    3. 标记昵称行（y 差值 < OCR_NICKNAME_Y_GAP 且 x 差值 > OCR_NICKNAME_X_DIFF）
-    4. 按 y 间距分组合并多行消息（间距 > OCR_MESSAGE_GAP 或遇到昵称则分隔）
+    2. 合并同一行的 OCR 碎片(y 差值 < OCR_SAME_LINE_Y_GAP,按 x 排序拼接)
+    3. 标记昵称行(y 差值 < OCR_NICKNAME_Y_GAP 且 x 差值 > OCR_NICKNAME_X_DIFF)
+    4. 按 y 间距分组合并多行消息(间距 > OCR_MESSAGE_GAP 或遇到昵称则分隔)
 
     Args:
-        ocr_results: ocr_image 返回的结果列表（已按 y 降序排列）
+        ocr_results: ocr_image 返回的结果列表(已按 y 降序排列)
 
     Returns:
         list: 消息文本列表 ['消息1', '消息2', ...]
@@ -74,7 +75,7 @@ def get_others_messages(ocr_results: list) -> list:
     # 1. 筛选左侧文本
     left_items = [r for r in ocr_results if r['x'] < config.OCR_LEFT_THRESHOLD]
 
-    # 2. 合并同一行的 OCR 碎片（y 几乎相同的多个识别结果）
+    # 2. 合并同一行的 OCR 碎片(y 几乎相同的多个识别结果)
     lines = []
     for item in left_items:
         if lines and abs(lines[-1][0]['y'] - item['y']) < config.OCR_SAME_LINE_Y_GAP:
@@ -124,10 +125,9 @@ def get_others_messages(ocr_results: list) -> list:
             continue
 
         # y 间距大于阈值或遇到昵称后的第一行 → 新消息
-        if prev_y is not None and prev_y - line['y'] > config.OCR_MESSAGE_GAP:
-            if current_lines:
-                messages.append('\n'.join(current_lines))
-                current_lines = []
+        if prev_y is not None and prev_y - line['y'] > config.OCR_MESSAGE_GAP and current_lines:
+            messages.append('\n'.join(current_lines))
+            current_lines = []
 
         current_lines.append(text)
         prev_y = line['y']
@@ -139,7 +139,7 @@ def get_others_messages(ocr_results: list) -> list:
 
 
 def screenshot_and_ocr(window_id: int) -> list:
-    """按窗口 ID 截图并 OCR 识别（纯内存，无需激活窗口）
+    """按窗口 ID 截图并 OCR 识别(纯内存,无需激活窗口)
 
     Args:
         window_id: Quartz 窗口 ID (kCGWindowNumber)

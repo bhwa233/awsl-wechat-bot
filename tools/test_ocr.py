@@ -3,8 +3,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from gateway.utils.ocr import screenshot_and_ocr, get_others_messages
 from gateway.adapters.macos import MacOSWeChatAdapter
+from gateway.utils.ocr import get_others_messages, screenshot_and_ocr
 
 adapter = MacOSWeChatAdapter()
 windows = adapter.find_all_wechat_windows()

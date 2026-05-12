@@ -10,6 +10,7 @@ logging.basicConfig(level=log_level, format='%(asctime)s - %(levelname)s - %(mes
 
 def main():
     import uvicorn
+
     from common.logging import setup_uvicorn_logging
     from cortex.asgi import create_app
     from cortex.runtime import CortexRuntime

@@ -1,4 +1,4 @@
-"""Gateway - 纯 WS 消息网关：队列消费 + 广播"""
+"""Gateway - 纯 WS 消息网关:队列消费 + 广播"""
 
 import asyncio
 import logging
@@ -8,14 +8,14 @@ import threading
 
 from fastapi import WebSocket
 
-from gateway.core.sender import MessageSender
-from gateway.core.models import SendTask
 from common.models import (
     GatewayMessage,
     WSMessageBroadcast,
     WSSubscribe,
     WSSubscription,
 )
+from gateway.core.models import SendTask
+from gateway.core.sender import MessageSender
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +52,7 @@ class Gateway:
         self._loop = loop
 
     def ws_connect(self, ws: WebSocket):
-        """注册 WS 连接（无过滤，需 subscribe 后才收消息）"""
+        """注册 WS 连接(无过滤,需 subscribe 后才收消息)"""
         with self._lock:
             self._ws_clients[ws] = WSSubscription()
         logger.info(f"WS 客户端已连接 (当前 {len(self._ws_clients)} 个)")
@@ -64,7 +64,7 @@ class Gateway:
         logger.info(f"WS 客户端已断开 (当前 {len(self._ws_clients)} 个)")
 
     def ws_subscribe(self, ws: WebSocket, msg: WSSubscribe) -> str | None:
-        """设置订阅过滤条件，返回错误信息或 None"""
+        """设置订阅过滤条件,返回错误信息或 None"""
         try:
             sub = WSSubscription.from_subscribe(msg)
         except re.error as e:
@@ -80,17 +80,17 @@ class Gateway:
         return None
 
     def ws_unsubscribe(self, ws: WebSocket):
-        """清除过滤（不再收消息，但连接保持）"""
+        """清除过滤(不再收消息,但连接保持)"""
         with self._lock:
             if ws in self._ws_clients:
                 self._ws_clients[ws] = WSSubscription()
 
     def send_message(self, task: SendTask) -> bool:
-        """发送消息到微信（所有调用者统一入口）"""
+        """发送消息到微信(所有调用者统一入口)"""
         return self.sender.enqueue(task)
 
     def _consume_loop(self):
-        """消费 gateway_queue，广播到匹配的 WS 客户端"""
+        """消费 gateway_queue,广播到匹配的 WS 客户端"""
         while self._running:
             try:
                 msg = self.gateway_queue.get(timeout=1)
@@ -108,7 +108,7 @@ class Gateway:
         logger.info("Gateway 队列消费线程退出")
 
     def _broadcast(self, msg: GatewayMessage):
-        """按优先级广播：passive 客户端始终收到，非 passive 只推送给最高优先级"""
+        """按优先级广播:passive 客户端始终收到,非 passive 只推送给最高优先级"""
         if not self._loop:
             return
 
@@ -121,7 +121,7 @@ class Gateway:
         with self._lock:
             targets = list(self._ws_clients.items())
 
-        # 分组：passive 始终推送，非 passive 按优先级筛选
+        # 分组:passive 始终推送,非 passive 按优先级筛选
         passive_matched = []
         active_matched = []
         for ws, sub in targets:
@@ -129,7 +129,7 @@ class Gateway:
                 continue
             (passive_matched if sub.passive else active_matched).append((ws, sub))
 
-        # 非 passive：只保留最高优先级
+        # 非 passive:只保留最高优先级
         if active_matched:
             max_priority = max(sub.priority for _, sub in active_matched)
             skipped = [(ws, sub) for ws, sub in active_matched if sub.priority < max_priority]
@@ -162,6 +162,4 @@ class Gateway:
             return False
         if sub.group_re and not sub.group_re.search(group_name):
             return False
-        if sub.message_re and not sub.message_re.search(content):
-            return False
-        return True
+        return not (sub.message_re and not sub.message_re.search(content))

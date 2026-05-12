@@ -1,14 +1,14 @@
 """Cortex 数据模型"""
 import logging
 from abc import ABC, abstractmethod
-from enum import Enum
+from enum import StrEnum
 
 from common.models import WSMessageBroadcast
 
 logger = logging.getLogger(__name__)
 
 
-class TriggerType(str, Enum):
+class TriggerType(StrEnum):
     TEXT = "text"
     IMAGE = "image"
     COMMAND = "command"
@@ -19,7 +19,7 @@ class TriggerType(str, Enum):
 class MessageListener(ABC):
     """Gateway 消息监听器基类
 
-    子类只需实现 _handle_message，异常由基类统一捕获。
+    子类只需实现 _handle_message,异常由基类统一捕获.
     """
 
     def on_message(self, msg: WSMessageBroadcast) -> None:

@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    from gateway.runtime import GatewayRuntime
-    from gateway.asgi import create_app as create_gateway_app
     from chatlog.asgi import create_app as create_chatlog_app
     from cortex.asgi import create_app as create_cortex_app
     from cortex.runtime import CortexRuntime
+    from gateway.asgi import create_app as create_gateway_app
+    from gateway.runtime import GatewayRuntime
 
     setup_uvicorn_logging()
 

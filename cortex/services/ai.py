@@ -8,7 +8,7 @@ from common.config import config
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_SYSTEM_PROMPT = "你是一个友好、有趣的 AI 助手，用简洁、幽默的方式回答问题。"
+_DEFAULT_SYSTEM_PROMPT = "你是一个友好、有趣的 AI 助手,用简洁、幽默的方式回答问题."
 
 
 class AIService:
@@ -22,7 +22,7 @@ class AIService:
             timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
-        logger.info(f"AI 服务初始化完成，API: {config.OPENAI_BASE_URL}")
+        logger.info(f"AI 服务初始化完成,API: {config.OPENAI_BASE_URL}")
 
     def ask(self, question: str, system_prompt: str | None = None) -> str | None:
         try:

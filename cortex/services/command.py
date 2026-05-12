@@ -85,8 +85,8 @@ class CommandService:
 
     def get_help_text(self) -> str:
         if not self.commands:
-            return "命令列表为空，请检查网络连接"
-        lines = ["可用命令："]
+            return "命令列表为空,请检查网络连接"
+        lines = ["可用命令:"]
         for cmd in self.commands:
             lines.append(f"  {cmd['description']}")
         return "\n".join(lines)

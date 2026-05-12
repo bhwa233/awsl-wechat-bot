@@ -3,16 +3,15 @@ ChatlogService - 聊天记录服务统一接口
 """
 
 from datetime import datetime
-from typing import Optional
 
-from chatlog.wechat_db import ChatRoom, Message, WeChatDBDecryptor, WeChatDBReader, HAS_CRYPTO
+from chatlog.wechat_db import HAS_CRYPTO, ChatRoom, Message, WeChatDBDecryptor, WeChatDBReader
 
 
 class ChatlogService:
     """聊天记录服务 - 统一接口"""
 
     def decrypt(self, input_path: str, key: str, output_path: str) -> int:
-        """解密微信数据库，返回解密文件数"""
+        """解密微信数据库,返回解密文件数"""
         decryptor = WeChatDBDecryptor(key)
         return decryptor.decrypt_directory(input_path, output_path)
 
@@ -29,8 +28,8 @@ class ChatlogService:
         db_path: str,
         talker: str,
         *,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         text_only: bool = True,
         limit: int = 100,
         offset: int = 0,

@@ -1,4 +1,4 @@
-"""代理 Chatlog API - 供 Cortex 前端调用，避免跨端口请求"""
+"""代理 Chatlog API - 供 Cortex 前端调用,避免跨端口请求"""
 
 import json
 import logging
@@ -23,7 +23,7 @@ def _proxy_response(resp: httpx.Response) -> Response:
 
 
 def create_routes(chatlog_base_url: str, chatlog_token: str) -> tuple[APIRouter, httpx.AsyncClient]:
-    """创建代理路由，返回 (router, client)，调用方负责关闭 client"""
+    """创建代理路由,返回 (router, client),调用方负责关闭 client"""
     router = APIRouter()
     client = httpx.AsyncClient(
         base_url=chatlog_base_url.rstrip("/"),

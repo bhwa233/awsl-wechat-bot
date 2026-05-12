@@ -1,4 +1,4 @@
-"""Chatlog 平台实现共用小工具。"""
+"""Chatlog 平台实现共用小工具."""
 
 from __future__ import annotations
 

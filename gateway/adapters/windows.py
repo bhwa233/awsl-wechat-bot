@@ -1,15 +1,17 @@
-import time
+import contextlib
 import logging
-import re
 import os
-import shutil
+import re
 import threading
+import time
+from typing import ClassVar
 
 logging.getLogger("comtypes").setLevel(logging.WARNING)
 
 import uiautomation as auto  # noqa: E402
-from gateway.adapters.base import BaseWeChatAdapter
-from common.config import config
+
+from common.config import config  # noqa: E402
+from gateway.adapters.base import BaseWeChatAdapter  # noqa: E402
 
 logger = logging.getLogger(__name__)
 _WINDOWS_RESERVED_NAMES = {
@@ -25,7 +27,7 @@ _WINDOWS_DROPFILE_CLEANUP_RETRIES = 10
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
-    _RESERVED_NAMES = {
+    _RESERVED_NAMES: ClassVar[set[str]] = {
         "CON", "PRN", "AUX", "NUL",
         *(f"COM{i}" for i in range(1, 10)),
         *(f"LPT{i}" for i in range(1, 10)),
@@ -45,18 +47,18 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         return name[:200]
 
     def __init__(self):
-        self._send_lock = threading.Lock()  # 仅发送需要锁（激活窗口+剪贴板+按键）
+        self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口+剪贴板+按键)
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
 
     def _ensure_uia(self):
-        """确保当前线程已初始化 UIA（内部处理 COM 初始化，控件须在同一线程创建和使用）"""
+        """确保当前线程已初始化 UIA(内部处理 COM 初始化,控件须在同一线程创建和使用)"""
         tid = threading.get_ident()
         if tid not in self._thread_inits:
             self._thread_inits[tid] = auto.UIAutomationInitializerInThread()
             logger.debug(f"线程 {tid} UIA 初始化完成")
 
     def _set_clipboard_text_windows_api(self, text: str):
-        """使用 win32 API 安全设置文本剪贴板。"""
+        """使用 win32 API 安全设置文本剪贴板."""
         import win32clipboard
         import win32con
 
@@ -65,13 +67,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             win32clipboard.EmptyClipboard()
             win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 win32clipboard.CloseClipboard()
-            except Exception:
-                pass
 
     def _set_clipboard_data(self, format_type: int, data):
-        """使用 win32 API 安全设置剪贴板二进制数据。"""
+        """使用 win32 API 安全设置剪贴板二进制数据."""
         import win32clipboard
 
         win32clipboard.OpenClipboard()
@@ -79,10 +79,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             win32clipboard.EmptyClipboard()
             win32clipboard.SetClipboardData(format_type, data)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 win32clipboard.CloseClipboard()
-            except Exception:
-                pass
 
     @staticmethod
     def _guess_image_filename(image_data: bytes) -> str:
@@ -107,7 +105,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         stem, ext = os.path.splitext(safe_name)
         if stem.upper() in _WINDOWS_RESERVED_NAMES:
             safe_name = f"_{stem}{ext}"
-        return safe_name or default_name
+        return (safe_name or default_name)[:200]
 
     def _write_temp_file(self, data: bytes, *, filename: str | None, default_name: str) -> tuple[str, str]:
         import tempfile
@@ -120,6 +118,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
     def _paste_file_to_window(self, window, temp_path: str):
         import struct
+
         import win32clipboard
 
         temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
@@ -138,7 +137,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 continue
             edit_controls.append(control)
         if not edit_controls:
-            logger.debug(f"[{window.Name}] 未找到 EditControl，回退到窗口级按键")
+            logger.debug(f"[{window.Name}] 未找到 EditControl,回退到窗口级按键")
             return None
         target = edit_controls[-1]
         logger.debug(f"[{window.Name}] 使用输入控件: Name={target.Name!r} AutomationId={target.AutomationId!r}")
@@ -151,11 +150,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         try:
             target.Click(waitTime=0)
         except Exception as e:
-            logger.debug(f"[{window.Name}] 点击输入框失败，继续尝试聚焦: {e}")
+            logger.debug(f"[{window.Name}] 点击输入框失败,继续尝试聚焦: {e}")
         try:
             target.SetFocus()
         except Exception as e:
-            logger.debug(f"[{window.Name}] 输入框 SetFocus 失败，继续尝试按键发送: {e}")
+            logger.debug(f"[{window.Name}] 输入框 SetFocus 失败,继续尝试按键发送: {e}")
         time.sleep(0.2)
         return target
 
@@ -163,7 +162,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
     def _send_file_paste_and_enter(target):
         time.sleep(0.3)
         target.SendKeys('{CTRL}v', waitTime=0.5)
-        target.SendKeys('{ENTER}', waitTime=0.2)
+        time.sleep(1.0)
+        target.SendKeys('{ENTER}', waitTime=0.5)
 
     @staticmethod
     def _cleanup_temp_path(
@@ -185,10 +185,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 except Exception:
                     break
         if temp_dir:
-            try:
+            with contextlib.suppress(Exception):
                 os.rmdir(temp_dir)
-            except Exception:
-                pass
 
     def _schedule_temp_path_cleanup(self, temp_path: str | None, temp_dir: str | None, *, initial_delay: float):
         if not temp_path and not temp_dir:
@@ -207,11 +205,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         ).start()
 
     def find_all_wechat_windows(self) -> list[dict]:
-        """查找所有微信窗口（包括弹出的群聊窗口）
+        """查找所有微信窗口(包括弹出的群聊窗口)
 
         Returns:
-            list[dict]: 窗口信息列表，每个字典包含：
-                - title: 窗口标题（群名）
+            list[dict]: 窗口信息列表,每个字典包含:
+                - title: 窗口标题(群名)
                 - window: WindowControl 对象
                 - class: 窗口类名
         """
@@ -253,7 +251,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 logger.warning(f"扫描类名 {cls} 时出错: {e}")
                 continue
 
-        # 过滤掉主窗口（标题为"微信"或"WeChat"）
+        # 过滤掉主窗口(标题为"微信"或"WeChat")
         popup_windows = [
             w for w in all_windows
             if w["title"] not in main_titles
@@ -263,7 +261,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         return popup_windows
 
     def activate_specific_window(self, window):
-        """激活指定的微信窗口（调用方须持有 _send_lock）
+        """激活指定的微信窗口(调用方须持有 _send_lock)
 
         Args:
             window: WindowControl 对象
@@ -297,20 +295,20 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             list[str]: 消息列表
         """
         self._ensure_uia()
-        # 读取不需要锁：每个线程有独立 UIA/COM 上下文，读不同窗口可并行
+        # 读取不需要锁:每个线程有独立 UIA/COM 上下文,读不同窗口可并行
         logger.debug("正在查找消息列表...")
-        # 方案1：通过名称查找
+        # 方案1:通过名称查找
         msg_list = window.ListControl(Name="消息")
         if not msg_list.Exists(0.5):
-            logger.debug("未找到名为'消息'的列表，尝试查找任意 ListControl...")
-            # 方案2：查找第一个 ListControl
+            logger.debug("未找到名为'消息'的列表,尝试查找任意 ListControl...")
+            # 方案2:查找第一个 ListControl
             msg_list = window.ListControl()
 
         if not msg_list.Exists(0):
-            logger.warning("在当前窗口中未找到任何消息列表控件。")
+            logger.warning("在当前窗口中未找到任何消息列表控件.")
             return []
 
-        logger.debug("成功定位消息列表，正在提取消息...")
+        logger.debug("成功定位消息列表,正在提取消息...")
         messages = []
         try:
             # 遍历消息列表的子项
@@ -318,7 +316,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 # 新版微信的消息内容在子控件的 Name 属性里
                 if item.ControlTypeName == 'ListItemControl':
                     text_control = item.TextControl()
-                    # 有些消息是图片或表情，没有文本控件
+                    # 有些消息是图片或表情,没有文本控件
                     if text_control.Exists(0):
                          messages.append(text_control.Name)
                     else: # 尝试直接获取 ListItemControl 的 Name
@@ -369,9 +367,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 clipboard_content = auto.GetClipboardText()
                 if clipboard_content != text:
                     if config.DEBUG:
-                        logger.debug(f"剪贴板截断！原始长度={len(text)} 剪贴板长度={len(clipboard_content)}")
-                        logger.debug(f"原始内容: {repr(text)}")
-                        logger.debug(f"剪贴板内容: {repr(clipboard_content)}")
+                        logger.debug(f"剪贴板截断!原始长度={len(text)} 剪贴板长度={len(clipboard_content)}")
+                        logger.debug(f"原始内容: {text!r}")
+                        logger.debug(f"剪贴板内容: {clipboard_content!r}")
 
                     # 使用 Windows API 重新设置
                     self._set_clipboard_text_windows_api(text)
@@ -392,7 +390,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 return False
 
     def send_image_to_window(self, window, image_base64: str) -> bool:
-        """向指定窗口发送图片（base64编码）
+        """向指定窗口发送图片(base64编码)
 
         Args:
             window: WindowControl 对象
@@ -402,9 +400,10 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         import base64
-        import tempfile
         import os
         import struct
+        import tempfile
+
         import win32clipboard
 
         self._ensure_uia()
@@ -457,39 +456,26 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                             break
 
     def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
-        """向指定窗口发送文件（base64 编码）"""
+        """向指定窗口发送文件(base64 编码)"""
         import base64
-        import tempfile
-        import os
-        import struct
-        import win32clipboard
 
         self._ensure_uia()
         with self._send_lock:
             logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
 
             self.activate_specific_window(window)
+            target = self._focus_send_target(window)
 
             temp_path = None
             temp_dir = None
             try:
                 file_data = base64.b64decode(file_base64)
-
-                safe_name = self._sanitize_windows_filename(filename)
-
-                temp_dir = tempfile.mkdtemp(prefix="awsl-wechat-")
-                temp_path = os.path.join(temp_dir, safe_name)
-                with open(temp_path, "wb") as f:
-                    f.write(file_data)
-
-                temp_path_bytes = temp_path.encode('utf-16-le') + b'\x00\x00'
-                dropfiles = struct.pack('IIIIi', 20, 0, 0, 0, 1) + temp_path_bytes + b'\x00\x00'
-                self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
-
-                time.sleep(0.3)
-
-                window.SendKeys('{CTRL}v', waitTime=0.5)
-                window.SendKeys('{ENTER}', waitTime=0.2)
+                temp_path, temp_dir = self._write_temp_file(file_data, filename=filename, default_name="attachment.bin")
+                self._paste_file_to_window(window, temp_path)
+                self._send_file_paste_and_enter(target)
+                self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=_WINDOWS_DROPFILE_CLEANUP_DELAY)
+                temp_path = None
+                temp_dir = None
 
                 logger.debug(f"✓ 文件发送成功到 [{window.Name}]: {filename}")
                 return True
@@ -497,15 +483,5 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 logger.error(f"发送文件失败: {e}")
                 return False
             finally:
-                if temp_path:
-                    time.sleep(1)
-                    for _ in range(3):
-                        try:
-                            os.unlink(temp_path)
-                            break
-                        except PermissionError:
-                            time.sleep(1)
-                        except Exception:
-                            break
-                if temp_dir:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                if temp_path or temp_dir:
+                    self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=1.0)

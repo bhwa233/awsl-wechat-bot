@@ -111,7 +111,7 @@ class TaskScheduler:
 
     def _execute_summary_task(self, task):
         if not self._summary_service:
-            logger.warning("[Scheduler] SummaryService 未配置，跳过总结任务")
+            logger.warning("[Scheduler] SummaryService 未配置,跳过总结任务")
             return
         try:
             from cortex.services.summary_service import SummaryConfig, SummaryGroup, SummaryResult
@@ -145,7 +145,7 @@ class TaskScheduler:
 
     def _gateway_get(self, path: str) -> list | dict | None:
         if not self._client:
-            logger.warning(f"[Scheduler] Gateway HTTP 未配置，跳过 GET {path}")
+            logger.warning(f"[Scheduler] Gateway HTTP 未配置,跳过 GET {path}")
             return None
         try:
             resp = self._client.get(path)

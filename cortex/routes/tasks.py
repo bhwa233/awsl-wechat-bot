@@ -3,13 +3,15 @@
 import json
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from common.auth import verify_token
 from cortex.services.scheduled_task import (
-    ScheduledTaskCreate, ScheduledTaskUpdate,
-    ScheduledTaskApiCreate, ScheduledTaskApiUpdate,
+    ScheduledTaskApiCreate,
+    ScheduledTaskApiUpdate,
+    ScheduledTaskCreate,
     ScheduledTaskResponse,
+    ScheduledTaskUpdate,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ def create_routes(task_service):
         )
         task = task_service.create_task(data)
         if not task:
-            raise HTTPException(status_code=400, detail="创建任务失败，请检查 cron 表达式是否正确")
+            raise HTTPException(status_code=400, detail="创建任务失败,请检查 cron 表达式是否正确")
         logger.info(f"[HTTP API] 创建定时任务: {task.name}")
         return _task_to_response(task)
 

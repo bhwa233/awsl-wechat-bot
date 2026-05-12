@@ -1,5 +1,6 @@
 """Bot 子进程管理器"""
 
+import contextlib
 import logging
 import os
 import socket
@@ -8,9 +9,8 @@ import sys
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
@@ -29,15 +29,15 @@ HEALTH_CHECK_MAX_FAILURES = 3
 
 class BotProcessManager:
     def __init__(self):
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
         self._log_buffer: deque = deque(maxlen=config.DAEMON_LOG_BUFFER_LINES)
         self._lock = threading.Lock()
-        self._start_time: Optional[datetime] = None
+        self._start_time: datetime | None = None
         self._restart_count = 0
         self._last_restart_reason = ""
         self._auto_restart = True
-        self._monitor_thread: Optional[threading.Thread] = None
-        self._health_thread: Optional[threading.Thread] = None
+        self._monitor_thread: threading.Thread | None = None
+        self._health_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._health_failures = 0
 
@@ -72,7 +72,7 @@ class BotProcessManager:
                 "running": running,
                 "pid": self._process.pid if running else None,
                 "uptime_seconds": (
-                    (datetime.now(timezone.utc) - self._start_time).total_seconds()
+                    (datetime.now(UTC) - self._start_time).total_seconds()
                     if running and self._start_time
                     else None
                 ),
@@ -106,12 +106,12 @@ class BotProcessManager:
     def _launch(self, reason: str):
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
-        popen_kwargs = dict(
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            cwd=str(PROJECT_DIR),
-            env=env,
-        )
+        popen_kwargs = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "cwd": str(PROJECT_DIR),
+            "env": env,
+        }
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         self._process = subprocess.Popen(
@@ -123,7 +123,7 @@ class BotProcessManager:
             args=(self._process,),
             daemon=True,
         ).start()
-        self._start_time = datetime.now(timezone.utc)
+        self._start_time = datetime.now(UTC)
         self._last_restart_reason = reason
         self._auto_restart = True
         self._health_failures = 0
@@ -153,10 +153,8 @@ class BotProcessManager:
                 except Exception:
                     pass
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 process.stdout.close()
-            except Exception:
-                pass
 
     def _terminate(self) -> dict:
         if not self._process:
@@ -168,7 +166,12 @@ class BotProcessManager:
             else:
                 self._kill_posix()
             if not self._wait_ports_released():
-                logger.warning("bot 进程退出后端口仍未释放 (ports=%s,%s,%s)", config.HTTP_API_PORT, config.CORTEX_HTTP_PORT, config.CHATLOG_HTTP_PORT)
+                logger.warning(
+                    "bot 进程退出后端口仍未释放 (ports=%s,%s,%s)",
+                    config.HTTP_API_PORT,
+                    config.CORTEX_HTTP_PORT,
+                    config.CHATLOG_HTTP_PORT,
+                )
         except Exception:
             pass
         self._process = None
@@ -212,13 +215,19 @@ class BotProcessManager:
                 exit_code = self._process.returncode
                 if consecutive_failures >= config.DAEMON_MAX_RETRIES:
                     self._auto_restart = False
-                    logger.error(f"bot 连续崩溃 {consecutive_failures} 次，已停止自动重启")
+                    logger.error(f"bot 连续崩溃 {consecutive_failures} 次,已停止自动重启")
                     continue
                 consecutive_failures += 1
                 self._restart_count += 1
                 reason = f"崩溃自动重启 (exit_code={exit_code}, attempt={consecutive_failures})"
                 self._last_restart_reason = reason
-                logger.warning(f"bot 进程退出 (exit_code={exit_code})，{config.DAEMON_RESTART_DELAY}s 后重启 (attempt={consecutive_failures}/{config.DAEMON_MAX_RETRIES})")
+                logger.warning(
+                    "bot 进程退出 (exit_code=%s),%ss 后重启 (attempt=%s/%s)",
+                    exit_code,
+                    config.DAEMON_RESTART_DELAY,
+                    consecutive_failures,
+                    config.DAEMON_MAX_RETRIES,
+                )
             time.sleep(config.DAEMON_RESTART_DELAY)
             with self._lock:
                 if not self._auto_restart or self._stop_event.is_set():
@@ -248,7 +257,7 @@ class BotProcessManager:
                     self._health_failures += 1
                     logger.warning(f"bot health check 失败 ({self._health_failures}/{HEALTH_CHECK_MAX_FAILURES})")
                     if self._health_failures >= HEALTH_CHECK_MAX_FAILURES:
-                        logger.error(f"bot 连续 {HEALTH_CHECK_MAX_FAILURES} 次 health check 失败，强制重启")
+                        logger.error(f"bot 连续 {HEALTH_CHECK_MAX_FAILURES} 次 health check 失败,强制重启")
                         self._terminate()
                         self._restart_count += 1
                         reason = f"health check 失败重启 (连续 {HEALTH_CHECK_MAX_FAILURES} 次无响应)"

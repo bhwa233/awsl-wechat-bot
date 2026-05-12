@@ -25,7 +25,6 @@ import struct
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import pbkdf2_hmac, sha512
-from typing import Optional
 
 from chatlog.platform import get_chatlog_platform
 
@@ -251,7 +250,7 @@ class WeChatDBDecryptor:
 # ============================================================
 
 def _parse_varint(data: bytes, pos: int) -> tuple[int, int]:
-    """解析 varint，返回 (值, 新位置)"""
+    """解析 varint,返回 (值, 新位置)"""
     result = 0
     shift = 0
     while pos < len(data):
@@ -266,7 +265,7 @@ def _parse_varint(data: bytes, pos: int) -> tuple[int, int]:
 
 def _parse_room_data(ext_buffer: bytes) -> dict[str, str]:
     """
-    解析 chat_room.ext_buffer 中的 protobuf 数据，提取群成员昵称
+    解析 chat_room.ext_buffer 中的 protobuf 数据,提取群成员昵称
 
     Returns:
         dict: username -> display_name 映射
@@ -358,7 +357,7 @@ class WeChatDBReader:
 
     def __init__(self, db_path: str):
         self.db_path = db_path
-        self._contact_db: Optional[sqlite3.Connection] = None
+        self._contact_db: sqlite3.Connection | None = None
         self._message_dbs: dict[str, sqlite3.Connection] = {}
         self._message_db_times: list[tuple[str, int, int]] = []
         self._chatroom_display_names: dict[str, dict[str, str]] = {}  # chatroom -> {username -> display_name}
@@ -443,7 +442,7 @@ class WeChatDBReader:
         return chat_rooms
 
     def get_group_display_name(self, group_id: str) -> str:
-        """获取群聊显示名称（优先 remark，其次 nick_name）"""
+        """获取群聊显示名称(优先 remark,其次 nick_name)"""
         db = self._get_contact_db()
         cursor = db.cursor()
         cursor.execute("SELECT nick_name, remark FROM contact WHERE username = ?", (group_id,))
@@ -484,8 +483,8 @@ class WeChatDBReader:
     def get_messages(
         self,
         talker: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         text_only: bool = True,
         limit: int = 0,
         offset: int = 0,
@@ -509,7 +508,7 @@ class WeChatDBReader:
         # 获取群昵称映射
         display_names = self._get_chatroom_display_names(talker) if is_chatroom else {}
 
-        # 单 db 内 sort_seq 单调，最多需要 offset + limit 条；合并排序后再切片
+        # 单 db 内 sort_seq 单调,最多需要 offset + limit 条;合并排序后再切片
         per_db_cap = (offset + limit) if limit > 0 else 0
 
         for db_path in db_paths:
@@ -529,14 +528,14 @@ class WeChatDBReader:
             params: tuple = (start_ts, end_ts)
             if text_only:
                 query += " AND (m.local_type & 0xFFFFFFFF) = ?"
-                params = params + (MESSAGE_TYPE_TEXT,)
+                params = (*params, MESSAGE_TYPE_TEXT)
             query += f" ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}"
             if per_db_cap > 0:
                 query += " LIMIT ?"
-                params = params + (per_db_cap,)
+                params = (*params, per_db_cap)
             cursor.execute(query, params)
 
-            for sort_seq, server_id, local_type, user_name, create_time, message_content, status in cursor.fetchall():
+            for sort_seq, _server_id, local_type, user_name, create_time, message_content, status in cursor.fetchall():
                 msg_type = local_type & 0xFFFFFFFF
                 if text_only and msg_type != MESSAGE_TYPE_TEXT:
                     continue
@@ -550,7 +549,7 @@ class WeChatDBReader:
                         sender, content = parts
 
                 is_self = status == 2 or (not is_chatroom and talker != sender)
-                # 优先使用群昵称，其次使用联系人名称
+                # 优先使用群昵称,其次使用联系人名称
                 sender_name = display_names.get(sender) or self.get_contact_name(sender) if sender else ""
 
                 messages.append(Message(
@@ -591,7 +590,7 @@ def cmd_decrypt(args) -> int:
         print(f"错误: 目录不存在: {args.input}")
         return 1
 
-    print(f"开始解密...")
+    print("开始解密...")
     print(f"输入: {args.input}")
     print(f"输出: {args.output}\n")
 

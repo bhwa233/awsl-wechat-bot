@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """macOS 多群模式测试 - 枚举窗口 + 读取消息"""
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from gateway.adapters.macos import MacOSWeChatAdapter
@@ -18,7 +19,7 @@ def main():
         print(f"  - \"{w['title']}\" (index={w['window'].index})")
 
     if not windows:
-        print("没有聊天窗口，请先双击打开一个群聊")
+        print("没有聊天窗口,请先双击打开一个群聊")
         return
 
     # 逐个读取消息
@@ -31,7 +32,7 @@ def main():
         for m in msgs[-5:]:
             print(f"  {m[:80]}")
 
-    # 发送测试（可选，传 --send 参数）
+    # 发送测试(可选,传 --send 参数)
     if "--send" in sys.argv:
         for w in windows:
             title = w["title"]

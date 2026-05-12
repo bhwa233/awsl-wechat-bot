@@ -25,7 +25,7 @@ class ChatlogClient:
         self._client.close()
 
     def decrypt(self) -> dict:
-        """触发 chatlog 服务解密微信数据库（路径/密钥由 chatlog 服务自身的 .env 提供）"""
+        """触发 chatlog 服务解密微信数据库(路径/密钥由 chatlog 服务自身的 .env 提供)"""
         resp = self._client.post("/api/chatlog/decrypt", timeout=300)
         resp.raise_for_status()
         return resp.json()

@@ -18,7 +18,7 @@ _STOP_CORTEX_TASK = object()
 
 
 class CortexRuntime(MessageListener):
-    def __init__(self, gateway_ws_url: str = None):
+    def __init__(self, gateway_ws_url: str | None = None):
         ws_url = gateway_ws_url or f"ws://127.0.0.1:{config.HTTP_API_PORT}/ws"
 
         self.ai_service = self._init_ai_service()
@@ -48,7 +48,7 @@ class CortexRuntime(MessageListener):
         try:
             service = CommandService()
             if service.load_commands():
-                logger.info(f"命令服务初始化成功，已加载 {len(service.commands)} 个命令")
+                logger.info(f"命令服务初始化成功,已加载 {len(service.commands)} 个命令")
             else:
                 logger.warning("命令列表加载失败")
             return service
@@ -77,7 +77,7 @@ class CortexRuntime(MessageListener):
             try:
                 self._task_queue.put_nowait(_STOP_CORTEX_TASK)
             except queue.Full:
-                logger.warning("Cortex 处理队列已满，停止信号入队失败")
+                logger.warning("Cortex 处理队列已满,停止信号入队失败")
         for worker in self._workers:
             worker.join(timeout=5)
         self._workers.clear()
@@ -96,7 +96,7 @@ class CortexRuntime(MessageListener):
         cutoff = now - self._rate_window
         while times and times[0] < cutoff:
             times.popleft()
-        # 清理空 deque，防止不活跃群组内存泄漏
+        # 清理空 deque,防止不活跃群组内存泄漏
         if not times:
             del self._trigger_times[group_name]
             return False
@@ -115,7 +115,7 @@ class CortexRuntime(MessageListener):
         try:
             self._task_queue.put_nowait((trigger_type, content, msg.group_name))
         except queue.Full:
-            logger.warning(f"[{msg.group_name}] Cortex 处理队列已满，丢弃触发任务")
+            logger.warning(f"[{msg.group_name}] Cortex 处理队列已满,丢弃触发任务")
 
     def _worker_loop(self):
         while True:
@@ -150,7 +150,7 @@ class CortexRuntime(MessageListener):
             if trigger_type == TriggerType.AI and self.ai_service:
                 logger.info(f"[{group_name}] AI 请求: {content[:50]}")
                 ans = self.ai_service.ask(content)
-                msg = ans or "抱歉，我现在无法回答这个问题"
+                msg = ans or "抱歉,我现在无法回答这个问题"
 
             elif trigger_type == TriggerType.COMMAND and self.command_service:
                 logger.info(f"[{group_name}] 执行命令: {content[0]} {content[1][:50]}...")

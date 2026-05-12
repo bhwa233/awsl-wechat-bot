@@ -2,10 +2,10 @@
 
 import logging
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from common.auth import verify_token
-from cortex.services.webhook import WebhookCreate, WebhookUpdate, WebhookResponse
+from cortex.services.webhook import WebhookCreate, WebhookResponse, WebhookUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def create_routes(webhook_service):
         if not wh:
             raise HTTPException(status_code=404, detail=f"未找到 webhook: {webhook_id}")
         if not webhook_service.test(wh):
-            raise HTTPException(status_code=503, detail="Webhook 队列已满，请稍后重试")
+            raise HTTPException(status_code=503, detail="Webhook 队列已满,请稍后重试")
         return {"success": True, "message": "测试请求已发送"}
 
     return router

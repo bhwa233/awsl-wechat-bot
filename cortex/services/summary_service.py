@@ -1,15 +1,17 @@
-"""群聊总结服务 - 调 chatlog HTTP API 拉消息，本地跑 LLM + 渲染，通过 gateway_client 发出"""
+"""群聊总结服务 - 调 chatlog HTTP API 拉消息,本地跑 LLM + 渲染,通过 gateway_client 发出"""
 from __future__ import annotations
 
 import base64
+import contextlib
 import logging
 import os
 import re
 import tempfile
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -41,7 +43,7 @@ class SummaryGroup:
 @dataclass
 class SummaryConfig:
     groups: list[SummaryGroup]
-    date: str | None = None  # YYYY-MM-DD，默认为今天
+    date: str | None = None  # YYYY-MM-DD,默认为今天
 
 
 @dataclass
@@ -52,7 +54,7 @@ class SummaryResult:
 
 
 class SummaryService:
-    """群聊总结服务 - 单例，串行执行"""
+    """群聊总结服务 - 单例,串行执行"""
 
     def __init__(self, chatlog_client: ChatlogClient, gateway_client: GatewayClient):
         self._chatlog = chatlog_client
@@ -76,7 +78,7 @@ class SummaryService:
         return self._is_running
 
     def close(self, timeout: float = 30) -> None:
-        """等待运行中的 worker 完成，然后关闭 LLM 客户端"""
+        """等待运行中的 worker 完成,然后关闭 LLM 客户端"""
         if self._worker_thread and self._worker_thread.is_alive():
             logger.info("[Summary] 等待运行中的总结任务完成...")
             self._worker_thread.join(timeout=timeout)
@@ -85,7 +87,7 @@ class SummaryService:
 
     def run_summary(self, config: SummaryConfig) -> SummaryResult:
         if not self._running_lock.acquire(blocking=False):
-            return SummaryResult(success=False, message="已有总结任务正在运行，请稍后再试")
+            return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
         try:
             return self._execute(config)
@@ -98,7 +100,7 @@ class SummaryService:
 
     def start_summary_async(self, config: SummaryConfig, on_complete: Callable | None = None) -> SummaryResult:
         if not self._running_lock.acquire(blocking=False):
-            return SummaryResult(success=False, message="已有总结任务正在运行，请稍后再试")
+            return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
 
         def run_and_release():
@@ -122,7 +124,7 @@ class SummaryService:
     def _execute(self, config: SummaryConfig) -> SummaryResult:
         results: dict = {"decrypt": None, "groups": {}}
 
-        # 1. 触发 chatlog 服务解密（chatlog 自己读 .env 里的路径/密钥）
+        # 1. 触发 chatlog 服务解密(chatlog 自己读 .env 里的路径/密钥)
         try:
             decrypt_resp = self._chatlog.decrypt()
             results["decrypt"] = decrypt_resp
@@ -158,7 +160,7 @@ class SummaryService:
             display_name = group.group_name
 
             try:
-                # 取群显示名（chatlog 提供）
+                # 取群显示名(chatlog 提供)
                 try:
                     display_name = self._chatlog.get_group_display_name(group.group_id) or group.group_name
                 except Exception as e:
@@ -216,7 +218,7 @@ class SummaryService:
                     fail_count += 1
                     continue
 
-                logger.info(f"[Summary] LLM 总结成功，长度: {len(summary)}")
+                logger.info(f"[Summary] LLM 总结成功,长度: {len(summary)}")
 
                 overview = extract_overview(summary)
                 summary = summary + "\n\n" + ranking
@@ -242,10 +244,8 @@ class SummaryService:
 
                 with open(output_image, "rb") as f:
                     image_b64 = base64.b64encode(f.read()).decode("utf-8")
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(output_image)
-                except OSError:
-                    pass
 
                 # 通过 gateway_client WS 发送
                 self._gateway.send_message(OutgoingMessage(

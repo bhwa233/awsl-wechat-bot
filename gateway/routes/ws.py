@@ -8,18 +8,18 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from common.config import config
-from gateway.core.gateway import Gateway
 from common.models import (
     WSAuth,
-    WSSubscribe,
-    WSUnsubscribe,
-    WSSendMessage,
-    WSSubscribeOk,
-    WSSendOk,
     WSAuthOk,
     WSError,
+    WSSendMessage,
+    WSSendOk,
+    WSSubscribe,
+    WSSubscribeOk,
+    WSUnsubscribe,
     parse_client_message,
 )
+from gateway.core.gateway import Gateway
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +33,8 @@ def create_routes(gateway: Gateway) -> APIRouter:
     async def websocket_endpoint(ws: WebSocket):
         await ws.accept()
 
-        if config.HTTP_API_TOKEN:
-            if not await _authenticate(ws):
-                return
+        if config.HTTP_API_TOKEN and not await _authenticate(ws):
+            return
 
         gateway.set_event_loop(asyncio.get_running_loop())
         gateway.ws_connect(ws)
@@ -54,7 +53,7 @@ def create_routes(gateway: Gateway) -> APIRouter:
 
 
 async def _authenticate(ws: WebSocket) -> bool:
-    """首条消息认证：客户端必须发送 {"type": "auth", "token": "xxx"}"""
+    """首条消息认证:客户端必须发送 {"type": "auth", "token": "xxx"}"""
     try:
         raw = await asyncio.wait_for(ws.receive_text(), timeout=AUTH_TIMEOUT)
         msg = parse_client_message(raw)
@@ -64,7 +63,7 @@ async def _authenticate(ws: WebSocket) -> bool:
         await ws.send_text(WSError(detail="认证失败").model_dump_json())
         await ws.close(code=4001, reason="Unauthorized")
         return False
-    except asyncio.TimeoutError:
+    except TimeoutError:
         await ws.close(code=4001, reason="Auth timeout")
         return False
     except Exception:
@@ -73,7 +72,7 @@ async def _authenticate(ws: WebSocket) -> bool:
 
 
 async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
-    """解析并分发 WS 消息（通过 Pydantic discriminated union 一步解析）"""
+    """解析并分发 WS 消息(通过 Pydantic discriminated union 一步解析)"""
     try:
         msg = parse_client_message(raw)
     except (ValueError, ValidationError) as e:
@@ -101,7 +100,7 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
             if not gateway.send_message(msg.to_outgoing_message()):
                 await ws.send_text(WSError(
                     request_id=msg.request_id,
-                    detail="发送队列已满，请稍后重试",
+                    detail="发送队列已满,请稍后重试",
                 ).model_dump_json())
                 return
             await ws.send_text(WSSendOk(

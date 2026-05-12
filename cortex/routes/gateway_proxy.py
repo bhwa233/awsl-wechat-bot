@@ -1,4 +1,4 @@
-"""代理 Gateway API - 供 Cortex 前端调用，避免跨端口请求"""
+"""代理 Gateway API - 供 Cortex 前端调用,避免跨端口请求"""
 
 import httpx
 from fastapi import APIRouter, Depends, Request, Response
@@ -7,7 +7,7 @@ from common.auth import verify_token
 
 
 def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter, httpx.AsyncClient]:
-    """创建代理路由，返回 (router, client)，调用方负责关闭 client"""
+    """创建代理路由,返回 (router, client),调用方负责关闭 client"""
     router = APIRouter()
     client = httpx.AsyncClient(
         base_url=gateway_base_url.rstrip("/"),

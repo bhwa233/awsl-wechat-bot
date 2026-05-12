@@ -6,12 +6,11 @@
 import logging
 import threading
 import time
-from datetime import datetime, timezone
-from typing import Optional, Dict, List
+from datetime import UTC, datetime
 
 from croniter import croniter
 from pydantic import BaseModel
-from sqlmodel import SQLModel, Field, Session, create_engine, select
+from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from common.models import MessageType, TaskType
 from common.sqlite_migrator import SQLiteMigrator
@@ -24,7 +23,7 @@ def _now_local() -> str:
 
 
 def _now_utc() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ==================== Models ====================
@@ -42,51 +41,51 @@ class ScheduledTaskBase(SQLModel):
 
 class ScheduledTask(ScheduledTaskBase, table=True):
     __tablename__ = "scheduled_tasks"
-    id: Optional[int] = Field(default=None, primary_key=True)
-    created_at: Optional[str] = Field(default_factory=_now_local)
-    updated_at: Optional[str] = Field(default_factory=_now_local)
-    last_run: Optional[str] = None
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: str | None = Field(default_factory=_now_local)
+    updated_at: str | None = Field(default_factory=_now_local)
+    last_run: str | None = None
 
 
 class ScheduledTaskCreate(ScheduledTaskBase):
-    """service 层创建模型，target_groups 为 JSON 字符串"""
+    """service 层创建模型,target_groups 为 JSON 字符串"""
     pass
 
 
 class ScheduledTaskUpdate(SQLModel):
-    """service 层更新模型，target_groups 为 JSON 字符串"""
-    name: Optional[str] = None
-    cron_expression: Optional[str] = None
-    task_type: Optional[TaskType] = None
-    message: Optional[str] = None
-    message_type: Optional[MessageType] = None
-    filename: Optional[str] = None
-    target_groups: Optional[str] = None
-    enabled: Optional[bool] = None
+    """service 层更新模型,target_groups 为 JSON 字符串"""
+    name: str | None = None
+    cron_expression: str | None = None
+    task_type: TaskType | None = None
+    message: str | None = None
+    message_type: MessageType | None = None
+    filename: str | None = None
+    target_groups: str | None = None
+    enabled: bool | None = None
 
 
 # ==================== API Models ====================
-# 前端交互用，target_groups 为 List[str]
+# 前端交互用,target_groups 为 List[str]
 
 class ScheduledTaskApiCreate(BaseModel):
     name: str
     cron_expression: str
     task_type: TaskType = TaskType.SEND
-    message: Optional[str] = ""
+    message: str | None = ""
     message_type: MessageType = MessageType.TEXT
-    filename: Optional[str] = ""
-    target_groups: List[str] = []
+    filename: str | None = ""
+    target_groups: list[str] = []
 
 
 class ScheduledTaskApiUpdate(BaseModel):
-    name: Optional[str] = None
-    cron_expression: Optional[str] = None
-    task_type: Optional[TaskType] = None
-    message: Optional[str] = None
-    message_type: Optional[MessageType] = None
-    filename: Optional[str] = None
-    target_groups: Optional[List[str]] = None
-    enabled: Optional[bool] = None
+    name: str | None = None
+    cron_expression: str | None = None
+    task_type: TaskType | None = None
+    message: str | None = None
+    message_type: MessageType | None = None
+    filename: str | None = None
+    target_groups: list[str] | None = None
+    enabled: bool | None = None
 
 
 class ScheduledTaskResponse(BaseModel):
@@ -97,11 +96,11 @@ class ScheduledTaskResponse(BaseModel):
     message: str
     message_type: MessageType
     filename: str
-    target_groups: List[str] = []
+    target_groups: list[str] = []
     enabled: bool
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-    last_run: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    last_run: str | None = None
 
 
 # ==================== Service ====================
@@ -122,7 +121,7 @@ class ScheduledTaskService:
         ScheduledTask.__table__.create(self.engine, checkfirst=True)
         self._run_migrations()
         self._run_cache_lock = threading.Lock()
-        self._last_scheduled_run: Dict[int, tuple[datetime, float]] = {}
+        self._last_scheduled_run: dict[int, tuple[datetime, float]] = {}
         logger.info("定时任务数据库初始化完成")
 
     # ==================== CRUD ====================
@@ -286,13 +285,11 @@ class ScheduledTaskService:
             return bool(message.strip())
         if not message.strip():
             return False
-        if message_type == MessageType.FILE and not filename.strip():
-            return False
-        return True
+        return not (message_type == MessageType.FILE and not filename.strip())
 
-    def create_task(self, data: ScheduledTaskCreate) -> Optional[ScheduledTask]:
+    def create_task(self, data: ScheduledTaskCreate) -> ScheduledTask | None:
         if not self.validate_cron_expression(data.cron_expression):
-            logger.error(f"创建任务失败：无效的 cron 表达式 '{data.cron_expression}'")
+            logger.error(f"创建任务失败:无效的 cron 表达式 '{data.cron_expression}'")
             return None
         if not self._validate_task_payload(
             task_type=data.task_type,
@@ -300,7 +297,7 @@ class ScheduledTaskService:
             message=data.message,
             filename=data.filename,
         ):
-            logger.error("创建任务失败：任务内容不合法")
+            logger.error("创建任务失败:任务内容不合法")
             return None
         with Session(self.engine) as session:
             task = ScheduledTask.model_validate(data)
@@ -309,7 +306,7 @@ class ScheduledTaskService:
             session.refresh(task)
             return task
 
-    def get_task(self, task_id: int) -> Optional[ScheduledTask]:
+    def get_task(self, task_id: int) -> ScheduledTask | None:
         with Session(self.engine) as session:
             return session.get(ScheduledTask, task_id)
 
@@ -323,9 +320,9 @@ class ScheduledTaskService:
                 select(ScheduledTask).where(ScheduledTask.enabled == True).order_by(ScheduledTask.id)  # noqa: E712
             ).all())
 
-    def update_task(self, task_id: int, data: ScheduledTaskUpdate) -> Optional[ScheduledTask]:
+    def update_task(self, task_id: int, data: ScheduledTaskUpdate) -> ScheduledTask | None:
         if data.cron_expression is not None and not self.validate_cron_expression(data.cron_expression):
-            logger.error(f"更新任务失败：无效的 cron 表达式 '{data.cron_expression}'")
+            logger.error(f"更新任务失败:无效的 cron 表达式 '{data.cron_expression}'")
             return None
         with Session(self.engine) as session:
             task = session.get(ScheduledTask, task_id)
@@ -342,7 +339,7 @@ class ScheduledTaskService:
                 message=next_message,
                 filename=next_filename,
             ):
-                logger.error("更新任务失败：任务内容不合法")
+                logger.error("更新任务失败:任务内容不合法")
                 return None
             task.sqlmodel_update(update_data)
             task.updated_at = _now_local()
@@ -366,7 +363,7 @@ class ScheduledTaskService:
     # ==================== 调度逻辑 ====================
 
     def update_last_run(self, task_id: int):
-        """更新任务的最后运行时间（UTC）"""
+        """更新任务的最后运行时间(UTC)"""
         with Session(self.engine) as session:
             task = session.get(ScheduledTask, task_id)
             if task:
@@ -400,7 +397,7 @@ class ScheduledTaskService:
                 return True
 
             local_tz = datetime.now().astimezone().tzinfo
-            prev_run_utc = prev_run_local.replace(tzinfo=local_tz).astimezone(timezone.utc).replace(tzinfo=None)
+            prev_run_utc = prev_run_local.replace(tzinfo=local_tz).astimezone(UTC).replace(tzinfo=None)
 
             if prev_run_utc > last_run_dt:
                 self._set_cached_run(task.id, prev_run_local)
@@ -412,7 +409,7 @@ class ScheduledTaskService:
             logger.error(f"检查任务 {task.id} 运行时间失败: {e}")
             return False
 
-    def _parse_last_run(self, last_run_str: str) -> Optional[datetime]:
+    def _parse_last_run(self, last_run_str: str) -> datetime | None:
         try:
             last_run_str = last_run_str.replace('Z', '+00:00')
             if ' ' in last_run_str and '+' not in last_run_str:
@@ -420,7 +417,7 @@ class ScheduledTaskService:
             else:
                 dt = datetime.fromisoformat(last_run_str)
                 if dt.tzinfo is not None:
-                    dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+                    dt = dt.astimezone(UTC).replace(tzinfo=None)
                 return dt
         except (ValueError, AttributeError) as e:
             logger.warning(f"无法解析 last_run 时间 '{last_run_str}': {e}")
@@ -428,7 +425,7 @@ class ScheduledTaskService:
 
     # ==================== 内存缓存 ====================
 
-    def _get_cached_run(self, task_id: int) -> Optional[datetime]:
+    def _get_cached_run(self, task_id: int) -> datetime | None:
         with self._run_cache_lock:
             cached = self._last_scheduled_run.get(task_id)
             if not cached:

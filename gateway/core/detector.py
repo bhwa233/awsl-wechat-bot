@@ -1,12 +1,13 @@
 """消息检测器"""
-import time
-import queue
 import logging
+import queue
+import time
+
 from common.config import config
+from common.models import GatewayMessage
 from gateway.adapters.base import BaseWeChatAdapter
 from gateway.core.models import SentMessageStore
 from gateway.storage.message_db import MessageDatabase
-from common.models import GatewayMessage
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class MessageDetector:
         while self._running:
             try:
                 if not self.window.Exists(0.5):
-                    logger.warning(f"[{self.group_name}] 窗口已关闭，停止监听")
+                    logger.warning(f"[{self.group_name}] 窗口已关闭,停止监听")
                     break
 
                 self._check_messages()
@@ -71,7 +72,7 @@ class MessageDetector:
         """标记现有消息为已处理"""
         try:
             messages = self.adapter.get_messages_from_window(self.window)
-            for i, msg in enumerate(messages):
+            for i, _msg in enumerate(messages):
                 msg_hash = self.db.hash_message_with_context(
                     messages, i, self.group_name)
                 self.db.mark_processed(msg_hash, self.group_name)
@@ -120,7 +121,7 @@ class MessageDetector:
             if not can_trigger:
                 if config.DEBUG:
                     logger.debug(
-                        f"[{self.group_name}] 非最新消息，跳过触发: {msg[:30]}...")
+                        f"[{self.group_name}] 非最新消息,跳过触发: {msg[:30]}...")
                 continue
 
             if self.sent_store and self.sent_store.is_self_sent(self.group_name, msg):

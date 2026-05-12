@@ -1,10 +1,11 @@
 """Gateway WS 客户端 - 纯 WS 连接层
 
-只负责：连接/重连/订阅/收发消息。
-业务逻辑通过 MessageListener 交给外部处理。
+只负责:连接/重连/订阅/收发消息.
+业务逻辑通过 MessageListener 交给外部处理.
 """
 
 import asyncio
+import contextlib
 import logging
 import threading
 from enum import Enum
@@ -14,9 +15,14 @@ import websockets
 from common.config import config
 from common.models import (
     OutgoingMessage,
+    WSAuth,
+    WSAuthOk,
+    WSError,
+    WSMessageBroadcast,
+    WSSendMessage,
+    WSSubscribe,
+    WSSubscribeOk,
     WSType,
-    WSAuth, WSAuthOk,
-    WSSubscribe, WSSubscribeOk, WSMessageBroadcast, WSSendMessage, WSError,
     parse_server_message,
 )
 from cortex.models import MessageListener
@@ -36,9 +42,9 @@ class ConnectionState(Enum):
 
 
 class GatewayClient:
-    """纯 WS 客户端 - 连接 Gateway，收发消息
+    """纯 WS 客户端 - 连接 Gateway,收发消息
 
-    生命周期：start() → 自动连接/重连 → stop()
+    生命周期:start() → 自动连接/重连 → stop()
     """
 
     def __init__(self, ws_url: str):
@@ -63,16 +69,14 @@ class GatewayClient:
         self._listeners.append(listener)
 
     def remove_listener(self, listener: MessageListener):
-        try:
+        with contextlib.suppress(ValueError):
             self._listeners.remove(listener)
-        except ValueError:
-            pass
 
     def send_message(self, outgoing: OutgoingMessage):
-        """通过 WS 发送消息到 Gateway（线程安全）"""
+        """通过 WS 发送消息到 Gateway(线程安全)"""
         ws, loop = self._ws, self._loop
         if not loop or not ws or self._state != ConnectionState.SUBSCRIBED:
-            logger.warning(f"GatewayClient 未连接，无法发送消息到 {outgoing.group_name}")
+            logger.warning(f"GatewayClient 未连接,无法发送消息到 {outgoing.group_name}")
             return
         msg = WSSendMessage(
             type=WSType.SEND_MESSAGE,
@@ -84,7 +88,7 @@ class GatewayClient:
         try:
             asyncio.run_coroutine_threadsafe(ws.send(msg.model_dump_json()), loop)
         except RuntimeError:
-            logger.warning(f"GatewayClient 事件循环已关闭，消息未发送到 {outgoing.group_name}")
+            logger.warning(f"GatewayClient 事件循环已关闭,消息未发送到 {outgoing.group_name}")
 
     def start(self):
         self._thread = threading.Thread(target=self._run, daemon=True, name="GatewayClient")
@@ -144,7 +148,7 @@ class GatewayClient:
                 try:
                     await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
                     break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
                 delay = min(delay * RECONNECT_BACKOFF_FACTOR, RECONNECT_MAX_DELAY)
 
@@ -163,7 +167,7 @@ class GatewayClient:
             if isinstance(msg, WSError):
                 logger.warning(f"认证失败: {msg.detail}")
             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("认证确认超时")
             return False
 
@@ -187,7 +191,7 @@ class GatewayClient:
                 case _:
                     logger.warning(f"订阅响应异常: {msg}")
             return False
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("订阅确认超时")
             return False
 

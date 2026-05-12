@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Daemon 服务独立启动入口"""
 
-import sys
 import logging
+import sys
 
 import uvicorn
 

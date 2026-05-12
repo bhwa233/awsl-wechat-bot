@@ -4,7 +4,7 @@ import logging
 import os
 
 from sqlalchemy import Index
-from sqlmodel import SQLModel, Field, Session, create_engine, select, func, col, delete
+from sqlmodel import Field, Session, SQLModel, col, create_engine, delete, func, select
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +23,9 @@ class MessageHash(SQLModel, table=True):
 
 
 class MessageDatabase:
-    """消息哈希存储，支持群级别去重"""
+    """消息哈希存储,支持群级别去重"""
 
-    def __init__(self, db_path: str = None, max_cache: int = 200):
+    def __init__(self, db_path: str | None = None, max_cache: int = 200):
         if db_path is None:
             db_path = os.path.join(os.path.dirname(__file__), '..', '..', 'messages.db')
         db_path = os.path.abspath(db_path)
@@ -46,7 +46,7 @@ class MessageDatabase:
         return hashlib.sha256(f"{group_name}:{context}".encode()).hexdigest()[:16]
 
     def is_processed(self, msg_hash: str, group_name: str) -> bool:
-        """检查消息是否已处理（群级别）"""
+        """检查消息是否已处理(群级别)"""
         with Session(self._engine) as session:
             result = session.exec(
                 select(MessageHash)
@@ -56,7 +56,7 @@ class MessageDatabase:
             return result is not None
 
     def mark_processed(self, msg_hash: str, group_name: str):
-        """标记消息为已处理（群级别）"""
+        """标记消息为已处理(群级别)"""
         with Session(self._engine) as session:
             existing = session.exec(
                 select(MessageHash)
@@ -68,7 +68,7 @@ class MessageDatabase:
                 session.commit()
 
     def cleanup_old_hashes(self, group_name: str | None = None):
-        """清理旧记录（按群）— 批量删除"""
+        """清理旧记录(按群)— 批量删除"""
         with Session(self._engine) as session:
             base = select(func.count()).select_from(MessageHash)
             if group_name:

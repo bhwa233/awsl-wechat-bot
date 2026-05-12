@@ -2,11 +2,10 @@
 
 import re
 from dataclasses import dataclass
-from enum import Enum
-from typing import Annotated, Literal, Union
+from enum import StrEnum
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Discriminator, Field, Tag, TypeAdapter, field_validator, model_validator
-
 
 # ── 消息类型常量 ──────────────────────────────────────────
 
@@ -25,13 +24,13 @@ class WSType:
     ERROR = "error"
 
 
-class MessageType(str, Enum):
+class MessageType(StrEnum):
     TEXT = "text"
     IMAGE = "image"
     FILE = "file"
 
 
-class TaskType(str, Enum):
+class TaskType(StrEnum):
     SEND = "send"
     SUMMARY = "summary"
 
@@ -104,19 +103,17 @@ class WSSendMessage(MessagePayload):
 
 # Discriminated union: 一步解析客户端消息
 WSClientMessage = Annotated[
-    Union[
-        Annotated[WSAuth, Tag(WSType.AUTH)],
-        Annotated[WSSubscribe, Tag(WSType.SUBSCRIBE)],
-        Annotated[WSUnsubscribe, Tag(WSType.UNSUBSCRIBE)],
-        Annotated[WSSendMessage, Tag(WSType.SEND_MESSAGE)],
-    ],
+    Annotated[WSAuth, Tag(WSType.AUTH)]
+    | Annotated[WSSubscribe, Tag(WSType.SUBSCRIBE)]
+    | Annotated[WSUnsubscribe, Tag(WSType.UNSUBSCRIBE)]
+    | Annotated[WSSendMessage, Tag(WSType.SEND_MESSAGE)],
     Discriminator(lambda v: v.get("type") if isinstance(v, dict) else getattr(v, "type", None)),
 ]
 _client_message_adapter = TypeAdapter(WSClientMessage)
 
 
 def parse_client_message(raw: str) -> WSAuth | WSSubscribe | WSUnsubscribe | WSSendMessage:
-    """解析客户端 WS 消息（JSON → Pydantic model，含验证）
+    """解析客户端 WS 消息(JSON → Pydantic model,含验证)
 
     Raises:
         ValueError: JSON 解析失败或 type 不合法
@@ -160,20 +157,18 @@ class WSError(BaseModel):
 
 # Discriminated union: 一步解析服务端消息
 WSServerMessage = Annotated[
-    Union[
-        Annotated[WSAuthOk, Tag(WSType.AUTH_OK)],
-        Annotated[WSSubscribeOk, Tag(WSType.SUBSCRIBE_OK)],
-        Annotated[WSMessageBroadcast, Tag(WSType.MESSAGE)],
-        Annotated[WSSendOk, Tag(WSType.SEND_OK)],
-        Annotated[WSError, Tag(WSType.ERROR)],
-    ],
+    Annotated[WSAuthOk, Tag(WSType.AUTH_OK)]
+    | Annotated[WSSubscribeOk, Tag(WSType.SUBSCRIBE_OK)]
+    | Annotated[WSMessageBroadcast, Tag(WSType.MESSAGE)]
+    | Annotated[WSSendOk, Tag(WSType.SEND_OK)]
+    | Annotated[WSError, Tag(WSType.ERROR)],
     Discriminator(lambda v: v.get("type") if isinstance(v, dict) else getattr(v, "type", None)),
 ]
 _server_message_adapter = TypeAdapter(WSServerMessage)
 
 
 def parse_server_message(raw: str) -> WSAuthOk | WSSubscribeOk | WSMessageBroadcast | WSSendOk | WSError:
-    """解析服务端 WS 消息（JSON → Pydantic model，含验证）
+    """解析服务端 WS 消息(JSON → Pydantic model,含验证)
 
     Raises:
         ValueError: JSON 解析失败或 type 不合法
@@ -203,7 +198,7 @@ class WSSubscription:
 
     @staticmethod
     def from_subscribe(msg: "WSSubscribe") -> "WSSubscription":
-        """从 WSSubscribe 构建订阅状态，regex 编译失败会抛 re.error"""
+        """从 WSSubscribe 构建订阅状态,regex 编译失败会抛 re.error"""
         return WSSubscription(
             subscribed=True,
             group_re=re.compile(msg.group_filter) if msg.group_filter else None,

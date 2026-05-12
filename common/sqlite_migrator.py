@@ -1,16 +1,15 @@
-"""SQLite 版本化迁移工具。"""
+"""SQLite 版本化迁移工具."""
 
 from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
 
-
 MigrationFn = Callable[[sqlite3.Connection], None]
 
 
 class SQLiteMigrator:
-    """轻量级 SQLite 迁移器。
+    """轻量级 SQLite 迁移器.
 
     - 使用 `schema_migrations` 记录已执行版本
     - 同一版本只执行一次

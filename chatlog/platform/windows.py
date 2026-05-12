@@ -1,4 +1,4 @@
-"""Windows Chatlog 平台实现。"""
+"""Windows Chatlog 平台实现."""
 
 from __future__ import annotations
 

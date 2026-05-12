@@ -1,13 +1,16 @@
-import time
-import subprocess
-import os
+import contextlib
 import logging
-import threading
+import os
+import subprocess
 import tempfile
+import threading
+import time
+
 import Quartz
-from gateway.adapters.base import BaseWeChatAdapter
+
 from common.config import config
-from gateway.utils.ocr import screenshot_and_ocr, get_others_messages
+from gateway.adapters.base import BaseWeChatAdapter
+from gateway.utils.ocr import get_others_messages, screenshot_and_ocr
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +18,7 @@ MAIN_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
 
 
 class MacOSWindow:
-    """macOS 窗口对象，存储窗口标题、AppleScript 索引和 Quartz 窗口 ID"""
+    """macOS 窗口对象,存储窗口标题、AppleScript 索引和 Quartz 窗口 ID"""
 
     def __init__(self, title: str, index: int, window_id: int = 0):
         self.title = title
@@ -30,8 +33,8 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
     def __init__(self):
         self.process_name = self._detect_wechat_process()
         if not self.process_name:
-            raise RuntimeError("微信未运行，请先启动微信")
-        self._send_lock = threading.Lock()  # 仅发送需要锁（激活窗口）
+            raise RuntimeError("微信未运行,请先启动微信")
+        self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口)
         logger.info(f"检测到微信进程: {self.process_name}")
 
     def _detect_wechat_process(self) -> str | None:
@@ -74,14 +77,10 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         if not temp_path:
             return
         temp_dir = os.path.dirname(temp_path)
-        try:
+        with contextlib.suppress(Exception):
             os.unlink(temp_path)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             os.rmdir(temp_dir)
-        except Exception:
-            pass
 
     def _activate_window_by_index(self, index: int) -> bool:
         """激活指定索引的微信窗口"""
@@ -120,7 +119,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
             Quartz.kCGNullWindowID,
         )
-        # pgrep 和 Quartz 可能返回不同的进程名（"WeChat" vs "微信"）
+        # pgrep 和 Quartz 可能返回不同的进程名("WeChat" vs "微信")
         wechat_names = {"WeChat", "微信", "Weixin"}
         result = {}
         for win in window_list:
@@ -134,7 +133,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         return result
 
     def find_all_wechat_windows(self) -> list[dict]:
-        """枚举所有微信聊天窗口（排除主窗口）"""
+        """枚举所有微信聊天窗口(排除主窗口)"""
         # 从 Quartz 获取窗口 ID 映射
         quartz_map = self._get_quartz_windows()
 
@@ -169,7 +168,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                 continue
             window_id = quartz_map.get(title, 0)
             if not window_id:
-                logger.debug(f"窗口 {title} 未找到 Quartz 窗口 ID，跳过")
+                logger.debug(f"窗口 {title} 未找到 Quartz 窗口 ID,跳过")
                 continue
             windows.append({"title": title, "window": MacOSWindow(title, idx, window_id)})
             logger.debug(f"发现窗口: {title} (index={idx}, wid={window_id})")
@@ -178,7 +177,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         return windows
 
     def get_messages_from_window(self, window: MacOSWindow) -> list[str]:
-        """从指定窗口获取消息（Quartz 截图 + OCR，无需激活窗口）"""
+        """从指定窗口获取消息(Quartz 截图 + OCR,无需激活窗口)"""
         ocr_results = screenshot_and_ocr(window.window_id)
         return get_others_messages(ocr_results)
 
@@ -191,7 +190,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         if not self._activate_window_by_index(window.index):
             return False
         time.sleep(0.2)
-        # 使用 osascript 参数传递文本，避免 AppleScript 字符串注入
+        # 使用 osascript 参数传递文本,避免 AppleScript 字符串注入
         script = '''
         on run argv
             set the clipboard to (item 1 of argv)
@@ -217,7 +216,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         return True
 
     def send_image_to_window(self, window: MacOSWindow, image_base64: str) -> bool:
-        """向指定窗口发送图片（base64 编码）"""
+        """向指定窗口发送图片(base64 编码)"""
         import base64
 
         with self._send_lock:
@@ -235,7 +234,12 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                 end try
                 '''
                 try:
-                    result = subprocess.run(['osascript', '-e', script], capture_output=True, text=True, timeout=config.APPLESCRIPT_TIMEOUT_SHORT)
+                    result = subprocess.run(
+                        ['osascript', '-e', script],
+                        capture_output=True,
+                        text=True,
+                        timeout=config.APPLESCRIPT_TIMEOUT_SHORT,
+                    )
                 except subprocess.TimeoutExpired:
                     logger.error("复制图片到剪贴板超时")
                     return False
@@ -256,7 +260,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                 self._cleanup_temp_file(tmp_path)
 
     def send_file_to_window(self, window: MacOSWindow, file_base64: str, filename: str) -> bool:
-        """向指定窗口发送文件（base64 编码）"""
+        """向指定窗口发送文件(base64 编码)"""
         import base64
 
         with self._send_lock:

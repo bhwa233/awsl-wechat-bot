@@ -1,25 +1,23 @@
 #!/usr/bin/env python3
-"""UIA 消息发送者检查 v7 — PrintWindow 截图 + 像素分析。"""
+"""UIA 消息发送者检查 v7 — PrintWindow 截图 + 像素分析."""
 
 import argparse
+import contextlib
 import ctypes
 import ctypes.wintypes
-import struct
 import sys
-import time
 import threading
+import time
 
 sys.stdout.reconfigure(encoding="utf-8")
 
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(2)
 except Exception:
-    try:
+    with contextlib.suppress(Exception):
         ctypes.windll.user32.SetProcessDPIAware()
-    except Exception:
-        pass
 
-import uiautomation as auto
+import uiautomation as auto  # noqa: E402
 
 
 def ensure_uia():
@@ -52,7 +50,7 @@ def find_chat_window(group_name: str = ""):
 
 
 def capture_window_to_bmp(hwnd):
-    """用 PrintWindow 截取窗口内容, 返回 (width, height, pixel_data)。
+    """用 PrintWindow 截取窗口内容, 返回 (width, height, pixel_data).
     pixel_data[y][x] = (r, g, b)
     """
     user32 = ctypes.windll.user32
@@ -67,7 +65,11 @@ def capture_window_to_bmp(hwnd):
         (gdi32.SelectObject, [ctypes.c_void_p, ctypes.c_void_p], ctypes.c_void_p),
         (gdi32.DeleteObject, [ctypes.c_void_p], ctypes.c_int),
         (gdi32.DeleteDC, [ctypes.c_void_p], ctypes.c_int),
-        (gdi32.GetDIBits, [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint], ctypes.c_int),
+        (
+            gdi32.GetDIBits,
+            [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint],
+            ctypes.c_int,
+        ),
         (user32.PrintWindow, [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint], ctypes.c_int),
     ]:
         fn.argtypes = args
@@ -210,11 +212,11 @@ def main():
             print(f"    x={x:4d} [{side}] {px}")
 
         if len(right_nb) > len(left_nb) and len(right_nb) > 2:
-            print(f"  >>> RIGHT → 自己发的")
+            print("  >>> RIGHT → 自己发的")
         elif len(left_nb) > len(right_nb) and len(left_nb) > 2:
-            print(f"  >>> LEFT  → 他人发的")
+            print("  >>> LEFT  → 他人发的")
         else:
-            print(f"  >>> UNCLEAR")
+            print("  >>> UNCLEAR")
         print()
 
 

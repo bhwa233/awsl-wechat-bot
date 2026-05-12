@@ -2,8 +2,8 @@
 """
 Windows-only WeChat Database Key Dumper
 
-根据 wx_key.dll 提取微信数据库密钥。
-仅支持 Windows, 需要以管理员身份运行。
+根据 wx_key.dll 提取微信数据库密钥.
+仅支持 Windows, 需要以管理员身份运行.
 
 依赖:
     uv run --with psutil tools/extract_wx_keys_windows.py

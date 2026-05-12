@@ -1,8 +1,8 @@
 """微信数据库读取器 v2 - 通过 awsl-wechat-chatlog 原生库在线查询 SQLCipher v4
 
-与 v1 的差别：
-- 不离线解密落盘，原生库直接打开密文 db
-- 输入路径是 WECHAT_DB_INPUT_PATH，可为微信用户目录或 db_storage 目录
+与 v1 的差别:
+- 不离线解密落盘,原生库直接打开密文 db
+- 输入路径是 WECHAT_DB_INPUT_PATH,可为微信用户目录或 db_storage 目录
 - 复用 v1 的 ChatRoom/Message dataclass、_parse_room_data、zstd 解压逻辑
 """
 
@@ -15,13 +15,13 @@ import os
 import re
 import sys
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from chatlog.platform import get_chatlog_platform
 from chatlog.wechat_db import (
-    ChatRoom,
     HAS_ZSTD,
     MESSAGE_TYPE_TEXT,
+    ChatRoom,
     Message,
     _parse_room_data,
 )
@@ -47,8 +47,8 @@ def _talker_to_table_name(talker: str) -> str:
 
 
 def _decode_blob(value: Any) -> bytes | Any:
-    """Go encoding/json 把 []byte 编码为 base64 字符串，对已知 BLOB 列调用此函数还原。
-    只有解出来不是合法 UTF-8 文本时才认为是真正的 BLOB，避免误把纯文本 base64 化。"""
+    """Go encoding/json 把 []byte 编码为 base64 字符串,对已知 BLOB 列调用此函数还原.
+    只有解出来不是合法 UTF-8 文本时才认为是真正的 BLOB,避免误把纯文本 base64 化."""
     if isinstance(value, bytes):
         return value
     if not isinstance(value, str):
@@ -78,7 +78,7 @@ def _decompress_content(content: bytes | str | None) -> str:
 
 
 class WeChatDBReaderV2:
-    """v2 reader：直接读加密目录，原生库跑 raw SQL"""
+    """v2 reader:直接读加密目录,原生库跑 raw SQL"""
 
     def __init__(self, encrypted_dir: str, hex_key: str):
         self.platform = get_chatlog_platform()
@@ -223,8 +223,8 @@ class WeChatDBReaderV2:
     def get_messages(
         self,
         talker: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         text_only: bool = True,
         limit: int = 0,
         offset: int = 0,

@@ -6,12 +6,13 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 
 from common.auth import verify_token
 from common.config import config
 from common.logging import setup_uvicorn_logging
+
 from .manager import BotProcessManager
 
 logger = logging.getLogger("daemon")
@@ -24,9 +25,9 @@ _lifecycle_lock = threading.Lock()
 
 
 def _with_lifecycle_lock(op: str):
-    """获取 lifecycle 锁，冲突返回 409。返回 context manager。"""
+    """获取 lifecycle 锁,冲突返回 409.返回 context manager."""
     if not _lifecycle_lock.acquire(blocking=False):
-        raise HTTPException(status_code=409, detail=f"另一个生命周期操作正在执行，{op} 被拒绝")
+        raise HTTPException(status_code=409, detail=f"另一个生命周期操作正在执行,{op} 被拒绝")
 
 
 @asynccontextmanager
@@ -106,16 +107,16 @@ def update():
                 "returncode": git_result.returncode,
             }
             if git_result.returncode != 0:
-                results["message"] = f"git pull 失败 (returncode={git_result.returncode})，bot 未重启"
+                results["message"] = f"git pull 失败 (returncode={git_result.returncode}),bot 未重启"
                 logger.error(f"git pull 失败: {git_result.stderr}")
                 raise HTTPException(status_code=500, detail=results)
         except HTTPException:
             raise
         except Exception as e:
             results["git_pull"] = {"error": str(e)}
-            results["message"] = f"git pull 异常: {e}，bot 未重启"
+            results["message"] = f"git pull 异常: {e},bot 未重启"
             logger.error(f"git pull 异常: {e}")
-            raise HTTPException(status_code=500, detail=results)
+            raise HTTPException(status_code=500, detail=results) from e
 
         try:
             uv_result = subprocess.run(
@@ -131,16 +132,16 @@ def update():
                 "returncode": uv_result.returncode,
             }
             if uv_result.returncode != 0:
-                results["message"] = f"uv sync 失败 (returncode={uv_result.returncode})，bot 未重启"
+                results["message"] = f"uv sync 失败 (returncode={uv_result.returncode}),bot 未重启"
                 logger.error(f"uv sync 失败: {uv_result.stderr}")
                 raise HTTPException(status_code=500, detail=results)
         except HTTPException:
             raise
         except Exception as e:
             results["uv_sync"] = {"error": str(e)}
-            results["message"] = f"uv sync 异常: {e}，bot 未重启"
+            results["message"] = f"uv sync 异常: {e},bot 未重启"
             logger.error(f"uv sync 异常: {e}")
-            raise HTTPException(status_code=500, detail=results)
+            raise HTTPException(status_code=500, detail=results) from e
 
         daemon_updated = False
         try:
@@ -163,12 +164,12 @@ def update():
         results["bot_start"] = start_result
 
         if daemon_updated:
-            results["message"] = "更新完成，bot 已重新启动；daemon 已更新，请手动重启 daemon 以加载新代码"
-            logger.info("daemon 自身已更新，bot 已重新启动，等待手动重启 daemon")
+            results["message"] = "更新完成,bot 已重新启动;daemon 已更新,请手动重启 daemon 以加载新代码"
+            logger.info("daemon 自身已更新,bot 已重新启动,等待手动重启 daemon")
             return results
 
-        results["message"] = "更新完成，bot 已重新启动"
-        logger.info("更新完成，bot 已重新启动")
+        results["message"] = "更新完成,bot 已重新启动"
+        logger.info("更新完成,bot 已重新启动")
         return results
     finally:
         _lifecycle_lock.release()

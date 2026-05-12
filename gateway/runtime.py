@@ -1,4 +1,4 @@
-"""Gateway 运行时 - 自动发现窗口，管理 Detector/Sender/WS 网关"""
+"""Gateway 运行时 - 自动发现窗口,管理 Detector/Sender/WS 网关"""
 import logging
 import threading
 import time
@@ -6,11 +6,11 @@ from typing import Any
 
 from gateway.adapters import get_wechat_adapter
 from gateway.adapters.base import BaseWeChatAdapter
-from gateway.storage.message_db import MessageDatabase
-from gateway.core.sender import MessageSender
 from gateway.core.detector import MessageDetector
 from gateway.core.gateway import Gateway
 from gateway.core.models import SentMessageStore
+from gateway.core.sender import MessageSender
+from gateway.storage.message_db import MessageDatabase
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""Chatlog 原生库 ctypes helper。"""
+"""Chatlog 原生库 ctypes helper."""
 
 from __future__ import annotations
 

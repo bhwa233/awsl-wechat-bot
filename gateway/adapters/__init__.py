@@ -1,5 +1,5 @@
-import sys
 import logging
+import sys
 
 from gateway.adapters.base import BaseWeChatAdapter
 
@@ -16,7 +16,7 @@ def get_wechat_adapter() -> BaseWeChatAdapter:
             from gateway.adapters.windows import WindowsWeChatAdapter
             return WindowsWeChatAdapter()
         except ImportError:
-            logger.error("未找到 Windows 适配器依赖，请确保已安装 uiautomation 库")
+            logger.error("未找到 Windows 适配器依赖,请确保已安装 uiautomation 库")
             raise
     else:
         raise NotImplementedError(f"目前不支持该操作系统: {sys.platform}")

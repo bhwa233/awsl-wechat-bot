@@ -1,6 +1,6 @@
 """Cortex 健康检查和首页"""
 import os
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, Response
@@ -15,7 +15,7 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'templa
 def _serve_file(filename: str, media_type: str):
     path = os.path.join(TEMPLATES_DIR, filename)
     try:
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, encoding='utf-8') as f:
             return Response(content=f.read(), media_type=media_type)
     except FileNotFoundError:
         return Response(status_code=404)
@@ -25,7 +25,7 @@ def create_routes():
     @router.get("/", response_class=HTMLResponse)
     async def root():
         try:
-            with open(os.path.join(TEMPLATES_DIR, 'index.html'), 'r', encoding='utf-8') as f:
+            with open(os.path.join(TEMPLATES_DIR, 'index.html'), encoding='utf-8') as f:
                 return f.read()
         except FileNotFoundError:
             return "<h1>模板文件未找到</h1>"
@@ -47,7 +47,17 @@ def create_routes():
             "display": "standalone",
             "background_color": "#f4f4f2",
             "theme_color": "#22c55e",
-            "icons": [{"src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>", "sizes": "any", "type": "image/svg+xml"}],
+            "icons": [
+                {
+                    "src": (
+                        "data:image/svg+xml,"
+                        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>"
+                        "<text y='.9em' font-size='90'>🤖</text></svg>"
+                    ),
+                    "sizes": "any",
+                    "type": "image/svg+xml",
+                }
+            ],
         }
 
     @router.get("/chat.js")
