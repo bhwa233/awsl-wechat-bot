@@ -6,12 +6,12 @@
 
 ## 功能特性
 
-- **跨平台支持**：macOS (Quartz 截图 + Vision OCR) / Windows (UI Automation)
+- **跨平台支持**：macOS (Quartz 截图 + Vision OCR) / Windows (UI Automation) / Linux (Chatlog 读取 + X11 发送)
 - **自动窗口发现**：自动扫描微信群聊窗口，动态增删检测线程
 - **WebSocket 消息网关**：统一消息广播，支持正则过滤订阅
 - **多群并发处理**：每群独立检测线程，全局限速发送
 - **内置 Web UI**：访问 Cortex `:7999/` 即可使用聊天、定时任务、Webhook 管理（图片/文件支持点击/拖拽/Ctrl+V 粘贴）
-- **Chatlog 双后端**：v1（pycryptodome 离线解密）/ v2（DLL 在线读 SQLCipher v4，仅 Windows），默认走 v2
+- **Chatlog 双后端**：v1（pycryptodome 离线解密）/ v2（原生库在线读 SQLCipher v4，Windows/Linux），默认走 v2
 - **定时任务 / 群聊总结 / @触发 / 动态命令 / Webhook 转发**
 
 <details>
@@ -51,8 +51,8 @@ flowchart TB
         Manager[BotProcessManager<br/>启停 / 更新 / 日志]
     end
 
-    WeChat[微信窗口] -.OCR / UIA.-> Detectors
-    Sender -.剪贴板 / AppleScript / UIA.-> WeChat
+    WeChat[微信窗口] -.OCR / UIA / Chatlog.-> Detectors
+    Sender -.剪贴板 / AppleScript / UIA / X11.-> WeChat
 
     WSHub <==WebSocket==> GWClient
     Summary -.HTTP.-> ChatlogAPI
@@ -85,6 +85,7 @@ flowchart TB
 - Python 3.11+
 - **macOS**: macOS 10.15+，微信客户端，辅助功能权限 + 屏幕录制权限
 - **Windows**: Windows 10/11，微信客户端，建议管理员身份运行
+- **Linux**: Linux WeChat + X11 会话，需安装 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐安装 `xsel`
 
 ## 安装
 
@@ -97,6 +98,40 @@ uv sync --all-extras       # 全部依赖（含解密/总结可选组）
 
 cp .env.example .env  # 编辑配置
 ```
+
+### Linux setup
+
+Linux Gateway 通过 Chatlog 读取消息、通过 X11 发送消息，不使用截图/OCR。需要先启动 Linux WeChat，并保持要监听的群聊窗口打开。
+
+```bash
+# Ubuntu/Debian 示例：只安装系统工具，Python 依赖仍由 uv 管理
+sudo apt-get install -y wmctrl xdotool xclip x11-utils xsel
+```
+
+`.env` 至少需要配置：
+
+```env
+CHATLOG_USE_V2=true
+WECHAT_DB_INPUT_PATH=/path/to/xwechat_files/xxx/db_storage
+WECHAT_DB_KEY={"contact/contact.db":"64hex","message/message_0.db":"64hex"}
+
+LINUX_WECHAT_DISPLAY=:10
+LINUX_WECHAT_XAUTHORITY=~/.Xauthority
+```
+
+`WECHAT_DB_KEY` 在 Linux 下是 per-db key JSON，key 使用相对 `db_storage` 的数据库路径；`LINUX_CHATLOG_MESSAGE_LIMIT` 和 `LINUX_CHATLOG_GROUP_CACHE_TTL` 可不填，使用默认值即可。
+
+Linux 密钥从正在运行的 Linux WeChat 进程内存提取：
+
+```bash
+# 自动检测微信进程和 db_storage，输出可直接填到 WECHAT_DB_KEY
+sudo uv run tools/extract_wx_keys_linux.py --json
+
+# 自动检测失败时显式指定 db_storage
+sudo uv run tools/extract_wx_keys_linux.py --db-dir /path/to/xwechat_files/xxx/db_storage --json
+```
+
+默认输出是 `{"contact/contact.db":"64hex","message/message_0.db":"64hex"}` 这种 flat JSON；如果写入 `.env`，整段 JSON 放到 `WECHAT_DB_KEY=` 后面即可。
 
 ## 配置
 
@@ -120,8 +155,14 @@ HTTP_API_TOKEN=your-secret-token  # 留空不启用认证
 CORTEX_HTTP_PORT=7999
 CHATLOG_HTTP_PORT=7998
 
-# Chatlog 默认后端（true→v2 DLL Windows-only，false→v1 pycryptodome）
+# Chatlog 默认后端（true→v2 原生库，false→v1 pycryptodome）
 CHATLOG_USE_V2=true
+
+# Linux Gateway 通过 X11 发送、通过 Chatlog 读取消息
+LINUX_WECHAT_DISPLAY=:10
+LINUX_WECHAT_XAUTHORITY=~/.Xauthority
+LINUX_CHATLOG_MESSAGE_LIMIT=20
+LINUX_CHATLOG_GROUP_CACHE_TTL=30
 ```
 
 ## 运行
@@ -168,7 +209,7 @@ GET  /api/chatlog/v1/groups
 GET  /api/chatlog/v1/messages
 GET  /api/chatlog/v1/group-display-name
 
-# v2 (DLL 在线读 SQLCipher v4，Windows-only)
+# v2 (原生库在线读 SQLCipher v4，Windows/Linux)
 GET  /api/chatlog/v2/health
 GET  /api/chatlog/v2/groups
 GET  /api/chatlog/v2/messages

@@ -80,9 +80,10 @@ per group                              │ 广播
 - `core/detector.py` - MessageDetector：per-group 消息检测线程，SHA256 上下文哈希去重
 - `core/models.py` - SendTask + SentMessageStore（自消息检测：精确/前缀/包含/相似度 4 层匹配）
 - `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
-- `adapters/base.py` - BaseWeChatAdapter 抽象基类 (4 个方法)
+- `adapters/base.py` - BaseWeChatAdapter 抽象基类 (窗口读取/发送 + 平台消息检测策略)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
 - `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，发送 _send_lock 串行
+- `adapters/linux.py` - Linux: 通过 Chatlog HTTP 读取文本消息，通过 X11 工具发送文本/图片/文件
 - `utils/ocr.py` - macOS Vision OCR 封装
 - `utils/screenshot.py` - 截图工具
 - `utils/accessibility.py` - macOS 辅助功能权限检查
@@ -135,6 +136,7 @@ per group                              │ 广播
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`
+- **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog HTTP 查询最近文本消息；发送依赖 X11 工具 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
 - **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
@@ -153,7 +155,7 @@ Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws
 
 Chatlog (:7998):
 - v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`
-- v2 (DLL 在线读取，Windows-only): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`（v2 也有 `/decrypt` 但是 no-op，DLL 直接读密文）
+- v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`（v2 也有 `/decrypt` 但是 no-op，原生库直接读密文）
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
 
 Cortex (:7999):
@@ -197,9 +199,10 @@ Server → Client:
 - **No test suite**: 项目当前没有配置 pytest / ruff / mypy 等工具，无自动化测试
 - **Python 3.11+**: `requires-python = ">=3.11"`
 - **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖，可选依赖组：`decrypt`、`summary`
-- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `DEBUG`）
+- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `LINUX_WECHAT_*`, `LINUX_CHATLOG_*`, `DEBUG`）
 
 ## Platform Notes
 
 - **macOS**: 需要辅助功能权限（发送）+ 屏幕录制权限（截图）
 - **Windows**: 建议管理员权限运行，UIA 使用 UIAutomationInitializerInThread per-thread 初始化
+- **Linux**: 需要 Linux WeChat、可访问的 X11 会话、Chatlog 服务和 `wmctrl`/`xdotool`/`xclip`/`xwininfo`；文本发送优先使用 `xsel`
