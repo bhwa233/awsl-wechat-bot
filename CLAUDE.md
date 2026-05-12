@@ -25,7 +25,8 @@ uv run run_daemon.py       # Daemon (:8001)
 
 # Tools
 uv run tools/inspect_wechat.py   # 微信窗口检查
-uv run tools/wechat_decrypt.py   # 微信数据库解密
+uv run tools/extract_wx_keys_windows.py  # Windows 提取微信数据库密钥
+sudo uv run tools/extract_wx_keys_linux.py  # Linux 提取微信数据库密钥
 
 # 依赖管理
 uv add <package>           # 添加依赖
@@ -93,14 +94,15 @@ per group                              │ 广播
 - `asgi.py` - FastAPI app 工厂
 - `main.py` - 独立入口（`uv run -m chatlog.main`）
 - `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health，挂载在 `/api/chatlog/v1`）
-- `routes_v2.py` - v2 HTTP 路由（同 v1 接口集合，挂载在 `/api/chatlog/v2`，仅 Windows）
+- `routes_v2.py` - v2 HTTP 路由（同 v1 接口集合，挂载在 `/api/chatlog/v2`，Windows/Linux）
 - `service.py` - v1 ChatlogService（pycryptodome 离线解密）
-- `service_v2.py` - v2 ChatlogServiceV2（DLL 在线读取）
+- `service_v2.py` - v2 ChatlogServiceV2（原生库在线读取）
 - `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatlogMessageResponse）
 - `wechat_db.py` - v1 实现（WeChatDBDecryptor + WeChatDBReader），含 ChatRoom/Message dataclass 和 protobuf 解析
-- `wechat_db_v2.py` - v2 实现（WeChatDBReaderV2），通过 DLL 跑 raw SQL，复用 v1 的 dataclass 和 protobuf 解析
-- `dll_loader.py` - awsl-wechat-chatlog DLL 的 ctypes 封装（query_raw_sql），单例懒加载，非 Windows fail-fast
+- `wechat_db_v2.py` - v2 实现（WeChatDBReaderV2），通过原生库跑 raw SQL，复用 v1 的 dataclass 和 protobuf 解析
+- `platform/` - Chatlog 平台特性封装（Windows/Linux 原生库加载、数据库路径解析、配置检查、Linux per-db key 解析）
 - `vendor/awsl_wechat_chatlog.dll` - awsl-wechat-chatlog 编译产物（11MB，Windows x86-64）
+- `vendor/libawsl_wechat_chatlog.so` - awsl-wechat-chatlog 编译产物（Linux x86-64）
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）

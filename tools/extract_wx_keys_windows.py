@@ -1,35 +1,58 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
-WeChat Database Key Dumper
+Windows-only WeChat Database Key Dumper
 
 根据 wx_key.dll 提取微信数据库密钥。
-需要以管理员身份运行。
+仅支持 Windows, 需要以管理员身份运行。
 
 依赖:
-    uv add psutil
+    uv run --with psutil tools/extract_wx_keys_windows.py
+    或在独立工具环境安装 psutil
 
 使用方法:
-    python wechat_decrypt.py
+    uv run tools/extract_wx_keys_windows.py
+
+wx_key.dll 不随项目依赖安装, 请放在:
+    tools/assets/dll/wx_key.dll
+    或 tools/wx_key.dll
 """
 
 import ctypes
 import os
 import sys
 import time
-from ctypes import c_bool, c_char_p, c_int, c_uint32, create_string_buffer, POINTER
+from ctypes import POINTER, c_bool, c_char_p, c_int, c_uint32, create_string_buffer
 from pathlib import Path
-from typing import Optional, Tuple, List
 
-try:
-    import psutil
-except ImportError:
-    print("请安装 psutil: uv add psutil")
+psutil = None
+
+
+def require_windows() -> None:
+    if sys.platform == "win32":
+        return
+
+    print(f"[ERROR] extract_wx_keys_windows.py 仅支持 Windows, 当前平台: {sys.platform}")
     sys.exit(1)
 
 
+def require_psutil():
+    global psutil
+
+    if psutil is not None:
+        return psutil
+
+    try:
+        import psutil as psutil_module
+    except ImportError:
+        print("请在工具运行环境安装 psutil, 例如: uv run --with psutil tools/extract_wx_keys_windows.py")
+        sys.exit(1)
+
+    psutil = psutil_module
+    return psutil_module
+
+
 class WeChatKeyDumper:
-    """微信密钥提取器，封装 wx_key.dll 的调用"""
+    """微信密钥提取器, 封装 wx_key.dll 的调用"""
 
     def __init__(self, dll_path: str):
         if not os.path.exists(dll_path):
@@ -62,13 +85,13 @@ class WeChatKeyDumper:
             self._initialized = True
         return result
 
-    def poll_key(self) -> Optional[str]:
+    def poll_key(self) -> str | None:
         key_buffer = create_string_buffer(128)
         if self.dll.PollKeyData(key_buffer, 128):
             return key_buffer.value.decode('utf-8')
         return None
 
-    def get_status_messages(self) -> List[Tuple[int, str]]:
+    def get_status_messages(self) -> list[tuple[int, str]]:
         messages = []
         msg_buffer = create_string_buffer(512)
         level = c_int()
@@ -93,39 +116,41 @@ class WeChatKeyDumper:
         self.cleanup()
 
 
-def find_wechat_process() -> Optional[int]:
-    """查找微信主进程 PID（选择内存占用最大的）"""
+def find_wechat_process() -> int | None:
+    """查找微信主进程 PID(选择内存占用最大的)"""
+    psutil_module = require_psutil()
     candidates = []
-    for proc in psutil.process_iter(['pid', 'name', 'memory_info']):
+    for proc in psutil_module.process_iter(['pid', 'name', 'memory_info']):
         try:
             if proc.info['name'] and proc.info['name'].lower() in ('wechat.exe', 'weixin.exe'):
                 mem = proc.info['memory_info'].rss if proc.info['memory_info'] else 0
                 candidates.append((proc.info['pid'], mem))
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
             continue
 
     if not candidates:
         return None
 
-    # 选择内存占用最大的进程（通常是主进程）
+    # 选择内存占用最大的进程(通常是主进程)
     candidates.sort(key=lambda x: x[1], reverse=True)
     return candidates[0][0]
 
 
 def kill_wechat() -> bool:
     """关闭所有微信进程"""
+    psutil_module = require_psutil()
     killed = False
-    for proc in psutil.process_iter(['pid', 'name']):
+    for proc in psutil_module.process_iter(['pid', 'name']):
         try:
             if proc.info['name'] and proc.info['name'].lower() in ('wechat.exe', 'weixin.exe'):
                 proc.kill()
                 killed = True
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
             continue
     return killed
 
 
-def find_wechat_exe() -> Optional[str]:
+def find_wechat_exe() -> str | None:
     """查找微信安装路径"""
     import winreg
 
@@ -145,7 +170,7 @@ def find_wechat_exe() -> Optional[str]:
                 exe_path = Path(install_path) / "Weixin.exe"
                 if exe_path.exists():
                     return str(exe_path)
-        except:
+        except OSError:
             pass
 
     # 尝试常见路径
@@ -167,42 +192,42 @@ def find_wechat_exe() -> Optional[str]:
 def launch_wechat(exe_path: str) -> bool:
     """启动微信"""
     import subprocess
+
     try:
         subprocess.Popen([exe_path], creationflags=subprocess.DETACHED_PROCESS)
         return True
-    except:
+    except OSError:
         return False
 
 
-def wait_for_wechat_ready(timeout: int = 30) -> Optional[int]:
+def wait_for_wechat_ready(timeout: int = 30) -> int | None:
     """等待微信进程启动并加载 Weixin.dll"""
+    psutil_module = require_psutil()
     start = time.time()
     while time.time() - start < timeout:
         pid = find_wechat_process()
         if pid:
             try:
-                proc = psutil.Process(pid)
+                proc = psutil_module.Process(pid)
                 for mmap in proc.memory_maps():
                     if 'weixin.dll' in mmap.path.lower():
                         return pid
-            except:
-                pass
+            except (psutil_module.NoSuchProcess, psutil_module.AccessDenied, OSError):
+                continue
         time.sleep(0.5)
-    return find_wechat_process()  # 超时后返回当前 PID（如果有）
+    return find_wechat_process()  # 超时后返回当前 PID(如果有)
 
 
 def main():
-    print("WeChat Key Dumper")
-    print("=" * 40)
+    require_windows()
 
-    if sys.platform != 'win32':
-        print("[ERROR] 仅支持 Windows")
-        sys.exit(1)
+    print("Windows WeChat Key Dumper")
+    print("=" * 40)
 
     # 检查管理员权限
     try:
         is_admin = ctypes.windll.shell32.IsUserAnAdmin()
-    except:
+    except (AttributeError, OSError):
         is_admin = False
 
     if not is_admin:
@@ -214,7 +239,7 @@ def main():
     if not dll_path.exists():
         dll_path = script_dir / "wx_key.dll"
     if not dll_path.exists():
-        print(f"[ERROR] 找不到 wx_key.dll")
+        print("[ERROR] 找不到 wx_key.dll, 请放在 tools/assets/dll/wx_key.dll 或 tools/wx_key.dll")
         sys.exit(1)
 
     # 查找微信安装路径
@@ -260,7 +285,7 @@ def main():
                 sys.exit(1)
 
             print("\n[SUCCESS] Hook 安装成功!")
-            print("[INFO] 请在微信中登录，密钥将自动捕获...")
+            print("[INFO] 请在微信中登录, 密钥将自动捕获...")
             print("-" * 40)
 
             for _ in range(1200):  # 最多等待 120 秒
@@ -277,7 +302,7 @@ def main():
 
                 time.sleep(0.1)
 
-            print("[ERROR] 超时，未能获取密钥")
+            print("[ERROR] 超时, 未能获取密钥")
 
     except KeyboardInterrupt:
         print("\n[INFO] 已取消")

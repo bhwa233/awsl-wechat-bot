@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+!chatlog/vendor/libawsl_wechat_chatlog.so
 .Python
 venv/
 .venv/

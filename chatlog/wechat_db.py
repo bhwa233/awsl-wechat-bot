@@ -27,6 +27,8 @@ from datetime import datetime
 from hashlib import pbkdf2_hmac, sha512
 from typing import Optional
 
+from chatlog.platform import get_chatlog_platform
+
 try:
     from Crypto.Cipher import AES
     HAS_CRYPTO = True
@@ -131,24 +133,31 @@ class Message:
 class WeChatDBDecryptor:
     """微信数据库解密器 (V4 版本)"""
 
-    def __init__(self, key_hex: str):
+    def __init__(self, key_hex: str, *, direct_key: bool = False):
         if not HAS_CRYPTO:
             raise ImportError("需要 pycryptodome: uv add pycryptodome")
-        self.key = bytes.fromhex(key_hex)
-        if len(self.key) != KEY_SIZE:
-            raise ValueError(f"密钥长度必须是 {KEY_SIZE} 字节 ({KEY_SIZE * 2} 个十六进制字符)")
+        self.key_hex = key_hex
+        self.direct_key = direct_key
 
-    def _derive_keys(self, salt: bytes) -> tuple[bytes, bytes]:
-        enc_key = pbkdf2_hmac('sha512', self.key, salt, ITER_COUNT, KEY_SIZE)
+    @staticmethod
+    def _parse_key(key_hex: str) -> bytes:
+        key = bytes.fromhex(key_hex)
+        if len(key) != KEY_SIZE:
+            raise ValueError(f"密钥长度必须是 {KEY_SIZE} 字节 ({KEY_SIZE * 2} 个十六进制字符)")
+        return key
+
+    @classmethod
+    def _derive_keys(cls, key: bytes, salt: bytes, direct_key: bool) -> tuple[bytes, bytes]:
+        enc_key = key if direct_key else pbkdf2_hmac('sha512', key, salt, ITER_COUNT, KEY_SIZE)
         mac_salt = bytes(b ^ 0x3a for b in salt)
         mac_key = pbkdf2_hmac('sha512', enc_key, mac_salt, 2, KEY_SIZE)
         return enc_key, mac_key
 
-    def _validate_key(self, first_page: bytes) -> bool:
+    def _validate_key(self, first_page: bytes, key: bytes, direct_key: bool) -> bool:
         if len(first_page) < PAGE_SIZE:
             return False
         salt = first_page[:SALT_SIZE]
-        _, mac_key = self._derive_keys(salt)
+        _, mac_key = self._derive_keys(key, salt, direct_key)
         data_end = PAGE_SIZE - RESERVE_SIZE + IV_SIZE
         h = hmac.new(mac_key, digestmod=sha512)
         h.update(first_page[SALT_SIZE:data_end])
@@ -170,6 +179,10 @@ class WeChatDBDecryptor:
 
     def decrypt_file(self, input_path: str, output_path: str) -> bool:
         """解密单个数据库文件"""
+        return self._decrypt_file(input_path, output_path, self.key_hex, self.direct_key)
+
+    def _decrypt_file(self, input_path: str, output_path: str, key_hex: str, direct_key: bool) -> bool:
+        key = self._parse_key(key_hex)
         with open(input_path, 'rb') as f:
             first_page = f.read(PAGE_SIZE)
 
@@ -178,12 +191,12 @@ class WeChatDBDecryptor:
             shutil.copy2(input_path, output_path)
             return True
 
-        if not self._validate_key(first_page):
+        if not self._validate_key(first_page, key, direct_key):
             print(f"  失败 (密钥无效): {input_path}")
             return False
 
         salt = first_page[:SALT_SIZE]
-        enc_key, mac_key = self._derive_keys(salt)
+        enc_key, mac_key = self._derive_keys(key, salt, direct_key)
         file_size = os.path.getsize(input_path)
         total_pages = (file_size + PAGE_SIZE - 1) // PAGE_SIZE
 
@@ -211,23 +224,27 @@ class WeChatDBDecryptor:
         """解密目录下的所有数据库文件"""
         os.makedirs(output_dir, exist_ok=True)
         success_count = 0
+        platform = get_chatlog_platform()
+        db_storage_dir = platform.resolve_db_storage_dir(input_dir)
+        direct_key = platform.uses_direct_db_key()
 
         # message 数据库
-        message_dir = os.path.join(input_dir, "db_storage", "message")
+        message_dir = os.path.join(db_storage_dir, "message")
         if os.path.isdir(message_dir):
             for filename in os.listdir(message_dir):
                 if re.match(r'^message_\d*\.db$', filename):
                     input_path = os.path.join(message_dir, filename)
-                    if os.path.isfile(input_path) and self.decrypt_file(input_path, os.path.join(output_dir, filename)):
+                    key = platform.resolve_db_key(db_storage_dir, input_path, self.key_hex)
+                    if os.path.isfile(input_path) and self._decrypt_file(input_path, os.path.join(output_dir, filename), key, direct_key):
                         success_count += 1
 
         # contact 数据库
-        contact_db = os.path.join(input_dir, "db_storage", "contact", "contact.db")
-        if os.path.isfile(contact_db) and self.decrypt_file(contact_db, os.path.join(output_dir, "contact.db")):
+        contact_db = os.path.join(db_storage_dir, "contact", "contact.db")
+        key = platform.resolve_db_key(db_storage_dir, contact_db, self.key_hex)
+        if os.path.isfile(contact_db) and self._decrypt_file(contact_db, os.path.join(output_dir, "contact.db"), key, direct_key):
             success_count += 1
 
         return success_count
-
 
 # ============================================================
 # Protobuf 解析 (RoomData)

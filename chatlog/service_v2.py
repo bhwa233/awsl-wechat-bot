@@ -1,4 +1,4 @@
-"""ChatlogServiceV2 - 基于 awsl-wechat-chatlog DLL 的 v2 服务"""
+"""ChatlogServiceV2 - 基于 awsl-wechat-chatlog 原生库的 v2 服务"""
 
 from datetime import datetime
 from typing import Optional
@@ -8,7 +8,7 @@ from chatlog.wechat_db_v2 import WeChatDBReaderV2
 
 
 class ChatlogServiceV2:
-    """v2 接口：DLL 在线读 SQLCipher v4，不解密落盘。每请求新建 reader，缓存仅请求内有效。"""
+    """v2 接口：原生库在线读 SQLCipher v4，不解密落盘。每请求新建 reader，缓存仅请求内有效。"""
 
     def list_groups(self, encrypted_dir: str, hex_key: str, limit: int = 0) -> list[ChatRoom]:
         return WeChatDBReaderV2(encrypted_dir, hex_key).list_groups(limit=limit)
@@ -37,6 +37,9 @@ class ChatlogServiceV2:
         )
 
     def get_group_display_name(
-        self, encrypted_dir: str, hex_key: str, group_id: str
+        self,
+        encrypted_dir: str,
+        hex_key: str,
+        group_id: str,
     ) -> str | None:
         return WeChatDBReaderV2(encrypted_dir, hex_key).get_group_display_name(group_id)

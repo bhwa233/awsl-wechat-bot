@@ -29,3 +29,40 @@ dependencies = [
     "markdown>=3.4.0",
     "jsonpath-ng>=1.8.0",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 140
+extend-exclude = [
+    ".claude",
+    ".venv",
+    "venv",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors，含 E402 顶部导入检查
+    "F",    # Pyflakes / Flake8 核心错误
+    "W",    # pycodestyle warnings
+    "I",    # isort 导入排序
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "UP",   # pyupgrade
+    "SIM",  # flake8-simplify
+    "RUF",  # Ruff 专属规则
+]
+[tool.ruff.lint.isort]
+combine-as-imports = true
+known-first-party = [
+    "chatlog",
+    "common",
+    "cortex",
+    "daemon",
+    "gateway",
+    "tools",
+]

@@ -1,15 +1,12 @@
-"""Chatlog v2 HTTP 路由 - DLL 后端"""
+"""Chatlog v2 HTTP 路由 - 原生库后端"""
 
 import logging
-import os
-import sys
 from datetime import datetime
-from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from chatlog.dll_loader import _DLL_PATH
 from chatlog.models import ChatlogGroupResponse, ChatlogMessageResponse
+from chatlog.platform import get_chatlog_platform, is_chatlog_platform_supported
 from chatlog.service_v2 import ChatlogServiceV2
 from common.auth import verify_token
 from common.config import config
@@ -21,38 +18,37 @@ def create_v2_router() -> APIRouter:
     router = APIRouter()
     chatlog = ChatlogServiceV2()
 
+    def _platform_or_501():
+        try:
+            return get_chatlog_platform()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
+
     def _ensure_ready() -> None:
-        if sys.platform != "win32":
-            raise HTTPException(
-                status_code=501,
-                detail=f"chatlog v2 仅支持 Windows，当前平台: {sys.platform}",
-            )
-        if not config.has_wechat_db_config():
-            raise HTTPException(status_code=400, detail="微信数据库配置不完整")
-        if not os.path.isdir(config.WECHAT_DB_INPUT_PATH):
-            raise HTTPException(
-                status_code=400,
-                detail=f"加密目录不存在: {config.WECHAT_DB_INPUT_PATH}",
-            )
+        detail = _platform_or_501().v2_config_error(config)
+        if detail:
+            raise HTTPException(status_code=400, detail=detail)
 
     @router.post("/decrypt", dependencies=[Depends(verify_token)])
     def decrypt_database():
         return {
             "success": True,
-            "message": "v2 后端无需解密，DLL 直接读取加密数据库",
+            "message": "v2 后端无需解密, 原生库直接读取加密数据库",
             "count": 0,
         }
 
     @router.get(
         "/groups",
-        response_model=List[ChatlogGroupResponse],
+        response_model=list[ChatlogGroupResponse],
         dependencies=[Depends(verify_token)],
     )
-    def list_groups(limit: int = Query(0, ge=0, le=10000, description="限制返回数量，0 表示不限制")):
+    def list_groups(limit: int = Query(0, ge=0, le=10000, description="限制返回数量, 0 表示不限制")):
         _ensure_ready()
         try:
             groups = chatlog.list_groups(
-                config.WECHAT_DB_INPUT_PATH, config.WECHAT_DB_KEY, limit=limit
+                config.WECHAT_DB_INPUT_PATH,
+                config.WECHAT_DB_KEY,
+                limit=limit,
             )
             return [
                 ChatlogGroupResponse(
@@ -65,25 +61,25 @@ def create_v2_router() -> APIRouter:
                 for g in groups
             ]
         except FileNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404, detail=str(e)) from e
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
             logger.error(f"[ChatlogV2] 列出群聊失败: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="查询失败，请查看服务器日志")
+            raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
     @router.get(
         "/messages",
-        response_model=List[ChatlogMessageResponse],
+        response_model=list[ChatlogMessageResponse],
         dependencies=[Depends(verify_token)],
     )
     def query_messages(
         group: str = Query(..., description="群聊ID 或个人微信ID"),
-        start: Optional[str] = Query(None, description="开始时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
-        end: Optional[str] = Query(None, description="结束时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
+        start: str | None = Query(None, description="开始时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
+        end: str | None = Query(None, description="结束时间 (YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS)"),
         limit: int = Query(100, ge=1, le=10000, description="限制返回数量"),
         offset: int = Query(0, ge=0, le=100000, description="跳过前 N 条消息"),
-        desc: bool = Query(False, description="是否倒序（最新消息优先）"),
+        desc: bool = Query(False, description="是否倒序(最新消息优先)"),
     ):
         _ensure_ready()
         start_time = end_time = None
@@ -97,7 +93,7 @@ def create_v2_router() -> APIRouter:
                 if " " not in end:
                     end_time = end_time.replace(hour=23, minute=59, second=59)
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=f"无效的时间格式: {e}")
+            raise HTTPException(status_code=400, detail=f"无效的时间格式: {e}") from e
 
         try:
             messages = chatlog.get_messages(
@@ -125,47 +121,46 @@ def create_v2_router() -> APIRouter:
                 for m in messages
             ]
         except FileNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404, detail=str(e)) from e
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
             logger.error(f"[ChatlogV2] 查询消息失败: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="查询失败，请查看服务器日志")
+            raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
     @router.get("/group-display-name", dependencies=[Depends(verify_token)])
     def get_group_display_name(group: str = Query(..., description="群聊ID")):
         _ensure_ready()
         try:
             display_name = chatlog.get_group_display_name(
-                config.WECHAT_DB_INPUT_PATH, config.WECHAT_DB_KEY, group
+                config.WECHAT_DB_INPUT_PATH,
+                config.WECHAT_DB_KEY,
+                group,
             )
             return {"group": group, "display_name": display_name or group}
         except FileNotFoundError as e:
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404, detail=str(e)) from e
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
             logger.error(f"[ChatlogV2] 获取群名失败: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail="查询失败")
+            raise HTTPException(status_code=500, detail="查询失败") from e
 
     @router.get("/health")
     async def health():
         ready = True
         detail = None
-        if sys.platform != "win32":
+        native_path = None
+        if not is_chatlog_platform_supported():
             ready = False
-            detail = f"仅支持 Windows，当前: {sys.platform}"
-        elif not config.has_wechat_db_config():
-            ready = False
-            detail = "微信数据库配置不完整"
-        elif not os.path.isdir(config.WECHAT_DB_INPUT_PATH):
-            ready = False
-            detail = f"加密目录不存在: {config.WECHAT_DB_INPUT_PATH}"
-        elif not _DLL_PATH.is_file():
-            ready = False
-            detail = f"DLL 不存在: {_DLL_PATH}"
+            detail = "当前平台不支持 chatlog v2"
+        else:
+            platform = get_chatlog_platform()
+            native_path = platform.library_path()
+            detail = platform.v2_config_error(config)
+            ready = detail is None
         status = "ok" if ready else "unavailable"
-        resp = {"status": status, "backend": "v2", "platform": sys.platform}
+        resp = {"status": status, "backend": "v2", "native_library": str(native_path) if native_path else None}
         if detail:
             resp["detail"] = detail
         return resp

@@ -97,7 +97,7 @@ class Config(BaseSettings):
     # 微信数据库解密/总结配置
     WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
     WECHAT_DB_OUTPUT_PATH: str = ""  # 解密后输出目录
-    WECHAT_DB_KEY: str = ""          # 数据库解密密钥
+    WECHAT_DB_KEY: str = ""          # Windows: 64位密钥；Linux: per-db 密钥 JSON 字符串
 
     # Webhook 配置
     WEBHOOK_POOL_SIZE: int = 5            # Webhook worker 数量

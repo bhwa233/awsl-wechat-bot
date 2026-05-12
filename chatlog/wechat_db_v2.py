@@ -1,8 +1,8 @@
-"""微信数据库读取器 v2 - 通过 awsl-wechat-chatlog DLL 在线查询 SQLCipher v4
+"""微信数据库读取器 v2 - 通过 awsl-wechat-chatlog 原生库在线查询 SQLCipher v4
 
 与 v1 的差别：
-- 不离线解密落盘，DLL 直接打开密文 db
-- 输入路径是 WECHAT_DB_INPUT_PATH（加密目录），子路径 db_storage/{message,contact}
+- 不离线解密落盘，原生库直接打开密文 db
+- 输入路径是 WECHAT_DB_INPUT_PATH，可为微信用户目录或 db_storage 目录
 - 复用 v1 的 ChatRoom/Message dataclass、_parse_room_data、zstd 解压逻辑
 """
 
@@ -17,7 +17,7 @@ import sys
 from datetime import datetime
 from typing import Any, Optional
 
-from chatlog.dll_loader import query_raw_sql
+from chatlog.platform import get_chatlog_platform
 from chatlog.wechat_db import (
     ChatRoom,
     HAS_ZSTD,
@@ -78,22 +78,23 @@ def _decompress_content(content: bytes | str | None) -> str:
 
 
 class WeChatDBReaderV2:
-    """v2 reader：直接读加密目录，DLL 跑 raw SQL"""
+    """v2 reader：直接读加密目录，原生库跑 raw SQL"""
 
     def __init__(self, encrypted_dir: str, hex_key: str):
-        self.encrypted_dir = encrypted_dir
+        self.platform = get_chatlog_platform()
+        self.db_storage_dir = self.platform.resolve_db_storage_dir(encrypted_dir)
         self.hex_key = hex_key
         self._message_db_times: list[tuple[str, int, int]] = []
         self._chatroom_display_names: dict[str, dict[str, str]] = {}
 
     def _contact_db_path(self) -> str:
-        path = os.path.join(self.encrypted_dir, "db_storage", "contact", "contact.db")
+        path = os.path.join(self.db_storage_dir, "contact", "contact.db")
         if not os.path.isfile(path):
             raise FileNotFoundError(f"联系人数据库不存在: {path}")
         return path
 
     def _list_message_db_paths(self) -> list[str]:
-        message_dir = os.path.join(self.encrypted_dir, "db_storage", "message")
+        message_dir = os.path.join(self.db_storage_dir, "message")
         if not os.path.isdir(message_dir):
             raise FileNotFoundError(f"消息数据库目录不存在: {message_dir}")
         files = [
@@ -104,7 +105,11 @@ class WeChatDBReaderV2:
         return sorted(files)
 
     def _query(self, db_path: str, sql: str) -> tuple[list[str], list[list]]:
-        result = query_raw_sql(db_path, self.hex_key, sql)
+        result = self.platform.query_raw_sql(
+            db_path,
+            self.platform.resolve_db_key(self.db_storage_dir, db_path, self.hex_key),
+            sql,
+        )
         return result.get("columns", []) or [], result.get("rows", []) or []
 
     def _init_message_dbs(self) -> None:
