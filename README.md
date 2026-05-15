@@ -2,7 +2,7 @@
 
 > **免责声明：本项目仅供学习交流，请勿用于商业或违规用途。使用本项目产生的任何后果由使用者自行承担。**
 
-跨平台微信群聊机器人，采用 Gateway + Chatlog + Cortex 微服务架构。Gateway 通过 Quartz/UIAutomation 与微信窗口交互，以 WebSocket 协议广播消息；Chatlog 作为独立数据层服务提供微信数据库解密/查询；Cortex 作为 WS 客户端，通过 MessageListener 模式处理 AI 回复、群聊总结、动态命令、定时任务和 Webhook 转发。
+跨平台微信群聊机器人，采用 Gateway + Chatlog + Cortex 微服务架构。Gateway 通过 Quartz/UIAutomation/Chatlog+X11 与微信窗口交互，以 WebSocket 协议广播消息；Chatlog 作为独立数据层服务提供微信数据库解密/查询；Cortex 作为 WS 客户端，通过 MessageListener 模式处理 AI 回复、群聊总结、动态命令、定时任务和 Webhook 转发。
 
 ## 功能特性
 
@@ -44,7 +44,7 @@ flowchart TB
     end
 
     subgraph Chatlog["Chatlog (:7998)"]
-        ChatlogAPI[v1: pycryptodome 离线解密<br/>v2: DLL 在线读取 SQLCipher v4<br/>默认走 CHATLOG_USE_V2]
+        ChatlogAPI[v1: pycryptodome 离线解密<br/>v2: 原生库在线读取 SQLCipher v4<br/>默认走 CHATLOG_USE_V2]
     end
 
     subgraph Daemon["Daemon (:8001)"]
@@ -68,7 +68,7 @@ flowchart TB
 | 线程 | 职责 | 阻塞安全 |
 |------|------|----------|
 | Gateway scan_loop | 窗口自动发现 (5s) | 独立线程 ✅ |
-| Detector (per-group) | OCR 截图 + 消息检测 | 独立线程 ✅ |
+| Detector (per-group) | OCR/UIA/Chatlog 消息检测 | 独立线程 ✅ |
 | Sender | 串行发送 + 全局限速 | 独立线程 ✅ |
 | Gateway consume_loop | 队列消费 + WS 广播 | 独立线程 ✅ |
 | GatewayClient | async WS 收发 + listener 分发 | **禁止阻塞** ⚠️ |
