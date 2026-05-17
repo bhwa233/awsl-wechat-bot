@@ -86,7 +86,15 @@ class WindowsConsoleDebugService:
             "node_count": len(nodes),
         }
 
-    def dump_window(self, *, handle: int, max_depth: int = 5, path: str = "", max_nodes: int = 2000) -> dict[str, Any]:
+    def dump_window(
+        self,
+        *,
+        handle: int,
+        max_depth: int = 5,
+        path: str = "",
+        max_nodes: int = 2000,
+        include_patterns: bool = False,
+    ) -> dict[str, Any]:
         auto = self._ensure_uia()
         window = self._find_window_by_handle(auto, handle)
         if window is None:
@@ -142,6 +150,7 @@ class WindowsConsoleDebugService:
                 path=path_indexes,
                 counter=counter,
                 max_nodes=max_nodes,
+                include_patterns=include_patterns,
             ),
             "node_count": counter["count"],
         }
@@ -546,9 +555,13 @@ class WindowsConsoleDebugService:
         path: tuple[int, ...],
         counter: dict[str, int],
         max_nodes: int,
+        include_patterns: bool,
     ) -> dict[str, Any]:
         counter["count"] += 1
         node = self._control_info(control)
+        if include_patterns:
+            node["extra"] = self._extra_control_info(control)
+            node["patterns"] = self._pattern_info(control)
         node["depth"] = depth
         node["path"] = ".".join(str(part) for part in path)
         node["children"] = []
@@ -571,9 +584,57 @@ class WindowsConsoleDebugService:
                     path=(*path, index),
                     counter=counter,
                     max_nodes=max_nodes,
+                    include_patterns=include_patterns,
                 )
             )
         return node
+
+    def _extra_control_info(self, control) -> dict[str, Any]:
+        fields = (
+            "LocalizedControlType",
+            "HelpText",
+            "ItemStatus",
+            "ItemType",
+            "AccessKey",
+            "AcceleratorKey",
+            "AriaRole",
+            "AriaProperties",
+            "IsContentElement",
+            "IsControlElement",
+            "IsKeyboardFocusable",
+            "IsPassword",
+            "LabeledBy",
+        )
+        return {
+            name: self._jsonable(self._safe_attr(control, name, None))
+            for name in fields
+        }
+
+    def _pattern_info(self, control) -> dict[str, Any]:
+        pattern_specs = {
+            "legacy_iaccessible": (
+                "GetLegacyIAccessiblePattern",
+                ("Name", "Value", "Description", "Role", "State", "DefaultAction", "Help", "KeyboardShortcut", "ChildId"),
+            ),
+            "value": ("GetValuePattern", ("Value", "IsReadOnly")),
+            "selection_item": ("GetSelectionItemPattern", ("IsSelected", "SelectionContainer")),
+            "toggle": ("GetTogglePattern", ("ToggleState",)),
+            "range_value": ("GetRangeValuePattern", ("Value", "Minimum", "Maximum", "SmallChange", "LargeChange", "IsReadOnly")),
+            "expand_collapse": ("GetExpandCollapsePattern", ("ExpandCollapseState",)),
+            "text": ("GetTextPattern", ("DocumentRange", "SupportedTextSelection")),
+        }
+
+        patterns: dict[str, Any] = {}
+        for name, (method, fields) in pattern_specs.items():
+            pattern = self._safe_call(control, method, default=None)
+            if pattern is None:
+                continue
+            values = {
+                field: self._jsonable(self._safe_attr(pattern, field, None))
+                for field in fields
+            }
+            patterns[name] = values
+        return patterns
 
     def _control_info(self, control) -> dict[str, Any]:
         return {
@@ -635,3 +696,16 @@ class WindowsConsoleDebugService:
             return [int(part) for part in runtime_id]
         except Exception:
             return []
+
+    @staticmethod
+    def _jsonable(value: Any) -> Any:
+        if value is None or isinstance(value, str | int | float | bool):
+            return value
+        if isinstance(value, (list, tuple)):
+            return [WindowsConsoleDebugService._jsonable(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                str(key): WindowsConsoleDebugService._jsonable(item)
+                for key, item in value.items()
+            }
+        return repr(value)

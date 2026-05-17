@@ -18,6 +18,7 @@ class ConsoleWindowDebugRequest(BaseModel):
     depth: int = Field(default=5, ge=0, le=12)
     path: str = ""
     max_nodes: int = Field(default=2000, ge=1, le=10000)
+    include_patterns: bool = False
 
 
 class ConsoleStateRequest(BaseModel):
@@ -87,6 +88,7 @@ def create_routes(gateway_app=None):
             max_depth=request.depth,
             path=request.path,
             max_nodes=request.max_nodes,
+            include_patterns=request.include_patterns,
         )
 
     return router
