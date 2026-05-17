@@ -1,6 +1,7 @@
 const $ = id => document.getElementById(id);
 let selectedPath = '';
 let selectedName = '';
+let openingChat = false;
 
 function showChatPanel(show) {
     document.body.classList.toggle('chat-open', show);
@@ -115,6 +116,12 @@ function clearChatArea(text = '正在切换聊天') {
     $('chatArea').innerHTML = `<div class="empty">${escapeHtml(text)}</div>`;
 }
 
+function setChatListBusy(busy) {
+    document.querySelectorAll('.chat-row').forEach(row => {
+        row.disabled = busy;
+    });
+}
+
 function showTokenModal(show) {
     $('tokenModal').classList.toggle('show', show);
     $('tokenModal').setAttribute('aria-hidden', show ? 'false' : 'true');
@@ -145,21 +152,28 @@ async function refreshState() {
 }
 
 async function openChat(path, row = null) {
-    if (!path) return;
+    if (!path || openingChat) return;
+    openingChat = true;
+    setChatListBusy(true);
     selectedPath = path;
     selectedName = row?.querySelector('.chat-name')?.childNodes?.[0]?.textContent || selectedName;
     $('chatTitle').textContent = selectedName || '聊天区域';
     clearChatArea();
     showChatPanel(true);
     setStatus('正在切换聊天');
-    const res = await api('/api/console/open-chat', { path });
-    if (!res.ok || !res.data?.available) {
-        setStatus(res.data?.detail || res.data?.message || '切换聊天失败', true);
-        renderError(res.data);
-        return;
+    try {
+        const res = await api('/api/console/open-chat', { path });
+        if (!res.ok || !res.data?.available) {
+            setStatus(res.data?.detail || res.data?.message || '切换聊天失败', true);
+            renderError(res.data);
+            return;
+        }
+        renderState(res.data);
+        setStatus('聊天已切换，输入框已聚焦');
+    } finally {
+        openingChat = false;
+        setChatListBusy(false);
     }
-    renderState(res.data);
-    setStatus('聊天已切换，输入框已聚焦');
 }
 
 async function sendText() {
