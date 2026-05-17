@@ -491,11 +491,13 @@ class WindowsConsoleDebugService:
         raw_text = node["name"]
         chat_name = node["automation_id"].removeprefix("session_item_") or self._chat_name_from_raw(raw_text)
         unread = self._unread_count(raw_text)
+        preview, message_time = self._preview_and_time_from_raw(raw_text, chat_name)
         return {
             "path": node["path"],
             "name": chat_name,
             "raw_text": raw_text,
-            "preview": self._preview_from_raw(raw_text, chat_name),
+            "preview": preview,
+            "time": message_time,
             "unread": unread,
             "muted": "消息免打扰" in raw_text,
             "rect": node["rect"],
@@ -539,12 +541,37 @@ class WindowsConsoleDebugService:
         return int(match.group(1))
 
     @staticmethod
-    def _preview_from_raw(raw_text: str, chat_name: str) -> str:
+    def _preview_and_time_from_raw(raw_text: str, chat_name: str) -> tuple[str, str]:
         preview = raw_text.removeprefix(chat_name).strip()
         if preview.startswith("[") and "条]" in preview:
             preview = preview.split("条]", 1)[1].strip()
         preview = preview.replace("消息免打扰", "").strip()
-        return preview
+        lines = [line.strip() for line in preview.splitlines()]
+        while lines and not lines[-1]:
+            lines.pop()
+        if not lines:
+            return "", ""
+
+        if not WindowsConsoleDebugService._looks_like_chat_time(lines[-1]):
+            return "\n".join(lines).strip(), ""
+
+        message_time = lines.pop()
+        return "\n".join(lines).strip(), message_time
+
+    @staticmethod
+    def _looks_like_chat_time(value: str) -> bool:
+        import re
+
+        text = value.strip()
+        if not text:
+            return False
+        if re.fullmatch(r"(上午|下午|晚上|凌晨|中午)?\s*\d{1,2}:\d{2}", text):
+            return True
+        if text in {"昨天", "前天"}:
+            return True
+        if re.fullmatch(r"(星期|周)[一二三四五六日天]", text):
+            return True
+        return bool(re.fullmatch(r"(\d{4}[/-])?\d{1,2}[/-]\d{1,2}", text))
 
     def _dump_control(
         self,

@@ -75,7 +75,10 @@ function renderChatList(chatList) {
         return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" data-name="${escapeHtml(item.name || '')}" type="button">
             <span class="chat-avatar">${escapeHtml(avatarText(item.name))}</span>
             <span class="chat-copy">
-                <span class="chat-name">${escapeHtml(item.name)}${unread}</span>
+                <span class="chat-head">
+                    <span class="chat-name">${escapeHtml(item.name)}${unread}</span>
+                    <span class="chat-time">${escapeHtml(item.time || '')}</span>
+                </span>
                 <span class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</span>
             </span>
         </button>`;
