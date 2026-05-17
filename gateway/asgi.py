@@ -21,7 +21,7 @@ def create_app(gateway_app) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(health.create_routes(gateway_app))
-    app.include_router(console.create_routes())
+    app.include_router(console.create_routes(gateway_app))
     app.include_router(groups.create_routes(gateway_app))
     app.include_router(messages.create_routes(gateway_app.gateway))
     app.include_router(ws.create_routes(gateway_app.gateway))

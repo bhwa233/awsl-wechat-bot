@@ -50,6 +50,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口+剪贴板+按键)
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
 
+    @property
+    def ui_operation_lock(self) -> threading.Lock:
+        """前台 UI 操作锁: 发送和 Console 操作必须共用同一把锁."""
+        return self._send_lock
+
     def _ensure_uia(self):
         """确保当前线程已初始化 UIA(内部处理 COM 初始化,控件须在同一线程创建和使用)"""
         tid = threading.get_ident()
@@ -81,6 +86,23 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         finally:
             with contextlib.suppress(Exception):
                 win32clipboard.CloseClipboard()
+
+    def set_clipboard_text_verified(self, text: str) -> None:
+        """设置文本剪贴板并校验,必要时回退到 Windows API."""
+        auto.SetClipboardText(text)
+        clipboard_content = auto.GetClipboardText()
+        if clipboard_content == text:
+            return
+
+        if config.DEBUG:
+            logger.debug(f"剪贴板截断!原始长度={len(text)} 剪贴板长度={len(clipboard_content)}")
+            logger.debug(f"原始内容: {text!r}")
+            logger.debug(f"剪贴板内容: {clipboard_content!r}")
+
+        self._set_clipboard_text_windows_api(text)
+
+        if config.DEBUG:
+            logger.debug("已使用 win32clipboard 重新设置剪贴板")
 
     @staticmethod
     def _guess_image_filename(image_data: bytes) -> str:

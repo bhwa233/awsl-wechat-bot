@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
+from collections.abc import Callable
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,16 @@ _MAIN_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
 class WindowsConsoleDebugService:
     """读取 Windows 微信主窗口 UIA 树."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        ui_operation_lock: threading.Lock | None = None,
+        activate_window: Callable[[Any], None] | None = None,
+        set_clipboard_text: Callable[[str], None] | None = None,
+    ):
+        self._ui_lock = ui_operation_lock or threading.Lock()
+        self._activate_window_func = activate_window
+        self._set_clipboard_text = set_clipboard_text
         self._thread_inits: dict[int, Any] = {}
 
     def list_windows(self) -> dict[str, Any]:
@@ -135,6 +146,58 @@ class WindowsConsoleDebugService:
             "node_count": counter["count"],
         }
 
+    def open_chat(self, *, path: str, max_nodes: int = 5000) -> dict[str, Any]:
+        auto = self._ensure_uia()
+        with self._ui_operation_lock():
+            window = self._find_main_window(auto)
+            if window is None:
+                return self._action_error("未找到微信主窗口")
+
+            try:
+                path_indexes = self._parse_path(path)
+            except ValueError:
+                return self._action_error(f"无效 path={path}", window=window)
+
+            target = self._find_by_path(window, path_indexes)
+            if target is None:
+                return self._action_error(f"未找到聊天项 path={path}", window=window)
+
+            if not self._activate_window(window):
+                return self._action_error("激活微信主窗口失败", window=window)
+
+            try:
+                target.Click(waitTime=0)
+            except Exception as e:
+                return self._action_error(f"点击聊天项失败: {e}", window=window)
+
+            time.sleep(0.35)
+            self._focus_input(window)
+            return self.get_state(max_nodes=max_nodes)
+
+    def send_text(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
+        auto = self._ensure_uia()
+        with self._ui_operation_lock():
+            window = self._find_main_window(auto)
+            if window is None:
+                return self._action_error("未找到微信主窗口")
+            if not self._activate_window(window):
+                return self._action_error("激活微信主窗口失败", window=window)
+
+            target = self._focus_input(window)
+            if target is None:
+                return self._action_error("未找到聊天输入框", window=window)
+
+            try:
+                target.SendKeys("{CTRL}a{DELETE}", waitTime=0.2)
+                self._set_clipboard_text_verified(auto, text)
+                target.SendKeys("{CTRL}v", waitTime=0.2)
+                target.SendKeys("{ENTER}", waitTime=0.2)
+            except Exception as e:
+                return self._action_error(f"发送文本失败: {e}", window=window)
+
+            time.sleep(0.35)
+            return self.get_state(max_nodes=max_nodes)
+
     def _ensure_uia(self):
         import uiautomation as auto
 
@@ -143,6 +206,71 @@ class WindowsConsoleDebugService:
             self._thread_inits[tid] = auto.UIAutomationInitializerInThread()
             logger.debug("console 线程 %s UIA 初始化完成", tid)
         return auto
+
+    def _ui_operation_lock(self):
+        return self._ui_lock
+
+    def _set_clipboard_text_verified(self, auto, text: str) -> None:
+        if self._set_clipboard_text is not None:
+            self._set_clipboard_text(text)
+            return
+        auto.SetClipboardText(text)
+        if auto.GetClipboardText() != text:
+            raise RuntimeError("剪贴板内容校验失败")
+
+    def _activate_window(self, window) -> bool:
+        if self._activate_window_func is not None:
+            self._activate_window_func(window)
+            return True
+        try:
+            if hasattr(window, "ShowWindow"):
+                window.ShowWindow(1)
+        except Exception:
+            pass
+        try:
+            if hasattr(window, "Restore"):
+                window.Restore()
+        except Exception:
+            pass
+        try:
+            window.SetForeground()
+            time.sleep(0.3)
+            return True
+        except Exception as e:
+            logger.warning("激活微信主窗口失败: %s", e)
+            return False
+
+    def _focus_input(self, window):
+        input_control = self._find_input_control(window)
+        if input_control is None:
+            return None
+        try:
+            input_control.Click(waitTime=0)
+        except Exception as e:
+            logger.debug("点击主窗口输入框失败: %s", e)
+        try:
+            input_control.SetFocus()
+        except Exception as e:
+            logger.debug("聚焦主窗口输入框失败: %s", e)
+        time.sleep(0.15)
+        return input_control
+
+    def _find_input_control(self, window):
+        nodes = self._collect_nodes(window, max_depth=18, max_nodes=5000)
+        input_node = self._first_node(
+            nodes,
+            lambda node: node["control_type"] == "EditControl"
+            and (node["automation_id"] == "chat_input_field" or node["class_name"] == "mmui::ChatInputField"),
+        )
+        return None if input_node is None else input_node["_control"]
+
+    def _action_error(self, message: str, window=None) -> dict[str, Any]:
+        return {
+            "available": False,
+            "platform": "windows",
+            "message": message,
+            "window": None if window is None else self._control_info(window),
+        }
 
     def _find_main_window(self, auto):
         for control in self._iter_desktop_windows(auto):

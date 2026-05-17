@@ -20,50 +20,42 @@
         }
 
         * { box-sizing: border-box; }
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
         body {
             margin: 0;
             background: var(--bg);
             color: var(--text);
             font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
         }
-        button, input {
+        button, input, textarea {
             font: inherit;
         }
         .shell {
-            min-height: 100vh;
+            height: 100vh;
             padding: 20px;
             display: grid;
-            grid-template-rows: auto 1fr;
-            gap: 16px;
-        }
-        .topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            padding: 14px 16px;
-            background: var(--panel);
-            border: 1px solid var(--line);
-            box-shadow: var(--shadow);
-        }
-        h1 {
-            margin: 0;
-            font-size: 18px;
-            font-weight: 700;
-            letter-spacing: 0;
+            grid-template-rows: minmax(0, 1fr);
+            overflow: hidden;
         }
         .status {
-            margin-top: 2px;
             color: var(--muted);
             font-size: 12px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
-        .actions {
+        .panel-actions {
             display: flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
         .token {
-            width: 260px;
+            width: 100%;
             padding: 9px 10px;
             border: 1px solid var(--line);
             background: var(--panel-2);
@@ -94,6 +86,7 @@
             display: grid;
             grid-template-columns: 380px minmax(0, 1fr);
             gap: 16px;
+            height: 100%;
             min-height: 0;
         }
         .panel {
@@ -107,10 +100,11 @@
         .panel-head {
             padding: 12px 14px;
             border-bottom: 1px solid var(--line);
-            display: flex;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr) auto;
             align-items: center;
-            justify-content: space-between;
             gap: 12px;
+            min-height: 54px;
         }
         .panel-title {
             font-weight: 700;
@@ -118,6 +112,7 @@
         .count {
             color: var(--muted);
             font-size: 12px;
+            justify-self: start;
         }
         .panel-body {
             min-height: 0;
@@ -125,10 +120,19 @@
             padding: 12px;
         }
         .chat-row {
+            width: 100%;
+            text-align: left;
             padding: 10px;
             border: 1px solid var(--line);
             background: #fbfaf7;
             margin-bottom: 8px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .chat-row:hover,
+        .chat-row.active {
+            border-color: var(--green);
+            background: var(--green-2);
         }
         .chat-name {
             font-weight: 700;
@@ -168,35 +172,76 @@
             color: var(--muted);
             padding: 20px 4px;
         }
+        .compose {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            padding: 12px;
+            border-top: 1px solid var(--line);
+        }
+        .compose textarea {
+            width: 100%;
+            min-height: 42px;
+            max-height: 120px;
+            resize: vertical;
+            padding: 9px 10px;
+            border: 1px solid var(--line);
+            background: var(--panel-2);
+            color: var(--text);
+            outline: none;
+            font: inherit;
+        }
+        .compose textarea:focus {
+            border-color: var(--green);
+        }
         .error {
             color: var(--red);
         }
+        .modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(32, 35, 31, .36);
+        }
+        .modal.show {
+            display: flex;
+        }
+        .dialog {
+            width: min(420px, 100%);
+            background: var(--panel);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+            padding: 16px;
+        }
+        .dialog-title {
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+        .dialog-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin-top: 12px;
+        }
         @media (max-width: 1180px) {
             .grid { grid-template-columns: 1fr; }
-            .actions { flex-wrap: wrap; justify-content: flex-end; }
-            .token { width: min(100%, 320px); }
+            .panel-head { grid-template-columns: auto auto; }
+            .status { grid-column: 1 / -1; }
+            .panel-actions { justify-content: flex-end; }
         }
     </style>
 </head>
 <body>
     <main class="shell">
-        <header class="topbar">
-            <div>
-                <h1>Console</h1>
-                <div class="status" id="status">等待加载主窗口状态</div>
-            </div>
-            <div class="actions">
-                <input class="token" id="token" type="password" placeholder="Bearer Token">
-                <button class="btn secondary" id="saveToken">保存 Token</button>
-                <button class="btn" id="refresh">刷新</button>
-            </div>
-        </header>
-
         <section class="grid">
             <aside class="panel">
                 <div class="panel-head">
                     <span class="panel-title">聊天列表</span>
                     <span class="count" id="chatCount">0</span>
+                    <span></span>
                 </div>
                 <div class="panel-body" id="chatList"></div>
             </aside>
@@ -205,11 +250,31 @@
                 <div class="panel-head">
                     <span class="panel-title">聊天区域</span>
                     <span class="count" id="messageCount">0</span>
+                    <div class="panel-actions">
+                        <span class="status" id="status">等待加载主窗口状态</span>
+                        <button class="btn secondary" id="tokenBtn">Token</button>
+                        <button class="btn" id="refresh">刷新</button>
+                    </div>
                 </div>
                 <div class="panel-body" id="chatArea"></div>
+                <div class="compose">
+                    <textarea id="messageInput" placeholder="输入消息..."></textarea>
+                    <button class="btn" id="sendText">发送</button>
+                </div>
             </section>
         </section>
     </main>
+
+    <div class="modal" id="tokenModal" aria-hidden="true">
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="tokenTitle">
+            <div class="dialog-title" id="tokenTitle">Bearer Token</div>
+            <input class="token" id="token" type="password" placeholder="Bearer Token">
+            <div class="dialog-actions">
+                <button class="btn secondary" id="closeToken">取消</button>
+                <button class="btn" id="saveToken">保存</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/console.js"></script>
 </body>

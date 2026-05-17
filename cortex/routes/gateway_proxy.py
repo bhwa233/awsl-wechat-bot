@@ -36,6 +36,24 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
             return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
+    @router.post("/api/console/open-chat", dependencies=[Depends(verify_token)])
+    async def proxy_console_open_chat(request: Request):
+        body = await request.json()
+        try:
+            resp = await client.post("/api/console/open-chat", json=body)
+        except httpx.HTTPError as e:
+            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
+        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+
+    @router.post("/api/console/send-text", dependencies=[Depends(verify_token)])
+    async def proxy_console_send_text(request: Request):
+        body = await request.json()
+        try:
+            resp = await client.post("/api/console/send-text", json=body)
+        except httpx.HTTPError as e:
+            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
+        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+
     @router.post("/api/console/debug/list", dependencies=[Depends(verify_token)])
     async def proxy_console_debug_list():
         try:

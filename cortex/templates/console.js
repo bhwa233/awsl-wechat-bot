@@ -1,4 +1,5 @@
 const $ = id => document.getElementById(id);
+let selectedPath = '';
 
 function getToken() {
     return localStorage.getItem('awsl_api_token') || '';
@@ -49,11 +50,15 @@ function renderChatList(chatList) {
     $('chatList').innerHTML = items.map(item => {
         const unread = item.unread ? `<span class="badge">${escapeHtml(item.unread)}</span>` : '';
         const muted = item.muted ? ' · 免打扰' : '';
-        return `<div class="chat-row">
+        const active = item.path && item.path === selectedPath ? ' active' : '';
+        return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" type="button">
             <div class="chat-name">${escapeHtml(item.name)}${unread}</div>
             <div class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</div>
-        </div>`;
+        </button>`;
     }).join('');
+    document.querySelectorAll('.chat-row[data-path]').forEach(row => {
+        row.addEventListener('click', () => openChat(row.dataset.path));
+    });
 }
 
 function renderChatArea(chatArea) {
@@ -87,6 +92,15 @@ function renderError(data) {
     $('chatArea').innerHTML = `<div class="empty error">${escapeHtml(data?.detail || data?.message || '请求失败')}</div>`;
 }
 
+function showTokenModal(show) {
+    $('tokenModal').classList.toggle('show', show);
+    $('tokenModal').setAttribute('aria-hidden', show ? 'false' : 'true');
+    if (show) {
+        $('token').value = getToken();
+        $('token').focus();
+    }
+}
+
 async function refreshState() {
     const btn = $('refresh');
     btn.disabled = true;
@@ -107,13 +121,63 @@ async function refreshState() {
     }
 }
 
+async function openChat(path) {
+    if (!path) return;
+    selectedPath = path;
+    setStatus('正在切换聊天');
+    const res = await api('/api/console/open-chat', { path });
+    if (!res.ok || !res.data?.available) {
+        setStatus(res.data?.detail || res.data?.message || '切换聊天失败', true);
+        renderError(res.data);
+        return;
+    }
+    renderState(res.data);
+    setStatus('聊天已切换，输入框已聚焦');
+}
+
+async function sendText() {
+    const input = $('messageInput');
+    const text = input.value.trim();
+    if (!text) return;
+    $('sendText').disabled = true;
+    setStatus('正在发送消息');
+    try {
+        const res = await api('/api/console/send-text', { text });
+        if (!res.ok || !res.data?.available) {
+            setStatus(res.data?.detail || res.data?.message || '发送失败', true);
+            renderError(res.data);
+            return;
+        }
+        input.value = '';
+        renderState(res.data);
+        setStatus('消息已发送');
+    } finally {
+        $('sendText').disabled = false;
+    }
+}
+
 function init() {
-    $('token').value = getToken();
+    $('tokenBtn').addEventListener('click', () => showTokenModal(true));
+    $('closeToken').addEventListener('click', () => showTokenModal(false));
+    $('tokenModal').addEventListener('click', e => {
+        if (e.target === $('tokenModal')) showTokenModal(false);
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') showTokenModal(false);
+    });
     $('saveToken').addEventListener('click', () => {
         localStorage.setItem('awsl_api_token', $('token').value.trim());
         setStatus('Token 已保存');
+        showTokenModal(false);
     });
     $('refresh').addEventListener('click', refreshState);
+    $('sendText').addEventListener('click', sendText);
+    $('messageInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendText();
+        }
+    });
     refreshState();
 }
 
