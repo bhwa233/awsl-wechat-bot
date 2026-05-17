@@ -27,6 +27,13 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function avatarText(name) {
+    const text = String(name || '').trim();
+    if (!text) return '?';
+    const first = Array.from(text)[0] || '?';
+    return first.toUpperCase();
+}
+
 async function api(path, body = {}) {
     const headers = { 'Content-Type': 'application/json' };
     const token = getToken();
@@ -61,8 +68,11 @@ function renderChatList(chatList) {
         const active = item.path && item.path === selectedPath ? ' active' : '';
         if (active && item.name) selectedName = item.name;
         return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" type="button">
-            <div class="chat-name">${escapeHtml(item.name)}${unread}</div>
-            <div class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</div>
+            <span class="chat-avatar">${escapeHtml(avatarText(item.name))}</span>
+            <span class="chat-copy">
+                <span class="chat-name">${escapeHtml(item.name)}${unread}</span>
+                <span class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</span>
+            </span>
         </button>`;
     }).join('');
     document.querySelectorAll('.chat-row[data-path]').forEach(row => {
