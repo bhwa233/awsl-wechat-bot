@@ -1,13 +1,16 @@
 """微信控制台调试路由."""
 
+import os
 import sys
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from common.auth import verify_token
 
 router = APIRouter()
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cortex", "templates")
 
 
 class ConsoleWindowDebugRequest(BaseModel):
@@ -23,6 +26,14 @@ class ConsoleStateRequest(BaseModel):
 
 
 def create_routes():
+    @router.get("/console", response_class=HTMLResponse)
+    def console_page():
+        return _serve_console_file("console.html", "text/html")
+
+    @router.get("/console.js")
+    def console_js():
+        return _serve_console_file("console.js", "application/javascript")
+
     @router.post("/api/console/state", dependencies=[Depends(verify_token)])
     def console_state(request: ConsoleStateRequest):
         """返回 Windows 微信窗口的聊天列表、聊天区和输入框状态."""
@@ -59,3 +70,12 @@ def create_routes():
         )
 
     return router
+
+
+def _serve_console_file(filename: str, media_type: str):
+    path = os.path.join(TEMPLATES_DIR, filename)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return Response(content=f.read(), media_type=media_type)
+    except FileNotFoundError:
+        return Response(status_code=404)
