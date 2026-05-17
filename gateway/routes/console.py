@@ -17,7 +17,22 @@ class ConsoleWindowDebugRequest(BaseModel):
     max_nodes: int = Field(default=2000, ge=1, le=10000)
 
 
+class ConsoleStateRequest(BaseModel):
+    handle: int | None = None
+    max_nodes: int = Field(default=5000, ge=1, le=10000)
+
+
 def create_routes():
+    @router.post("/api/console/state", dependencies=[Depends(verify_token)])
+    def console_state(request: ConsoleStateRequest):
+        """返回 Windows 微信窗口的聊天列表、聊天区和输入框状态."""
+        if sys.platform != "win32":
+            raise HTTPException(status_code=501, detail="console/state 当前只支持 Windows")
+
+        from gateway.console.windows import WindowsConsoleDebugService
+
+        return WindowsConsoleDebugService().get_state(handle=request.handle, max_nodes=request.max_nodes)
+
     @router.post("/api/console/debug/list", dependencies=[Depends(verify_token)])
     def console_debug_list():
         """列出 Windows 微信窗口."""

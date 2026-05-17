@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AWSL Console</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f6f5f1;
+            --panel: #ffffff;
+            --panel-2: #f0eee8;
+            --text: #20231f;
+            --muted: #6b7068;
+            --line: #d9d5cb;
+            --green: #168a53;
+            --green-2: #e6f4ed;
+            --red: #b42318;
+            --shadow: 0 16px 48px rgba(42, 38, 28, .08);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        }
+        button, input {
+            font: inherit;
+        }
+        .shell {
+            min-height: 100vh;
+            padding: 20px;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 16px;
+        }
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            padding: 14px 16px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+        }
+        h1 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+        .status {
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .token {
+            width: 260px;
+            padding: 9px 10px;
+            border: 1px solid var(--line);
+            background: var(--panel-2);
+            color: var(--text);
+            outline: none;
+        }
+        .token:focus {
+            border-color: var(--green);
+        }
+        .btn {
+            border: 1px solid #0f6f41;
+            background: var(--green);
+            color: white;
+            padding: 9px 12px;
+            cursor: pointer;
+            min-width: 84px;
+        }
+        .btn.secondary {
+            border-color: var(--line);
+            background: var(--panel);
+            color: var(--text);
+        }
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: .6;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 360px minmax(0, 1fr) 420px;
+            gap: 16px;
+            min-height: 0;
+        }
+        .panel {
+            min-height: 0;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+        }
+        .panel-head {
+            padding: 12px 14px;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+        .panel-title {
+            font-weight: 700;
+        }
+        .count {
+            color: var(--muted);
+            font-size: 12px;
+        }
+        .panel-body {
+            min-height: 0;
+            overflow: auto;
+            padding: 12px;
+        }
+        .kv {
+            display: grid;
+            grid-template-columns: 128px minmax(0, 1fr);
+            gap: 6px 10px;
+            font-size: 12px;
+        }
+        .kv dt {
+            color: var(--muted);
+        }
+        .kv dd {
+            margin: 0;
+            overflow-wrap: anywhere;
+        }
+        .chat-row {
+            padding: 10px;
+            border: 1px solid var(--line);
+            background: #fbfaf7;
+            margin-bottom: 8px;
+        }
+        .chat-name {
+            font-weight: 700;
+            overflow-wrap: anywhere;
+        }
+        .chat-meta {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+            overflow-wrap: anywhere;
+        }
+        .badge {
+            display: inline-block;
+            min-width: 22px;
+            padding: 1px 6px;
+            margin-left: 6px;
+            color: #0f6f41;
+            background: var(--green-2);
+            border: 1px solid #b7dfc9;
+            text-align: center;
+        }
+        .message {
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-left: 3px solid var(--green);
+            background: #fbfaf7;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+        .message.timestamp {
+            border-left-color: var(--line);
+            color: var(--muted);
+            text-align: center;
+            background: transparent;
+        }
+        .empty {
+            color: var(--muted);
+            padding: 20px 4px;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 12px;
+        }
+        .error {
+            color: var(--red);
+        }
+        @media (max-width: 1180px) {
+            .grid { grid-template-columns: 1fr; }
+            .actions { flex-wrap: wrap; justify-content: flex-end; }
+            .token { width: min(100%, 320px); }
+        }
+    </style>
+</head>
+<body>
+    <main class="shell">
+        <header class="topbar">
+            <div>
+                <h1>Console</h1>
+                <div class="status" id="status">等待加载主窗口状态</div>
+            </div>
+            <div class="actions">
+                <input class="token" id="token" type="password" placeholder="Bearer Token">
+                <button class="btn secondary" id="saveToken">保存 Token</button>
+                <button class="btn" id="refresh">刷新</button>
+            </div>
+        </header>
+
+        <section class="grid">
+            <aside class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">聊天列表</span>
+                    <span class="count" id="chatCount">0</span>
+                </div>
+                <div class="panel-body" id="chatList"></div>
+            </aside>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">聊天区域</span>
+                    <span class="count" id="messageCount">0</span>
+                </div>
+                <div class="panel-body" id="chatArea"></div>
+            </section>
+
+            <aside class="panel">
+                <div class="panel-head">
+                    <span class="panel-title">窗口 JSON</span>
+                    <span class="count" id="nodeCount">-</span>
+                </div>
+                <div class="panel-body">
+                    <dl class="kv" id="windowInfo"></dl>
+                    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+                    <div id="inputInfo"></div>
+                    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+                    <pre id="rawJson">{}</pre>
+                </div>
+            </aside>
+        </section>
+    </main>
+
+    <script src="/console.js"></script>
+</body>
+</html>

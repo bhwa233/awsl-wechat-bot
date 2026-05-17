@@ -30,6 +30,14 @@ def create_routes():
         except FileNotFoundError:
             return "<h1>模板文件未找到</h1>"
 
+    @router.get("/console", response_class=HTMLResponse)
+    async def console():
+        try:
+            with open(os.path.join(TEMPLATES_DIR, 'console.html'), encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            return "<h1>Console 模板文件未找到</h1>"
+
     @router.get("/style.css")
     async def style_css():
         return _serve_file('style.css', 'text/css')
@@ -37,6 +45,10 @@ def create_routes():
     @router.get("/app.js")
     async def app_js():
         return _serve_file('app.js', 'application/javascript')
+
+    @router.get("/console.js")
+    async def console_js():
+        return _serve_file('console.js', 'application/javascript')
 
     @router.get("/manifest.json")
     async def manifest():
