@@ -506,10 +506,12 @@ class WindowsConsoleDebugService:
     def _message_item(self, node: dict[str, Any]) -> dict[str, Any]:
         raw_text = node["name"]
         kind = "timestamp" if node["class_name"] == "mmui::ChatItemView" else "text"
+        content, quote = self._message_content_and_quote(raw_text)
         return {
             "path": node["path"],
             "kind": kind,
-            "content": raw_text,
+            "content": content,
+            "quote": quote,
             "raw_text": raw_text,
             "class_name": node["class_name"],
             "rect": node["rect"],
@@ -572,6 +574,26 @@ class WindowsConsoleDebugService:
         if re.fullmatch(r"(星期|周)[一二三四五六日天]", text):
             return True
         return bool(re.fullmatch(r"(\d{4}[/-])?\d{1,2}[/-]\d{1,2}", text))
+
+    @staticmethod
+    def _message_content_and_quote(raw_text: str) -> tuple[str, dict[str, str] | None]:
+        import re
+
+        text = raw_text.strip()
+        match = re.search(r"引用\s+(.+?)\s+的消息\s*[:：]\s*(.+)$", text, re.S)
+        if match is None:
+            return text, None
+
+        content = text[: match.start()].strip()
+        quote_sender = match.group(1).strip()
+        quote_content = match.group(2).strip()
+        if not quote_sender or not quote_content:
+            return text, None
+
+        return content, {
+            "sender": quote_sender,
+            "content": quote_content,
+        }
 
     def _dump_control(
         self,

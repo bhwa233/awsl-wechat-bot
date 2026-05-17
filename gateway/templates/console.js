@@ -69,9 +69,14 @@ function renderChatList(chatList) {
     }
     $('chatList').innerHTML = items.map(item => {
         const unread = item.unread ? `<span class="badge">${escapeHtml(item.unread)}</span>` : '';
-        const active = (item.path && item.path === selectedPath) || (selectedName && item.name === selectedName) ? ' active' : '';
-        if (active && item.name) selectedName = item.name;
-        return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" data-name="${escapeHtml(item.name || '')}" type="button">
+        const isActive = selectedName
+            ? item.name === selectedName
+            : item.path && item.path === selectedPath;
+        if (isActive) {
+            if (item.name) selectedName = item.name;
+            if (item.path) selectedPath = item.path;
+        }
+        return `<button class="chat-row${isActive ? ' active' : ''}" data-path="${escapeHtml(item.path || '')}" data-name="${escapeHtml(item.name || '')}" type="button">
             <span class="chat-avatar">${escapeHtml(avatarText(item.name))}</span>
             <span class="chat-copy">
                 <span class="chat-head">
@@ -94,6 +99,18 @@ function messageAlign(msg) {
     return 'left';
 }
 
+function renderMessageBubble(msg) {
+    const content = escapeHtml(msg.content || '');
+    if (!msg.quote) return `<div class="message-bubble">${content}</div>`;
+    return `<div class="message-bubble">
+        ${content ? `<div class="message-text">${content}</div>` : ''}
+        <div class="message-quote">
+            <div class="quote-sender">${escapeHtml(msg.quote.sender || '')}</div>
+            <div class="quote-content">${escapeHtml(msg.quote.content || '')}</div>
+        </div>
+    </div>`;
+}
+
 function renderChatArea(chatArea, chatList, options = {}) {
     const chatAreaEl = $('chatArea');
     const wasNearBottom = chatAreaEl.scrollHeight - chatAreaEl.scrollTop - chatAreaEl.clientHeight < 80;
@@ -114,7 +131,7 @@ function renderChatArea(chatArea, chatList, options = {}) {
     chatAreaEl.innerHTML = messages.map(msg => {
         const align = messageAlign(msg);
         return `<div class="message-line ${align}">
-            <div class="message-bubble">${escapeHtml(msg.content || '')}</div>
+            ${renderMessageBubble(msg)}
         </div>`;
     }).join('');
     if (options.preserveScroll && !wasNearBottom) {
