@@ -67,7 +67,7 @@ function renderChatList(chatList) {
         const muted = item.muted ? ' · 免打扰' : '';
         const active = item.path && item.path === selectedPath ? ' active' : '';
         if (active && item.name) selectedName = item.name;
-        return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" type="button">
+        return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" data-name="${escapeHtml(item.name || '')}" type="button">
             <span class="chat-avatar">${escapeHtml(avatarText(item.name))}</span>
             <span class="chat-copy">
                 <span class="chat-name">${escapeHtml(item.name)}${unread}</span>
@@ -76,7 +76,7 @@ function renderChatList(chatList) {
         </button>`;
     }).join('');
     document.querySelectorAll('.chat-row[data-path]').forEach(row => {
-        row.addEventListener('click', () => openChat(row.dataset.path, row));
+        row.addEventListener('click', () => openChat(row.dataset.path, row.dataset.name || ''));
     });
 }
 
@@ -172,12 +172,12 @@ async function refreshState() {
     }
 }
 
-async function openChat(path, row = null) {
+async function openChat(path, name = '') {
     if (!path || openingChat) return;
     openingChat = true;
     setChatListBusy(true);
     selectedPath = path;
-    selectedName = row?.querySelector('.chat-name')?.childNodes?.[0]?.textContent || selectedName;
+    selectedName = name || selectedName;
     $('chatTitle').textContent = selectedName || '聊天区域';
     clearChatArea();
     showChatPanel(true);
