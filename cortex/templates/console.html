@@ -54,6 +54,9 @@
             gap: 8px;
             min-width: 0;
         }
+        .mobile-back {
+            display: none;
+        }
         .token {
             width: 100%;
             padding: 9px 10px;
@@ -232,12 +235,84 @@
             .status { grid-column: 1 / -1; }
             .panel-actions { justify-content: flex-end; }
         }
+        @media (max-width: 760px) {
+            .shell {
+                height: 100dvh;
+                padding: 0;
+            }
+            .grid {
+                gap: 0;
+            }
+            .panel {
+                height: 100dvh;
+                border: 0;
+                box-shadow: none;
+            }
+            .chat-panel {
+                display: none;
+            }
+            body.chat-open .list-panel {
+                display: none;
+            }
+            body.chat-open .chat-panel {
+                display: flex;
+            }
+            .panel-head {
+                grid-template-columns: auto auto minmax(0, 1fr);
+                min-height: 52px;
+                padding: 10px 12px;
+            }
+            .chat-panel .panel-head {
+                grid-template-columns: auto minmax(0, 1fr) auto;
+            }
+            .mobile-back {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                min-width: 56px;
+                padding: 8px 10px;
+            }
+            .chat-panel .panel-title {
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .chat-panel .count {
+                justify-self: end;
+            }
+            .panel-actions {
+                grid-column: 1 / -1;
+                justify-content: stretch;
+            }
+            .panel-actions .status {
+                flex: 1;
+                grid-column: auto;
+            }
+            .panel-actions .btn {
+                min-width: 72px;
+            }
+            .panel-body {
+                padding: 10px;
+            }
+            .chat-row {
+                margin-bottom: 6px;
+            }
+            .compose {
+                grid-template-columns: minmax(0, 1fr) 72px;
+                padding: 10px;
+            }
+            .compose textarea {
+                min-height: 42px;
+                max-height: 96px;
+            }
+        }
     </style>
 </head>
 <body>
     <main class="shell">
         <section class="grid">
-            <aside class="panel">
+            <aside class="panel list-panel">
                 <div class="panel-head">
                     <span class="panel-title">聊天列表</span>
                     <span class="count" id="chatCount">0</span>
@@ -246,8 +321,9 @@
                 <div class="panel-body" id="chatList"></div>
             </aside>
 
-            <section class="panel">
+            <section class="panel chat-panel">
                 <div class="panel-head">
+                    <button class="btn secondary mobile-back" id="backToList" type="button">返回</button>
                     <span class="panel-title">聊天区域</span>
                     <span class="count" id="messageCount">0</span>
                     <div class="panel-actions">

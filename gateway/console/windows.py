@@ -162,8 +162,12 @@ class WindowsConsoleDebugService:
             if target is None:
                 return self._action_error(f"未找到聊天项 path={path}", window=window)
 
-            if not self._activate_window(window):
+            if not self._activate_window_locked(window):
                 return self._action_error("激活微信主窗口失败", window=window)
+
+            target = self._find_by_path(window, path_indexes)
+            if target is None:
+                return self._action_error(f"激活后未找到聊天项 path={path}", window=window)
 
             try:
                 target.Click(waitTime=0)
@@ -180,7 +184,7 @@ class WindowsConsoleDebugService:
             window = self._find_main_window(auto)
             if window is None:
                 return self._action_error("未找到微信主窗口")
-            if not self._activate_window(window):
+            if not self._activate_window_locked(window):
                 return self._action_error("激活微信主窗口失败", window=window)
 
             target = self._focus_input(window)
@@ -218,10 +222,21 @@ class WindowsConsoleDebugService:
         if auto.GetClipboardText() != text:
             raise RuntimeError("剪贴板内容校验失败")
 
-    def _activate_window(self, window) -> bool:
+    def _activate_window_locked(self, window) -> bool:
+        """激活微信窗口.
+
+        调用方必须持有 self._ui_lock, 保证和 Gateway 原有 Windows 发送路径共用同一把前台 UI 操作锁.
+        """
         if self._activate_window_func is not None:
-            self._activate_window_func(window)
+            try:
+                self._activate_window_func(window)
+            except Exception as e:
+                logger.debug("适配器激活微信主窗口失败,继续尝试 console 激活: %s", e)
+
+        if self._activate_window_by_hwnd_locked(window):
+            time.sleep(0.3)
             return True
+
         try:
             if hasattr(window, "ShowWindow"):
                 window.ShowWindow(1)
@@ -238,6 +253,41 @@ class WindowsConsoleDebugService:
             return True
         except Exception as e:
             logger.warning("激活微信主窗口失败: %s", e)
+            return False
+
+    def _activate_window_by_hwnd_locked(self, window) -> bool:
+        hwnd = self._safe_attr(window, "NativeWindowHandle", 0)
+        if not hwnd:
+            return False
+
+        try:
+            import win32con
+            import win32gui
+
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.SetWindowPos(
+                hwnd,
+                win32con.HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
+            )
+            win32gui.SetWindowPos(
+                hwnd,
+                win32con.HWND_NOTOPMOST,
+                0,
+                0,
+                0,
+                0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE,
+            )
+            win32gui.BringWindowToTop(hwnd)
+            win32gui.SetForegroundWindow(hwnd)
+            return True
+        except Exception as e:
+            logger.debug("通过 hwnd 激活微信主窗口失败: %s", e)
             return False
 
     def _focus_input(self, window):

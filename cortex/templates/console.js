@@ -1,6 +1,10 @@
 const $ = id => document.getElementById(id);
 let selectedPath = '';
 
+function showChatPanel(show) {
+    document.body.classList.toggle('chat-open', show);
+}
+
 function getToken() {
     return localStorage.getItem('awsl_api_token') || '';
 }
@@ -61,11 +65,13 @@ function renderChatList(chatList) {
     });
 }
 
-function renderChatArea(chatArea) {
+function renderChatArea(chatArea, chatList) {
     const messages = chatArea?.messages || [];
     $('messageCount').textContent = String(messages.length);
     if (!chatArea?.available) {
-        $('chatArea').innerHTML = '<div class="empty">主窗口当前没有可解析的聊天消息区</div>';
+        const hasChats = (chatList?.items || []).length > 0;
+        const text = hasChats ? '请选择聊天列表中的会话' : '主窗口当前没有可解析的聊天消息区';
+        $('chatArea').innerHTML = `<div class="empty">${text}</div>`;
         return;
     }
     if (!messages.length) {
@@ -82,7 +88,7 @@ function renderChatArea(chatArea) {
 
 function renderState(data) {
     renderChatList(data.chat_list);
-    renderChatArea(data.chat_area);
+    renderChatArea(data.chat_area, data.chat_list);
 }
 
 function renderError(data) {
@@ -124,6 +130,7 @@ async function refreshState() {
 async function openChat(path) {
     if (!path) return;
     selectedPath = path;
+    showChatPanel(true);
     setStatus('正在切换聊天');
     const res = await api('/api/console/open-chat', { path });
     if (!res.ok || !res.data?.available) {
@@ -158,6 +165,7 @@ async function sendText() {
 
 function init() {
     $('tokenBtn').addEventListener('click', () => showTokenModal(true));
+    $('backToList').addEventListener('click', () => showChatPanel(false));
     $('closeToken').addEventListener('click', () => showTokenModal(false));
     $('tokenModal').addEventListener('click', e => {
         if (e.target === $('tokenModal')) showTokenModal(false);
