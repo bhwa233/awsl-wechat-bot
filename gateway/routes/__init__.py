@@ -1,3 +1,3 @@
-from . import groups, health, messages, ws
+from . import console, groups, health, messages, ws
 
-__all__ = ["groups", "health", "messages", "ws"]
+__all__ = ["console", "groups", "health", "messages", "ws"]

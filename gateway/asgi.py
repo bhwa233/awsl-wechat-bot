@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from common.logging import setup_uvicorn_logging
-from gateway.routes import groups, health, messages, ws
+from gateway.routes import console, groups, health, messages, ws
 
 
 def create_app(gateway_app) -> FastAPI:
@@ -21,6 +21,7 @@ def create_app(gateway_app) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(health.create_routes(gateway_app))
+    app.include_router(console.create_routes())
     app.include_router(groups.create_routes(gateway_app))
     app.include_router(messages.create_routes(gateway_app.gateway))
     app.include_router(ws.create_routes(gateway_app.gateway))
