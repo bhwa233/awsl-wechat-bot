@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>AWSL Console</title>
     <style>
         :root {
@@ -163,6 +163,7 @@
             opacity: .55;
         }
         .panel-body {
+            flex: 1;
             min-height: 0;
             overflow: auto;
         }
@@ -298,6 +299,7 @@
             text-align: center;
         }
         .compose {
+            flex-shrink: 0;
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
             gap: 10px;
@@ -388,6 +390,9 @@
                 gap: 0;
             }
             .panel {
+                position: fixed;
+                inset: 0;
+                width: 100vw;
                 height: 100dvh;
                 border: 0;
                 border-radius: 0;
@@ -441,7 +446,7 @@
             .compose {
                 grid-template-columns: minmax(0, 1fr) 68px;
                 gap: 8px;
-                padding: 8px;
+                padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
             }
             .compose textarea {
                 min-height: 42px;

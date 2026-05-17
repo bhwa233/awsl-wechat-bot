@@ -110,6 +110,11 @@ function renderError(data) {
     $('chatArea').innerHTML = `<div class="empty error">${escapeHtml(data?.detail || data?.message || '请求失败')}</div>`;
 }
 
+function clearChatArea(text = '正在切换聊天') {
+    $('messageCount').textContent = '0';
+    $('chatArea').innerHTML = `<div class="empty">${escapeHtml(text)}</div>`;
+}
+
 function showTokenModal(show) {
     $('tokenModal').classList.toggle('show', show);
     $('tokenModal').setAttribute('aria-hidden', show ? 'false' : 'true');
@@ -144,6 +149,7 @@ async function openChat(path, row = null) {
     selectedPath = path;
     selectedName = row?.querySelector('.chat-name')?.childNodes?.[0]?.textContent || selectedName;
     $('chatTitle').textContent = selectedName || '聊天区域';
+    clearChatArea();
     showChatPanel(true);
     setStatus('正在切换聊天');
     const res = await api('/api/console/open-chat', { path });
