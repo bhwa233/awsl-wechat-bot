@@ -1,7 +1,12 @@
 const $ = id => document.getElementById(id);
+const POLL_INTERVAL_MS = 3000;
 let selectedPath = '';
 let selectedName = '';
 let openingChat = false;
+let refreshingState = false;
+let sendingText = false;
+let pollingState = false;
+let pollTimer = null;
 
 function showChatPanel(show) {
     document.body.classList.toggle('chat-open', show);
@@ -65,7 +70,7 @@ function renderChatList(chatList) {
     $('chatList').innerHTML = items.map(item => {
         const unread = item.unread ? `<span class="badge">${escapeHtml(item.unread)}</span>` : '';
         const muted = item.muted ? ' · 免打扰' : '';
-        const active = item.path && item.path === selectedPath ? ' active' : '';
+        const active = (item.path && item.path === selectedPath) || (selectedName && item.name === selectedName) ? ' active' : '';
         if (active && item.name) selectedName = item.name;
         return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" data-name="${escapeHtml(item.name || '')}" type="button">
             <span class="chat-avatar">${escapeHtml(avatarText(item.name))}</span>
@@ -87,32 +92,43 @@ function messageAlign(msg) {
     return 'left';
 }
 
-function renderChatArea(chatArea, chatList) {
+function renderChatArea(chatArea, chatList, options = {}) {
+    const chatAreaEl = $('chatArea');
+    const wasNearBottom = chatAreaEl.scrollHeight - chatAreaEl.scrollTop - chatAreaEl.clientHeight < 80;
+    const oldScrollTop = chatAreaEl.scrollTop;
     const messages = chatArea?.messages || [];
     $('messageCount').textContent = String(messages.length);
     $('chatTitle').textContent = selectedName || chatArea?.title || '聊天区域';
     if (!chatArea?.available) {
         const hasChats = (chatList?.items || []).length > 0;
         const text = hasChats ? '请选择聊天列表中的会话' : '主窗口当前没有可解析的聊天消息区';
-        $('chatArea').innerHTML = `<div class="empty">${text}</div>`;
+        chatAreaEl.innerHTML = `<div class="empty">${text}</div>`;
         return;
     }
     if (!messages.length) {
-        $('chatArea').innerHTML = '<div class="empty">消息区为空</div>';
+        chatAreaEl.innerHTML = '<div class="empty">消息区为空</div>';
         return;
     }
-    $('chatArea').innerHTML = messages.map(msg => {
+    chatAreaEl.innerHTML = messages.map(msg => {
         const align = messageAlign(msg);
         return `<div class="message-line ${align}">
             <div class="message-bubble">${escapeHtml(msg.content || '')}</div>
         </div>`;
     }).join('');
-    $('chatArea').scrollTop = $('chatArea').scrollHeight;
+    if (options.preserveScroll && !wasNearBottom) {
+        chatAreaEl.scrollTop = oldScrollTop;
+        return;
+    }
+    chatAreaEl.scrollTop = chatAreaEl.scrollHeight;
 }
 
 function renderState(data) {
     renderChatList(data.chat_list);
     renderChatArea(data.chat_area, data.chat_list);
+}
+
+function renderCurrentChat(data, options = {}) {
+    renderChatArea(data.chat_area, data.chat_list, options);
 }
 
 function renderError(data) {
@@ -153,6 +169,8 @@ function showTokenModal(show) {
 }
 
 async function refreshState() {
+    if (refreshingState) return;
+    refreshingState = true;
     const btn = $('refresh');
     setButtonBusy(btn, true);
     setStatus('正在读取主窗口 UIA 状态', false, true);
@@ -168,6 +186,7 @@ async function refreshState() {
     } catch (err) {
         setStatus('网络错误，无法读取 console 状态', true);
     } finally {
+        refreshingState = false;
         setButtonBusy(btn, false);
     }
 }
@@ -198,9 +217,11 @@ async function openChat(path, name = '') {
 }
 
 async function sendText() {
+    if (sendingText) return;
     const input = $('messageInput');
     const text = input.value.trim();
     if (!text) return;
+    sendingText = true;
     setButtonBusy($('sendText'), true);
     setStatus('正在发送消息', false, true);
     try {
@@ -211,11 +232,46 @@ async function sendText() {
             return;
         }
         input.value = '';
-        renderState(res.data);
+        renderCurrentChat(res.data);
         setStatus('消息已发送');
     } finally {
+        sendingText = false;
         setButtonBusy($('sendText'), false);
     }
+}
+
+function shouldPoll() {
+    return document.visibilityState === 'visible'
+        && !openingChat
+        && !refreshingState
+        && !sendingText;
+}
+
+async function pollState() {
+    if (pollingState || !shouldPoll()) return;
+    pollingState = true;
+    try {
+        const res = await api('/api/console/state', {});
+        if (!res.ok || !res.data?.available) return;
+        if (selectedPath || selectedName || document.body.classList.contains('chat-open')) {
+            renderChatList(res.data.chat_list);
+            renderCurrentChat(res.data, { preserveScroll: true });
+            return;
+        }
+        renderState(res.data);
+    } catch {
+        // 轮询失败不打断当前操作，也不覆盖手动刷新/发送的状态提示。
+    } finally {
+        pollingState = false;
+    }
+}
+
+function startPolling() {
+    if (pollTimer) return;
+    pollTimer = window.setInterval(pollState, POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') pollState();
+    });
 }
 
 function init() {
@@ -242,6 +298,7 @@ function init() {
         }
     });
     refreshState();
+    startPolling();
 }
 
 init();
