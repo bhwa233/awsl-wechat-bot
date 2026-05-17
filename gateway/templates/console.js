@@ -69,7 +69,6 @@ function renderChatList(chatList) {
     }
     $('chatList').innerHTML = items.map(item => {
         const unread = item.unread ? `<span class="badge">${escapeHtml(item.unread)}</span>` : '';
-        const muted = item.muted ? ' · 免打扰' : '';
         const active = (item.path && item.path === selectedPath) || (selectedName && item.name === selectedName) ? ' active' : '';
         if (active && item.name) selectedName = item.name;
         return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" data-name="${escapeHtml(item.name || '')}" type="button">
@@ -79,7 +78,7 @@ function renderChatList(chatList) {
                     <span class="chat-name">${escapeHtml(item.name)}${unread}</span>
                     <span class="chat-time">${escapeHtml(item.time || '')}</span>
                 </span>
-                <span class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</span>
+                <span class="chat-meta">${escapeHtml(item.preview || '')}</span>
             </span>
         </button>`;
     }).join('');
