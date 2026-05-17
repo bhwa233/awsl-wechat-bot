@@ -11,10 +11,11 @@ function getToken() {
     return localStorage.getItem('awsl_api_token') || '';
 }
 
-function setStatus(text, error = false) {
+function setStatus(text, error = false, loading = false) {
     const el = $('status');
     el.textContent = text;
     el.classList.toggle('error', error);
+    el.classList.toggle('loading', loading);
 }
 
 function escapeHtml(value) {
@@ -113,13 +114,23 @@ function renderError(data) {
 
 function clearChatArea(text = '正在切换聊天') {
     $('messageCount').textContent = '0';
-    $('chatArea').innerHTML = `<div class="empty">${escapeHtml(text)}</div>`;
+    $('chatArea').innerHTML = `<div class="loading-card" aria-label="${escapeHtml(text)}">
+        <div class="loading-row"><div class="loading-bubble"></div></div>
+        <div class="loading-row"><div class="loading-bubble"></div></div>
+        <div class="loading-row"><div class="loading-bubble"></div></div>
+    </div>`;
 }
 
 function setChatListBusy(busy) {
     document.querySelectorAll('.chat-row').forEach(row => {
         row.disabled = busy;
     });
+}
+
+function setButtonBusy(button, busy) {
+    button.disabled = busy;
+    button.classList.toggle('loading', busy);
+    button.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
 function showTokenModal(show) {
@@ -133,8 +144,8 @@ function showTokenModal(show) {
 
 async function refreshState() {
     const btn = $('refresh');
-    btn.disabled = true;
-    setStatus('正在读取主窗口 UIA 状态');
+    setButtonBusy(btn, true);
+    setStatus('正在读取主窗口 UIA 状态', false, true);
     try {
         const res = await api('/api/console/state', {});
         if (!res.ok) {
@@ -147,7 +158,7 @@ async function refreshState() {
     } catch (err) {
         setStatus('网络错误，无法读取 console 状态', true);
     } finally {
-        btn.disabled = false;
+        setButtonBusy(btn, false);
     }
 }
 
@@ -160,7 +171,7 @@ async function openChat(path, row = null) {
     $('chatTitle').textContent = selectedName || '聊天区域';
     clearChatArea();
     showChatPanel(true);
-    setStatus('正在切换聊天');
+    setStatus('正在切换聊天', false, true);
     try {
         const res = await api('/api/console/open-chat', { path });
         if (!res.ok || !res.data?.available) {
@@ -180,8 +191,8 @@ async function sendText() {
     const input = $('messageInput');
     const text = input.value.trim();
     if (!text) return;
-    $('sendText').disabled = true;
-    setStatus('正在发送消息');
+    setButtonBusy($('sendText'), true);
+    setStatus('正在发送消息', false, true);
     try {
         const res = await api('/api/console/send-text', { text });
         if (!res.ok || !res.data?.available) {
@@ -193,7 +204,7 @@ async function sendText() {
         renderState(res.data);
         setStatus('消息已发送');
     } finally {
-        $('sendText').disabled = false;
+        setButtonBusy($('sendText'), false);
     }
 }
 
