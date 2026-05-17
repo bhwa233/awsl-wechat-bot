@@ -92,7 +92,7 @@
         }
         .grid {
             display: grid;
-            grid-template-columns: 360px minmax(0, 1fr) 420px;
+            grid-template-columns: 380px minmax(0, 1fr);
             gap: 16px;
             min-height: 0;
         }
@@ -123,19 +123,6 @@
             min-height: 0;
             overflow: auto;
             padding: 12px;
-        }
-        .kv {
-            display: grid;
-            grid-template-columns: 128px minmax(0, 1fr);
-            gap: 6px 10px;
-            font-size: 12px;
-        }
-        .kv dt {
-            color: var(--muted);
-        }
-        .kv dd {
-            margin: 0;
-            overflow-wrap: anywhere;
         }
         .chat-row {
             padding: 10px;
@@ -181,12 +168,6 @@
             color: var(--muted);
             padding: 20px 4px;
         }
-        pre {
-            margin: 0;
-            white-space: pre-wrap;
-            overflow-wrap: anywhere;
-            font-size: 12px;
-        }
         .error {
             color: var(--red);
         }
@@ -227,20 +208,6 @@
                 </div>
                 <div class="panel-body" id="chatArea"></div>
             </section>
-
-            <aside class="panel">
-                <div class="panel-head">
-                    <span class="panel-title">窗口 JSON</span>
-                    <span class="count" id="nodeCount">-</span>
-                </div>
-                <div class="panel-body">
-                    <dl class="kv" id="windowInfo"></dl>
-                    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
-                    <div id="inputInfo"></div>
-                    <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
-                    <pre id="rawJson">{}</pre>
-                </div>
-            </aside>
         </section>
     </main>
 

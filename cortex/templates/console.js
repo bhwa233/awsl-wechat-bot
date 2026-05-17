@@ -39,26 +39,6 @@ async function api(path, body = {}) {
     return { ok: res.ok, status: res.status, data };
 }
 
-function renderKv(target, items) {
-    target.innerHTML = items.map(([key, value]) =>
-        `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(value)}</dd>`
-    ).join('');
-}
-
-function renderWindowInfo(data) {
-    const win = data.window || {};
-    const rect = win.rect || {};
-    renderKv($('windowInfo'), [
-        ['name', win.name || '-'],
-        ['class', win.class_name || '-'],
-        ['handle', win.native_window_handle ?? '-'],
-        ['process', win.process_id ?? '-'],
-        ['rect', rect.width ? `${rect.left},${rect.top} ${rect.width}x${rect.height}` : '-'],
-        ['available', String(data.available)],
-    ]);
-    $('nodeCount').textContent = data.node_count === undefined ? '-' : `${data.node_count} nodes`;
-}
-
 function renderChatList(chatList) {
     const items = chatList?.items || [];
     $('chatCount').textContent = String(items.length);
@@ -72,7 +52,6 @@ function renderChatList(chatList) {
         return `<div class="chat-row">
             <div class="chat-name">${escapeHtml(item.name)}${unread}</div>
             <div class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</div>
-            <div class="chat-meta">${escapeHtml(item.path || '')}</div>
         </div>`;
     }).join('');
 }
@@ -92,31 +71,20 @@ function renderChatArea(chatArea) {
         const cls = msg.kind === 'timestamp' ? 'message timestamp' : 'message';
         return `<div class="${cls}">
             <div>${escapeHtml(msg.content || '')}</div>
-            <div class="chat-meta">${escapeHtml(msg.path || '')}</div>
         </div>`;
     }).join('');
 }
 
-function renderInput(inputBox) {
-    const target = $('inputInfo');
-    if (!inputBox?.available) {
-        target.innerHTML = '<div class="empty">未解析到输入框</div>';
-        return;
-    }
-    target.innerHTML = `<dl class="kv">
-        <dt>input</dt><dd>${escapeHtml(inputBox.name || '-')}</dd>
-        <dt>path</dt><dd>${escapeHtml(inputBox.path || '-')}</dd>
-        <dt>enabled</dt><dd>${escapeHtml(inputBox.enabled)}</dd>
-        <dt>focused</dt><dd>${escapeHtml(inputBox.focused)}</dd>
-    </dl>`;
-}
-
 function renderState(data) {
-    renderWindowInfo(data);
     renderChatList(data.chat_list);
     renderChatArea(data.chat_area);
-    renderInput(data.input_box);
-    $('rawJson').textContent = JSON.stringify(data, null, 2);
+}
+
+function renderError(data) {
+    $('chatCount').textContent = '0';
+    $('messageCount').textContent = '0';
+    $('chatList').innerHTML = '<div class="empty">未解析到聊天列表</div>';
+    $('chatArea').innerHTML = `<div class="empty error">${escapeHtml(data?.detail || data?.message || '请求失败')}</div>`;
 }
 
 async function refreshState() {
@@ -127,7 +95,7 @@ async function refreshState() {
         const res = await api('/api/console/state', {});
         if (!res.ok) {
             setStatus(res.data?.detail || res.data?.message || `请求失败 ${res.status}`, true);
-            $('rawJson').textContent = JSON.stringify(res.data, null, 2);
+            renderError(res.data);
             return;
         }
         renderState(res.data);
