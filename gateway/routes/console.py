@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from common.auth import verify_token
 
 router = APIRouter()
-TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "cortex", "templates")
+TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 
 
 class ConsoleWindowDebugRequest(BaseModel):

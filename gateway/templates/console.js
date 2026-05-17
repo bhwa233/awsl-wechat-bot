@@ -1,5 +1,6 @@
 const $ = id => document.getElementById(id);
 let selectedPath = '';
+let selectedName = '';
 
 function showChatPanel(show) {
     document.body.classList.toggle('chat-open', show);
@@ -39,7 +40,8 @@ async function api(path, body = {}) {
     try {
         data = text ? JSON.parse(text) : {};
     } catch {
-        data = { detail: text || res.statusText };
+        const detail = text.trim().startsWith('<') ? res.statusText : text;
+        data = { detail: detail || `HTTP ${res.status}` };
     }
     return { ok: res.ok, status: res.status, data };
 }
@@ -55,19 +57,28 @@ function renderChatList(chatList) {
         const unread = item.unread ? `<span class="badge">${escapeHtml(item.unread)}</span>` : '';
         const muted = item.muted ? ' · 免打扰' : '';
         const active = item.path && item.path === selectedPath ? ' active' : '';
+        if (active && item.name) selectedName = item.name;
         return `<button class="chat-row${active}" data-path="${escapeHtml(item.path || '')}" type="button">
             <div class="chat-name">${escapeHtml(item.name)}${unread}</div>
             <div class="chat-meta">${escapeHtml(item.preview || '')}${escapeHtml(muted)}</div>
         </button>`;
     }).join('');
     document.querySelectorAll('.chat-row[data-path]').forEach(row => {
-        row.addEventListener('click', () => openChat(row.dataset.path));
+        row.addEventListener('click', () => openChat(row.dataset.path, row));
     });
+}
+
+function messageAlign(msg) {
+    if (msg.align === 'left' || msg.align === 'right' || msg.align === 'center') return msg.align;
+    if (msg.is_self === true) return 'right';
+    if (msg.kind === 'timestamp' || msg.kind === 'system') return 'center';
+    return 'left';
 }
 
 function renderChatArea(chatArea, chatList) {
     const messages = chatArea?.messages || [];
     $('messageCount').textContent = String(messages.length);
+    $('chatTitle').textContent = selectedName || chatArea?.title || '聊天区域';
     if (!chatArea?.available) {
         const hasChats = (chatList?.items || []).length > 0;
         const text = hasChats ? '请选择聊天列表中的会话' : '主窗口当前没有可解析的聊天消息区';
@@ -79,11 +90,12 @@ function renderChatArea(chatArea, chatList) {
         return;
     }
     $('chatArea').innerHTML = messages.map(msg => {
-        const cls = msg.kind === 'timestamp' ? 'message timestamp' : 'message';
-        return `<div class="${cls}">
-            <div>${escapeHtml(msg.content || '')}</div>
+        const align = messageAlign(msg);
+        return `<div class="message-line ${align}">
+            <div class="message-bubble">${escapeHtml(msg.content || '')}</div>
         </div>`;
     }).join('');
+    $('chatArea').scrollTop = $('chatArea').scrollHeight;
 }
 
 function renderState(data) {
@@ -127,9 +139,11 @@ async function refreshState() {
     }
 }
 
-async function openChat(path) {
+async function openChat(path, row = null) {
     if (!path) return;
     selectedPath = path;
+    selectedName = row?.querySelector('.chat-name')?.childNodes?.[0]?.textContent || selectedName;
+    $('chatTitle').textContent = selectedName || '聊天区域';
     showChatPanel(true);
     setStatus('正在切换聊天');
     const res = await api('/api/console/open-chat', { path });
