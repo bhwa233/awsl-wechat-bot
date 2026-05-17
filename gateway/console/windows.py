@@ -63,7 +63,7 @@ class WindowsConsoleDebugService:
                 "input_box": {"available": False},
             }
 
-        nodes = self._collect_nodes(window, max_depth=12, max_nodes=max_nodes)
+        nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
         return {
             "available": True,
             "platform": "windows",
