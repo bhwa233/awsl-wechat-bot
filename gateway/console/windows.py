@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -13,6 +14,11 @@ logger = logging.getLogger(__name__)
 _WECHAT_WINDOW_CLASSES = {"mmui::MainWindow", "mmui::ChatSingleWindow", "WeChatMainWndForPC"}
 _MAIN_WINDOW_CLASSES = {"mmui::MainWindow", "WeChatMainWndForPC"}
 _MAIN_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
+
+_AT_PREFIX_RE = re.compile(r'^((?:@[^\s@,，;；:：]+\s+)+)(.*)', re.DOTALL)
+_AT_POPOVER_TIMEOUT = 0.5
+_AT_POPOVER_GONE_TIMEOUT = 0.3
+_AT_POPOVER_INTERVAL = 0.05
 
 
 class WindowsConsoleDebugService:
@@ -202,14 +208,102 @@ class WindowsConsoleDebugService:
 
             try:
                 target.SendKeys("{CTRL}a{DELETE}", waitTime=0.2)
-                self._set_clipboard_text_verified(auto, text)
-                target.SendKeys("{CTRL}v", waitTime=0.2)
+
+                at_names, remaining = self._parse_at_prefix(text)
+                at_ok = True
+                try:
+                    baseline = self._count_at_popovers(auto, window)
+                    for name in at_names:
+                        target.SendKeys('@', waitTime=0.05)
+                        if not self._wait_at_popover(auto, window, baseline):
+                            logger.warning("[console.send_text] @ popover 未出现: %s", name)
+                            at_ok = False
+                            break
+                        self._set_clipboard_text_verified(auto, name)
+                        target.SendKeys('{CTRL}v', waitTime=0.05)
+                        if not self._wait_at_popover_candidate(auto, window):
+                            logger.warning("[console.send_text] @ popover 无候选: %s", name)
+                            at_ok = False
+                            break
+                        target.SendKeys('{ENTER}', waitTime=0.05)
+                        self._wait_at_popover_gone(auto, window, baseline)
+                except Exception as e:
+                    logger.warning("[console.send_text] @ 流程异常，fallback 原文发送: %s", e)
+                    at_ok = False
+                if not at_ok:
+                    target.SendKeys('{CTRL}a{DELETE}', waitTime=0.1)
+                    remaining = text
+
+                if remaining:
+                    self._set_clipboard_text_verified(auto, remaining)
+                    target.SendKeys("{CTRL}v", waitTime=0.2)
                 target.SendKeys("{ENTER}", waitTime=0.2)
             except Exception as e:
                 return self._action_error(f"发送文本失败: {e}", window=window)
 
             time.sleep(0.35)
             return self.get_state(max_nodes=max_nodes)
+
+    @staticmethod
+    def _parse_at_prefix(text: str) -> tuple[list[str], str]:
+        m = _AT_PREFIX_RE.match(text)
+        if not m:
+            return [], text
+        prefix, body = m.group(1), m.group(2)
+        names = [tok[1:] for tok in prefix.split() if tok.startswith('@')]
+        return names, body
+
+    @staticmethod
+    def _count_at_popovers(auto, window) -> int:
+        try:
+            return sum(
+                1 for ctrl, _depth in auto.WalkControl(window, maxDepth=10)
+                if ctrl.ClassName == 'mmui::XPopover' and ctrl.Exists(0)
+            )
+        except Exception as e:
+            logger.debug("_count_at_popovers 异常: %s", e)
+            return 0
+
+    @staticmethod
+    def _at_popover_has_candidate(auto, window) -> bool:
+        try:
+            for ctrl, _depth in auto.WalkControl(window, maxDepth=10):
+                if ctrl.ClassName != 'mmui::XPopover' or not ctrl.Exists(0):
+                    continue
+                for sub, _d in auto.WalkControl(ctrl, maxDepth=8):
+                    if sub.ControlTypeName == 'ListItemControl' and sub.Exists(0):
+                        return True
+            return False
+        except Exception as e:
+            logger.debug("_at_popover_has_candidate 异常: %s", e)
+            return False
+
+    def _wait_at_popover(self, auto, window, baseline: int) -> bool:
+        deadline = time.monotonic() + _AT_POPOVER_TIMEOUT
+        while True:
+            if self._count_at_popovers(auto, window) > baseline:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_AT_POPOVER_INTERVAL)
+
+    def _wait_at_popover_candidate(self, auto, window) -> bool:
+        deadline = time.monotonic() + _AT_POPOVER_TIMEOUT
+        while True:
+            if self._at_popover_has_candidate(auto, window):
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_AT_POPOVER_INTERVAL)
+
+    def _wait_at_popover_gone(self, auto, window, baseline: int) -> bool:
+        deadline = time.monotonic() + _AT_POPOVER_GONE_TIMEOUT
+        while True:
+            if self._count_at_popovers(auto, window) <= baseline:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_AT_POPOVER_INTERVAL)
 
     def _ensure_uia(self):
         import uiautomation as auto

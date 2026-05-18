@@ -102,13 +102,10 @@ function messageAlign(msg) {
 function renderMessageBubble(msg) {
     const content = escapeHtml(msg.content || '');
     if (!msg.quote) return `<div class="message-bubble">${content}</div>`;
-    return `<div class="message-bubble">
-        ${content ? `<div class="message-text">${content}</div>` : ''}
-        <div class="message-quote">
-            <div class="quote-sender">${escapeHtml(msg.quote.sender || '')}</div>
-            <div class="quote-content">${escapeHtml(msg.quote.content || '')}</div>
-        </div>
-    </div>`;
+    const text = content ? `<div class="message-text">${content}</div>` : '';
+    const sender = escapeHtml(msg.quote.sender || '');
+    const quoteContent = escapeHtml(msg.quote.content || '');
+    return `<div class="message-bubble">${text}<div class="message-quote"><div class="quote-sender">${sender}</div><div class="quote-content">${quoteContent}</div></div></div>`;
 }
 
 function renderChatArea(chatArea, chatList, options = {}) {
@@ -117,7 +114,7 @@ function renderChatArea(chatArea, chatList, options = {}) {
     const oldScrollTop = chatAreaEl.scrollTop;
     const messages = chatArea?.messages || [];
     $('messageCount').textContent = String(messages.length);
-    $('chatTitle').textContent = selectedName || chatArea?.title || '聊天区域';
+    $('chatTitle').textContent = chatArea?.title || '聊天区域';
     if (!chatArea?.available) {
         const hasChats = (chatList?.items || []).length > 0;
         const text = hasChats ? '请选择聊天列表中的会话' : '主窗口当前没有可解析的聊天消息区';
