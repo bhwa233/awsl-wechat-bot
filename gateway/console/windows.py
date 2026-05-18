@@ -554,9 +554,16 @@ class WindowsConsoleDebugService:
             nodes,
             lambda node: node["class_name"] in {"mmui::ChatDetailView", "mmui::ChatMessagePage", "mmui::ChatPage"},
         )
+        # 当前打开聊天名取自 ChatInputField 的 Name；主窗口本身 Name 恒为 "WeChat" 用不上
+        input_node = self._first_node(
+            nodes,
+            lambda node: node["control_type"] == "EditControl"
+            and (node["automation_id"] == "chat_input_field" or node["class_name"] == "mmui::ChatInputField"),
+        )
+        title = (input_node["name"] if input_node else "") or window_info.get("name", "")
         return {
             "available": message_list is not None,
-            "title": window_info["name"],
+            "title": title,
             "path": "" if message_list is None else message_list["path"],
             "rect": None if message_list is None else message_list["rect"],
             "detail_path": None if detail_node is None else detail_node["path"],
