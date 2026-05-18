@@ -217,11 +217,38 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 logger.debug(f"_count_at_popovers 异常: {e}")
             return 0
 
+    def _at_popover_has_candidate(self, window) -> bool:
+        """判断 @ popover 里是否有候选成员（ListItem ≥ 1）。
+        无候选时 Enter 会被微信当普通消息发送，必须提前判定失败。
+        """
+        try:
+            for ctrl, _depth in auto.WalkControl(window, maxDepth=10):
+                if ctrl.ClassName != 'mmui::XPopover' or not ctrl.Exists(0):
+                    continue
+                for sub, _d in auto.WalkControl(ctrl, maxDepth=8):
+                    if sub.ControlTypeName == 'ListItemControl' and sub.Exists(0):
+                        return True
+            return False
+        except Exception as e:
+            if config.DEBUG:
+                logger.debug(f"_at_popover_has_candidate 异常: {e}")
+            return False
+
     def _wait_at_popover(self, window, baseline: int) -> bool:
         """轮询等待 popover 数量超过 baseline（即新 popover 出现），超时返回 False。"""
         deadline = time.monotonic() + self._AT_POPOVER_TIMEOUT
         while True:
             if self._count_at_popovers(window) > baseline:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(self._AT_POPOVER_INTERVAL)
+
+    def _wait_at_popover_candidate(self, window) -> bool:
+        """轮询等待 popover 出现候选成员（ListItem ≥ 1），超时返回 False。"""
+        deadline = time.monotonic() + self._AT_POPOVER_TIMEOUT
+        while True:
+            if self._at_popover_has_candidate(window):
                 return True
             if time.monotonic() >= deadline:
                 return False
@@ -448,6 +475,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                             break
                         self.set_clipboard_text_verified(name)
                         target.SendKeys('{CTRL}v', waitTime=0.05)
+                        # 等候选过滤完成；无候选时按 Enter 会发出字面消息，必须提前判定失败
+                        if not self._wait_at_popover_candidate(window):
+                            logger.warning(f"[send_text_to_window] @ popover 无候选: {name}")
+                            at_ok = False
+                            break
                         target.SendKeys('{ENTER}', waitTime=0.05)
                         # 等 popover 关闭再处理下一个 @，防止下轮 _wait_at_popover 撞残影
                         self._wait_at_popover_gone(window, baseline)
