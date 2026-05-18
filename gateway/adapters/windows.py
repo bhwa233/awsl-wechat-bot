@@ -187,6 +187,22 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         time.sleep(1.0)
         target.SendKeys('{ENTER}', waitTime=0.5)
 
+    _AT_PREFIX_RE = re.compile(r'^((?:@[^\s@,，;；:：]+\s+)+)(.*)', re.DOTALL)
+    _AT_MENTION_SLEEP = 0.15
+
+    @staticmethod
+    def _parse_at_prefix(text: str) -> tuple[list[str], str]:
+        """从消息开头解析 @ 名字列表，返回 (names, remaining_body)。
+
+        匹配规则：开头若干个 ``@<昵称>+<空白>``，碰到分隔符或空白结束。
+        """
+        m = WindowsWeChatAdapter._AT_PREFIX_RE.match(text)
+        if not m:
+            return [], text
+        prefix, body = m.group(1), m.group(2)
+        names = [tok[1:] for tok in prefix.split() if tok.startswith('@')]
+        return names, body
+
     @staticmethod
     def _cleanup_temp_path(
         temp_path: str | None,
@@ -382,25 +398,43 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 # 清空可能存在的草稿
                 target.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
 
-                # 通过剪贴板设置文本
-                auto.SetClipboardText(text)
+                # 开头 @ 名字逐个走「@ → 粘贴名字 → 空格」三步，每步 sleep 让微信识别 mention
+                # 失败则清空输入框，fallback 整条原文按字面发出
+                at_names, remaining = self._parse_at_prefix(text)
+                try:
+                    for name in at_names:
+                        target.SendKeys('@', waitTime=0.05)
+                        time.sleep(self._AT_MENTION_SLEEP)
+                        self.set_clipboard_text_verified(name)
+                        target.SendKeys('{CTRL}v', waitTime=0.05)
+                        time.sleep(self._AT_MENTION_SLEEP)
+                        target.SendKeys('{SPACE}', waitTime=0.05)
+                        time.sleep(self._AT_MENTION_SLEEP)
+                except Exception as e:
+                    logger.warning(f"[send_text_to_window] @ 流程失败，fallback 原文发送: {e}")
+                    target.SendKeys('{CTRL}a{DELETE}', waitTime=0.1)
+                    remaining = text
 
-                # 验证剪贴板内容
-                clipboard_content = auto.GetClipboardText()
-                if clipboard_content != text:
-                    if config.DEBUG:
-                        logger.debug(f"剪贴板截断!原始长度={len(text)} 剪贴板长度={len(clipboard_content)}")
-                        logger.debug(f"原始内容: {text!r}")
-                        logger.debug(f"剪贴板内容: {clipboard_content!r}")
+                if remaining:
+                    # 通过剪贴板设置文本
+                    auto.SetClipboardText(remaining)
 
-                    # 使用 Windows API 重新设置
-                    self._set_clipboard_text_windows_api(text)
+                    # 验证剪贴板内容
+                    clipboard_content = auto.GetClipboardText()
+                    if clipboard_content != remaining:
+                        if config.DEBUG:
+                            logger.debug(f"剪贴板截断!原始长度={len(remaining)} 剪贴板长度={len(clipboard_content)}")
+                            logger.debug(f"原始内容: {remaining!r}")
+                            logger.debug(f"剪贴板内容: {clipboard_content!r}")
 
-                    if config.DEBUG:
-                        logger.debug("已使用 win32clipboard 重新设置剪贴板")
+                        # 使用 Windows API 重新设置
+                        self._set_clipboard_text_windows_api(remaining)
 
-                # 粘贴
-                target.SendKeys('{CTRL}v', waitTime=0.2)
+                        if config.DEBUG:
+                            logger.debug("已使用 win32clipboard 重新设置剪贴板")
+
+                    # 粘贴
+                    target.SendKeys('{CTRL}v', waitTime=0.2)
 
                 # 发送消息
                 target.SendKeys('{ENTER}', waitTime=0.2)
