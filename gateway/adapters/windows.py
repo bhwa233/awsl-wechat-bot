@@ -188,7 +188,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         target.SendKeys('{ENTER}', waitTime=0.5)
 
     _AT_PREFIX_RE = re.compile(r'^((?:@[^\s@,，;；:：]+\s+)+)(.*)', re.DOTALL)
-    _AT_MENTION_SLEEP = 0.15
+    _AT_POPOVER_TIMEOUT = 0.5
+    _AT_POPOVER_GONE_TIMEOUT = 0.3
+    _AT_POPOVER_INTERVAL = 0.05
 
     @staticmethod
     def _parse_at_prefix(text: str) -> tuple[list[str], str]:
@@ -202,6 +204,38 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         prefix, body = m.group(1), m.group(2)
         names = [tok[1:] for tok in prefix.split() if tok.startswith('@')]
         return names, body
+
+    def _count_at_popovers(self, window) -> int:
+        """统计窗口子树里 mmui::XPopover 控件数量。"""
+        try:
+            return sum(
+                1 for ctrl, _depth in auto.WalkControl(window, maxDepth=10)
+                if ctrl.ClassName == 'mmui::XPopover' and ctrl.Exists(0)
+            )
+        except Exception as e:
+            if config.DEBUG:
+                logger.debug(f"_count_at_popovers 异常: {e}")
+            return 0
+
+    def _wait_at_popover(self, window, baseline: int) -> bool:
+        """轮询等待 popover 数量超过 baseline（即新 popover 出现），超时返回 False。"""
+        deadline = time.monotonic() + self._AT_POPOVER_TIMEOUT
+        while True:
+            if self._count_at_popovers(window) > baseline:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(self._AT_POPOVER_INTERVAL)
+
+    def _wait_at_popover_gone(self, window, baseline: int) -> bool:
+        """轮询等待 popover 数量回落到 baseline，超时返回 False。"""
+        deadline = time.monotonic() + self._AT_POPOVER_GONE_TIMEOUT
+        while True:
+            if self._count_at_popovers(window) <= baseline:
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(self._AT_POPOVER_INTERVAL)
 
     @staticmethod
     def _cleanup_temp_path(
@@ -398,20 +432,29 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 # 清空可能存在的草稿
                 target.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
 
-                # 开头 @ 名字逐个走「@ → 粘贴名字 → 空格」三步，每步 sleep 让微信识别 mention
-                # 失败则清空输入框，fallback 整条原文按字面发出
+                # 开头 @ 名字逐个走「@ → 等新 popover → 粘名字 → Enter → 等 popover 关闭」
+                # popover 未弹/异常则清空，fallback 整条原文按字面发出
                 at_names, remaining = self._parse_at_prefix(text)
+                at_ok = True
                 try:
+                    # baseline 锚定进入 @ 流程前已存在的 popover 数量，
+                    # 避免无关 popover（表情/右键菜单/残影）造成 false positive
+                    baseline = self._count_at_popovers(window)
                     for name in at_names:
                         target.SendKeys('@', waitTime=0.05)
-                        time.sleep(self._AT_MENTION_SLEEP)
+                        if not self._wait_at_popover(window, baseline):
+                            logger.warning(f"[send_text_to_window] @ popover 未出现: {name}")
+                            at_ok = False
+                            break
                         self.set_clipboard_text_verified(name)
                         target.SendKeys('{CTRL}v', waitTime=0.05)
-                        time.sleep(self._AT_MENTION_SLEEP)
-                        target.SendKeys('{SPACE}', waitTime=0.05)
-                        time.sleep(self._AT_MENTION_SLEEP)
+                        target.SendKeys('{ENTER}', waitTime=0.05)
+                        # 等 popover 关闭再处理下一个 @，防止下轮 _wait_at_popover 撞残影
+                        self._wait_at_popover_gone(window, baseline)
                 except Exception as e:
-                    logger.warning(f"[send_text_to_window] @ 流程失败，fallback 原文发送: {e}")
+                    logger.warning(f"[send_text_to_window] @ 流程异常，fallback 原文发送: {e}")
+                    at_ok = False
+                if not at_ok:
                     target.SendKeys('{CTRL}a{DELETE}', waitTime=0.1)
                     remaining = text
 
