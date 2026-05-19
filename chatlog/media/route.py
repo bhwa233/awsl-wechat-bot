@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+import urllib.parse
 from abc import ABC, abstractmethod
 from functools import cached_property
 from pathlib import Path
@@ -25,6 +27,8 @@ from chatlog.platform import ChatlogPlatform
 from common.auth import verify_token_or_query
 
 logger = logging.getLogger(__name__)
+
+_FILE_TITLE_RE = re.compile(r"<title>([^<]+)</title>", re.DOTALL)
 
 _MIME = {
     "jpg": "image/jpeg",
@@ -95,6 +99,7 @@ class MediaBackendBinding(ABC):
             "sticker": ready,
             "video_thumb": ready and has_image_key,
             "voice": voice_supported,
+            "file": ready,
         }
 
     def native_library_path(self) -> str | None:
@@ -104,7 +109,7 @@ class MediaBackendBinding(ABC):
     @staticmethod
     def unavailable_media_health() -> dict:
         """platform 不支持时的 media 占位 (全 false)."""
-        return {"image": False, "sticker": False, "video_thumb": False, "voice": False}
+        return {"image": False, "sticker": False, "video_thumb": False, "voice": False, "file": False}
 
 
 class V2MediaBackendBinding(MediaBackendBinding):
@@ -168,10 +173,10 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
 
     @router.get("/media", dependencies=[Depends(verify_token_or_query)])
     def get_media(
-        msg_type: int = Query(..., description="3=image, 34=voice, 43=video thumb, 47=sticker"),
+        msg_type: int = Query(..., description="3=image, 34=voice, 43=video thumb, 47=sticker, 49=file"),
         group: str | None = Query(None, description="群 ID 或 wxid (msg_type=3/43 必需)"),
         server_id: str | None = Query(None, description="消息 server_id 字符串 (避免 JS Number 精度丢失)"),
-        content: str | None = Query(None, description="原始 content XML (msg_type=47 必需)"),
+        content: str | None = Query(None, description="原始 content XML (msg_type=47/49 必需)"),
         hd: bool = Query(False, description="image: 是否拉高清 (默认缩略图; 高清 wxgf 走 av 转码)"),
     ):
         try:
@@ -199,6 +204,10 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
                 if not content:
                     raise HTTPException(status_code=400, detail="sticker 需 content")
                 result = _build_resolver(need_base=False).decode_sticker(content)
+            elif msg_type == 49:
+                if not content:
+                    raise HTTPException(status_code=400, detail="file 需 content")
+                result = _build_resolver(need_base=True).decode_file(content)
             else:
                 raise HTTPException(status_code=400, detail=f"不支持 msg_type={msg_type}")
         except HTTPException:
@@ -213,14 +222,25 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
         if not result:
             raise HTTPException(status_code=404, detail="未找到对应媒体")
         mime = _MIME.get(result.fmt, "application/octet-stream")
+        headers = {
+            "X-Media-Md5": result.md5,
+            "X-Media-Format": result.fmt,
+            # 内容寻址 (md5 不变=同一份), 浏览器/中间层免重发
+            "Cache-Control": "private, max-age=86400, immutable",
+            "ETag": f'"{result.md5}"',
+        }
+        if msg_type == 49 and content:
+            title_m = _FILE_TITLE_RE.search(content)
+            if title_m:
+                fname = title_m.group(1).strip()
+                # RFC 5987: 同时给 ASCII fallback + UTF-8 编码版以兼容老浏览器
+                ascii_safe = fname.encode("ascii", "ignore").decode("ascii") or "download"
+                quoted = urllib.parse.quote(fname, safe="")
+                headers["Content-Disposition"] = (
+                    f'attachment; filename="{ascii_safe}"; filename*=UTF-8\'\'{quoted}'
+                )
         return Response(
             content=result.data,
             media_type=mime,
-            headers={
-                "X-Media-Md5": result.md5,
-                "X-Media-Format": result.fmt,
-                # 内容寻址 (md5 不变=同一份), 浏览器/中间层免重发
-                "Cache-Control": "private, max-age=86400, immutable",
-                "ETag": f'"{result.md5}"',
-            },
+            headers=headers,
         )

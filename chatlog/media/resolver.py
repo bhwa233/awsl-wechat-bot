@@ -34,6 +34,10 @@ _PACKED_MD5_MARKER = b"\x12\x22\x0a\x20"
 _MD5_HEX_RE = re.compile(r"[0-9a-fA-F]{32}")
 _STICKER_MD5_RE = re.compile(r'<emoji[^>]*\bmd5="([0-9a-f]{32})"')
 _STICKER_CDN_RE = re.compile(r'\bcdnurl="([^"]+)"')
+_FILE_TITLE_RE = re.compile(r"<title>([^<]+)</title>", re.DOTALL)
+_FILE_TOTALLEN_RE = re.compile(r"<totallen>(\d+)</totallen>")
+_FILE_MD5_RE = re.compile(r"<md5>([0-9a-fA-F]{32})</md5>")
+_FILE_MAX_BYTES = 200 * 1024 * 1024  # 200MB, 拒绝异常大文件防内存爆炸
 
 _STICKER_FETCH_TIMEOUT = 5.0
 _STICKER_MAX_BYTES = 8 * 1024 * 1024  # 8MB, GIF/webp 表情包远小于此
@@ -248,6 +252,68 @@ class MediaResolver:
             return None
         cache.sticker.put(md5, (data, fmt))
         return MediaResult(msg_type=47, fmt=fmt, data=data, md5=md5)
+
+    def decode_file(self, content_xml: str) -> MediaResult | None:
+        """type=49 appmsg type=6 file: 微信 4.x 在磁盘上以明文存放 msg/file/<YYYY-MM>/<title>.
+
+        从 content XML 提取 title (含扩展名) → 在 msg/file/ 下递归找; 重名微信会加 (N) 后缀,
+        优先匹配长度等于 totallen 的文件; md5 提供二次校验. 不依赖任何 DB.
+        """
+        self._require_base()
+        title_m = _FILE_TITLE_RE.search(content_xml)
+        if not title_m:
+            return None
+        title = title_m.group(1).strip()
+        if not title or "/" in title or "\\" in title or ".." in title:
+            return None
+        totallen_m = _FILE_TOTALLEN_RE.search(content_xml)
+        expected_len = int(totallen_m.group(1)) if totallen_m else None
+        md5_m = _FILE_MD5_RE.search(content_xml)
+        expected_md5 = md5_m.group(1).lower() if md5_m else None
+
+        file_root = self.base / "msg" / "file"
+        if not file_root.is_dir():
+            return None
+        stem, dot, ext = title.rpartition(".")
+        if dot:
+            patterns = (f"*/{title}", f"*/{stem}(*).{ext}")
+        else:
+            patterns = (f"*/{title}", f"*/{title}(*)")
+        candidates: list[Path] = []
+        for pat in patterns:
+            candidates.extend(file_root.glob(pat))
+        if not candidates:
+            return None
+
+        # 长度匹配优先 → md5 校验; 找不到精确匹配回退第一个 title 完整匹配项
+        exact_name = [p for p in candidates if p.name == title]
+        ordered = exact_name + [p for p in candidates if p.name != title]
+        chosen: Path | None = None
+        for p in ordered:
+            try:
+                size = p.stat().st_size
+            except OSError:
+                continue
+            if expected_len is not None and size != expected_len:
+                continue
+            if size > _FILE_MAX_BYTES:
+                logger.warning("[file] %s 超过 %d 字节上限, 跳过", p, _FILE_MAX_BYTES)
+                continue
+            chosen = p
+            break
+        if chosen is None:
+            return None
+
+        with open(chosen, "rb") as f:
+            data = f.read()
+        actual_md5 = hashlib.md5(data).hexdigest()
+        if expected_md5 and actual_md5 != expected_md5:
+            logger.warning(
+                "[file] md5 不匹配 %s: 期望=%s 实际=%s, 仍返回字节",
+                chosen.name, expected_md5, actual_md5,
+            )
+        ext_lower = chosen.suffix.lstrip(".").lower()
+        return MediaResult(msg_type=49, fmt=ext_lower or "bin", data=data, md5=actual_md5)
 
     # ---------- internal: SQL via adapter ---------- #
 

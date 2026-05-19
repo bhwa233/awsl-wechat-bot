@@ -97,7 +97,10 @@ def create_routes(chatlog_base_url: str, chatlog_token: str) -> tuple[APIRouter,
                 status_code=502, media_type="application/json",
             )
         media_type = resp.headers.get("content-type", "application/octet-stream")
-        passthrough_keys = ("x-media-", "cache-control", "etag", "content-length", "last-modified")
+        passthrough_keys = (
+            "x-media-", "cache-control", "etag", "content-length",
+            "last-modified", "content-disposition",
+        )
         passthrough_headers = {
             k: v for k, v in resp.headers.items()
             if any(k.lower() == p or k.lower().startswith(p) for p in passthrough_keys)
