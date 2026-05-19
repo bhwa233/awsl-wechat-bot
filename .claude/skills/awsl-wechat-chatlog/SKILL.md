@@ -29,7 +29,11 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - List decrypted chatlog groups with `groups`, which calls `GET /api/chatlog/groups`.
 - Query chat records with `messages --group <group_id>`, which calls `GET /api/chatlog/messages`. Use the `username` from `groups` as `--group`.
 - Get group display name with `group-name --group <group_id>`, which calls `GET /api/chatlog/group-display-name`.
-- Health check with `health`, which calls `GET /api/chatlog/health`.
+- Health check with `health`, which calls `GET /api/chatlog/health`. Response includes `media` capability flags: `image`, `sticker`, `video_thumb`, `voice`, `file`.
+
+The Chatlog service also exposes `GET /api/chatlog/media` for fetching rich-media bytes
+(images, voice, video thumbnails, stickers, files). Not wrapped by this CLI — invoke via
+`curl` / browser, see `references/api.md` for the full parameter matrix.
 
 ## Examples
 
@@ -55,6 +59,12 @@ uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
 # Get group display name
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" group-name \
   --group 12345@chatroom
+
+# Download a file attachment (msg_type=49 type=6) via curl using the message's content XML
+# Get server_id_str + content from `messages`, then:
+curl -OJ -H "Authorization: Bearer $HTTP_API_TOKEN" \
+  "$CHATLOG_BASE/api/chatlog/media?msg_type=49&content=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.stdin.read()))' < content.xml)"
+# -OJ keeps the original filename returned in Content-Disposition (UTF-8 + ASCII fallback)
 ```
 
 ## Chatlog Service Notes

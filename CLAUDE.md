@@ -104,7 +104,7 @@ per group                              │ 广播
 - `wechat_db.py` - v1 实现（WeChatDBDecryptor + WeChatDBReader），含 ChatRoom/Message dataclass 和 protobuf 解析；解密扩展覆盖 message_resource.db / media_0.db / emoticon.db
 - `wechat_db_v2.py` - v2 实现（WeChatDBReaderV2），通过原生库跑 raw SQL，复用 v1 的 dataclass 和 protobuf 解析
 - `media/` - 富媒体解析层（图片 V2 .dat / sticker / voice / video thumb 统一抽象）
-  - `route.py` - `MediaBackendBinding` (V1/V2) + `register_media_route()` 注册 GET `/media`；image/video-thumb 强制 `IMAGE_AES_KEY`，voice/sticker 不依赖
+  - `route.py` - `MediaBackendBinding` (V1/V2) + `register_media_route()` 注册 GET `/media`；image/video-thumb 强制 `IMAGE_AES_KEY`，voice/sticker/file 不依赖；file 响应附 `Content-Disposition` (UTF-8 + ASCII fallback)
   - `adapters.py` - `MediaAdapter` ABC + `V1SqliteAdapter` (sqlite3 直读) + `V2NativeAdapter` (原生库 + SQL 占位手动转义，db_path → key LRU 缓存 32)
   - `resolver.py` - `MediaResolver`：`decode_image` / `decode_video_thumb` / `decode_voice` / `decode_sticker`
   - `cache.py` - 进程级共享缓存：sticker / hd_image 各 50MB 字节预算 LRU；emoticon_lookup OrderedDict LRU 32
@@ -167,8 +167,8 @@ Chatlog (:7998):
 - v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`, `GET /api/chatlog/v1/media`
 - v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`, `GET /api/chatlog/v2/media`（v2 也有 `/decrypt` 但是 no-op，原生库直接读密文）
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
-- 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker。image/video-thumb 需要 `IMAGE_AES_KEY`；voice/sticker 不依赖。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
-- 健康端点 `media` 字段：`{image, sticker, video_thumb, voice}` 各 bool，前端据此启用渲染
+- 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 需 `--extra media`；sticker/file 不依赖密钥。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
+- 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
 
 Cortex (:7999):
 - Web UI: `GET /` (HTML), `GET /style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json`

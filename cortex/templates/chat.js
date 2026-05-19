@@ -1,6 +1,6 @@
 let chatlogGroups = [];
 let chatlogBackend = null;
-let chatlogMediaCaps = { image: false, sticker: false, video_thumb: false, voice: false };
+let chatlogMediaCaps = { image: false, sticker: false, video_thumb: false, voice: false, file: false };
 let selectedChatlogGroup = null;
 let groupMapping = {};
 let chatFileState = { message: '', filename: '' };
@@ -64,6 +64,7 @@ async function detectChatlogBackend() {
                     sticker: !!r.data.media.sticker,
                     video_thumb: !!r.data.media.video_thumb,
                     voice: !!r.data.media.voice,
+                    file: !!r.data.media.file,
                 };
             }
         }
@@ -284,7 +285,14 @@ function formatMsgContent(m) {
             return `<div class="msg-text msg-media">[动画表情]</div>`;
         if (innerType === '6' || innerType === '36') {
             const title = extractXmlTag(content, 'title') || '[文件]';
-            return `<div class="msg-text msg-media">${escapeHtml(title)}</div>`;
+            const totallen = extractXmlTag(content, 'totallen');
+            const size = totallen ? formatFileSize(parseInt(totallen, 10)) : '';
+            const ext = (title.match(/\.([^.]+)$/) || [, ''])[1].toLowerCase();
+            if (!chatlogMediaCaps.file) {
+                return `<div class="msg-card file-card"><div class="msg-card-icon">📄</div><div class="msg-card-body"><div class="msg-card-title">${escapeHtml(title)}</div>${size ? `<div class="msg-card-desc">${size}</div>` : ''}</div></div>`;
+            }
+            const url = `/api/chatlog/media?msg_type=49&content=${encodeURIComponent(content)}${mediaTokenSuffix()}`;
+            return `<a href="${url}" download="${escapeHtml(title)}" target="_blank" rel="noopener" class="file-link"><div class="msg-card file-card"><div class="msg-card-icon">📄</div><div class="msg-card-body"><div class="msg-card-title">${escapeHtml(title)}</div><div class="msg-card-desc">${size}${ext ? `${size ? ' · ' : ''}${ext.toUpperCase()}` : ''} · 点击下载</div></div></div></a>`;
         }
         if (innerType === '19') {
             const title = extractXmlTag(content, 'title') || '[聊天记录]';
@@ -448,6 +456,15 @@ function showImageLightbox(hdSrc, fallbackSrc) {
 function extractXmlTag(xml, tag) {
     const m = xml.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
     return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim() : '';
+}
+
+function formatFileSize(bytes) {
+    if (!bytes || bytes < 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let i = 0;
+    let n = bytes;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return (i === 0 ? n : n.toFixed(1)) + ' ' + units[i];
 }
 
 function isSystemLike(m) {

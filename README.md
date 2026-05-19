@@ -221,9 +221,10 @@ GET  /api/chatlog/v2/media
 # 无版本前缀走 CHATLOG_USE_V2 配置（默认 true→v2）
 GET  /api/chatlog/health 等
 
-# 媒体: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker
+# 媒体: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file
 GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
-# image/video-thumb 需 IMAGE_AES_KEY；voice/sticker 不依赖
+# image/video-thumb 需 IMAGE_AES_KEY；voice 需 --extra media；sticker/file 不依赖密钥
+# 文件 (49) 直接走 msg/file/<YYYY-MM>/<title> 明文, 带 Content-Disposition (UTF-8) 下载
 # 返回原始 bytes + X-Media-Md5/Format + Cache-Control immutable + ETag
 ```
 
