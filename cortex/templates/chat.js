@@ -176,7 +176,7 @@ function chatPageNext() {
     loadMessages(selectedChatlogGroup);
 }
 
-const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, NAMECARD: 42, VIDEO: 43, ANIMATION: 47, LOCATION: 48, SHARE: 49, SYSTEM: 10000, REVOKE: 10002 };
+const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, NAMECARD: 42, VIDEO: 43, ANIMATION: 47, LOCATION: 48, SHARE: 49, VOIP: 50, SYSTEM: 10000, REVOKE: 10002 };
 
 let WECHAT_EMOJI = {};
 const WECHAT_EMOJI_RE = /\[([^\[\]]{1,8})\]/g;
@@ -201,6 +201,12 @@ function formatMsgContent(m) {
     if (type === MSG_TYPE.SYSTEM || type === MSG_TYPE.REVOKE) {
         const text = content.startsWith('<') ? (extractXmlTag(content, 'content') || extractXmlTag(content, 'plain') || content.replace(/<[^>]+>/g, '').trim()) : content;
         return `<div class="msg-system">${escapeHtml(text)}</div>`;
+    }
+
+    if (type === MSG_TYPE.VOIP) {
+        // <voipmsg><VoIPBubbleMsg><msg>对方已取消 / 已在其它设备接听 / 通话时长 X 秒</msg>...
+        const inner = extractXmlTag(content, 'msg') || '[通话]';
+        return `<div class="msg-card voip-card"><div class="msg-card-icon">📞</div><div class="msg-card-body"><div class="msg-card-title">${escapeHtml(inner)}</div></div></div>`;
     }
 
     if (type === MSG_TYPE.IMAGE)
