@@ -286,7 +286,10 @@ class WeChatDBReaderV2:
 
                 raw_messages.append((
                     int(sort_seq), talker, sender, msg_type, content,
-                    int(create_time), status == 2 or (not is_chatroom and talker != sender),
+                    int(create_time),
+                    # voip (local_type=50) status 恒为 2 不可靠, 退化纯 sender 判
+                    (not is_chatroom and talker != sender) if msg_type == 50
+                    else (status == 2 or (not is_chatroom and talker != sender)),
                     int(server_id) if server_id is not None else 0,
                 ))
 

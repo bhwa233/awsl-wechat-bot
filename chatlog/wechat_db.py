@@ -563,7 +563,11 @@ class WeChatDBReader:
                     if len(parts) == 2 and " " not in parts[0] and "\n" not in parts[0]:
                         sender, content = parts
 
-                is_self = status == 2 or (not is_chatroom and talker != sender)
+                # voip (msg_type=50) status 恒为 2 不可靠, 退化纯 sender 判
+                is_self = (
+                    (not is_chatroom and talker != sender) if msg_type == 50
+                    else (status == 2 or (not is_chatroom and talker != sender))
+                )
                 # 优先使用群昵称,其次使用联系人名称
                 sender_name = display_names.get(sender) or self.get_contact_name(sender) if sender else ""
 
