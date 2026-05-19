@@ -2,10 +2,12 @@
 
 import logging
 import os
+import threading
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from chatlog.media.route import V1MediaBackendBinding, register_media_route
 from chatlog.models import ChatlogGroupResponse, ChatlogMessageResponse
 from chatlog.platform import get_chatlog_platform
 from chatlog.service import ChatlogService
@@ -18,6 +20,7 @@ logger = logging.getLogger(__name__)
 def create_routes() -> APIRouter:
     router = APIRouter()
     chatlog = ChatlogService()
+    decrypt_lock = threading.Lock()
 
     def _platform_or_501():
         try:
@@ -38,6 +41,8 @@ def create_routes() -> APIRouter:
         if not os.path.isdir(config.WECHAT_DB_INPUT_PATH):
             raise HTTPException(status_code=400, detail=f"输入目录不存在: {config.WECHAT_DB_INPUT_PATH}")
 
+        if not decrypt_lock.acquire(blocking=False):
+            raise HTTPException(status_code=409, detail="解密任务正在进行中, 请稍后重试")
         try:
             count = chatlog.decrypt(config.WECHAT_DB_INPUT_PATH, config.WECHAT_DB_KEY, config.WECHAT_DB_OUTPUT_PATH)
             logger.info(f"[Chatlog] 解密完成: {count} 个文件")
@@ -52,6 +57,8 @@ def create_routes() -> APIRouter:
         except Exception as e:
             logger.error(f"[Chatlog] 解密失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="解密失败, 请查看服务器日志") from e
+        finally:
+            decrypt_lock.release()
 
     @router.get("/groups", response_model=list[ChatlogGroupResponse], dependencies=[Depends(verify_token)])
     def list_chat_groups(limit: int = Query(0, description="限制返回数量, 0 表示不限制")):
@@ -124,6 +131,8 @@ def create_routes() -> APIRouter:
                     msg_type=m.msg_type,
                     content=m.content,
                     is_self=m.is_self,
+                    server_id=m.server_id,
+                    server_id_str=str(m.server_id),
                 )
                 for m in messages
             ]
@@ -132,6 +141,13 @@ def create_routes() -> APIRouter:
         except Exception as e:
             logger.error(f"[Chatlog] 查询消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    try:
+        _media_binding = V1MediaBackendBinding(get_chatlog_platform(), config)
+    except RuntimeError:
+        _media_binding = None
+    if _media_binding is not None:
+        register_media_route(router, _media_binding)
 
     @router.get("/group-display-name", dependencies=[Depends(verify_token)])
     def get_group_display_name(group: str = Query(..., description="群聊ID")):
@@ -149,6 +165,22 @@ def create_routes() -> APIRouter:
 
     @router.get("/health")
     async def health():
-        return {"status": "ok"}
+        if _media_binding is None:
+            return {
+                "status": "unavailable",
+                "backend": "v1",
+                "media": V1MediaBackendBinding.unavailable_media_health(),
+                "detail": "当前平台不支持 chatlog",
+            }
+        detail = _media_binding.config_error()
+        ready = detail is None
+        resp = {
+            "status": "ok" if ready else "unavailable",
+            "backend": "v1",
+            "media": _media_binding.media_health(),
+        }
+        if detail:
+            resp["detail"] = detail
+        return resp
 
     return router

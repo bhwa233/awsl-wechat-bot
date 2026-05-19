@@ -3,6 +3,7 @@ AWSL 微信机器人配置 - 使用 Pydantic Settings
 支持从环境变量读取配置
 """
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -98,6 +99,19 @@ class Config(BaseSettings):
     WECHAT_DB_INPUT_PATH: str = ""   # 加密数据库输入目录
     WECHAT_DB_OUTPUT_PATH: str = ""  # 解密后输出目录
     WECHAT_DB_KEY: str = ""          # Windows: 64位密钥;Linux: per-db 密钥 JSON 字符串
+
+    # 微信图片 V2 .dat 解密密钥(Windows/Linux), 由 tools/extract_wx_image_key_*.py 派生
+    IMAGE_AES_KEY: str = ""          # 16 字节 ASCII (hex 字符串)
+    IMAGE_XOR_KEY: int = 0x88        # XOR 字节, 默认 0x88; .env 支持 "0x1a"/"26"/"0o32" 写法
+
+    @field_validator("IMAGE_XOR_KEY", mode="before")
+    @classmethod
+    def _parse_xor_key(cls, v):
+        if isinstance(v, str):
+            v = int(v, 0)
+        if not isinstance(v, int) or not (0 <= v <= 255):
+            raise ValueError(f"IMAGE_XOR_KEY 必须是 0..255 范围的整数, 收到: {v!r}")
+        return v
 
     # Linux 微信 Gateway 配置
     LINUX_WECHAT_DISPLAY: str = ":10"

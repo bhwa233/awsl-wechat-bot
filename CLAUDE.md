@@ -27,6 +27,8 @@ uv run run_daemon.py       # Daemon (:8001)
 uv run tools/inspect_wechat.py   # 微信窗口检查
 uv run tools/extract_wx_keys_windows.py  # Windows 提取微信数据库密钥
 sudo uv run tools/extract_wx_keys_linux.py  # Linux 提取微信数据库密钥
+uv run --with pycryptodome tools/extract_wx_image_key_windows.py  # Windows 派生图片 V2 .dat AES key
+uv run --with pycryptodome tools/extract_wx_image_key_linux.py    # Linux 派生图片 V2 .dat AES key (无需 root)
 
 # 依赖管理
 uv add <package>           # 添加依赖
@@ -92,15 +94,23 @@ per group                              │ 广播
 
 **chatlog/** - 聊天记录独立服务（纯数据层，不依赖 Gateway/Cortex）
 - `__init__.py` - 导出 ChatlogService 和相关模型
-- `asgi.py` - FastAPI app 工厂
+- `asgi.py` - FastAPI app 工厂（v1/v2 双前缀挂载 + 默认无版本路径按 `CHATLOG_USE_V2` 切换）
 - `main.py` - 独立入口（`uv run -m chatlog.main`）
-- `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health，挂载在 `/api/chatlog/v1`）
+- `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health/media，挂载在 `/api/chatlog/v1`）
 - `routes_v2.py` - v2 HTTP 路由（同 v1 接口集合，挂载在 `/api/chatlog/v2`，Windows/Linux）
 - `service.py` - v1 ChatlogService（pycryptodome 离线解密）
 - `service_v2.py` - v2 ChatlogServiceV2（原生库在线读取）
-- `models.py` - HTTP API 响应模型（ChatlogGroupResponse, ChatlogMessageResponse）
-- `wechat_db.py` - v1 实现（WeChatDBDecryptor + WeChatDBReader），含 ChatRoom/Message dataclass 和 protobuf 解析
+- `models.py` - HTTP API 响应模型（`ChatlogGroupResponse`, `ChatlogMessageResponse`；`server_id: int` + `server_id_str: str` 双字段避免 JS Number 精度丢失）
+- `wechat_db.py` - v1 实现（WeChatDBDecryptor + WeChatDBReader），含 ChatRoom/Message dataclass 和 protobuf 解析；解密扩展覆盖 message_resource.db / media_0.db / emoticon.db
 - `wechat_db_v2.py` - v2 实现（WeChatDBReaderV2），通过原生库跑 raw SQL，复用 v1 的 dataclass 和 protobuf 解析
+- `media/` - 富媒体解析层（图片 V2 .dat / sticker / voice / video thumb 统一抽象）
+  - `route.py` - `MediaBackendBinding` (V1/V2) + `register_media_route()` 注册 GET `/media`；image/video-thumb 强制 `IMAGE_AES_KEY`，voice/sticker 不依赖
+  - `adapters.py` - `MediaAdapter` ABC + `V1SqliteAdapter` (sqlite3 直读) + `V2NativeAdapter` (原生库 + SQL 占位手动转义，db_path → key LRU 缓存 32)
+  - `resolver.py` - `MediaResolver`：`decode_image` / `decode_video_thumb` / `decode_voice` / `decode_sticker`
+  - `cache.py` - 进程级共享缓存：sticker / hd_image 各 50MB 字节预算 LRU；emoticon_lookup OrderedDict LRU 32
+  - `decrypt.py` - V2 .dat AES-128-ECB + XOR magic + 尾对齐块解密
+  - `wxgf.py` - PyAV 取末帧将 wxgf (HEVC) 转 JPEG
+  - `voice.py` - pilk + PyAV 将 SILK v3 转 MP3
 - `platform/` - Chatlog 平台特性封装（Windows/Linux 原生库加载、数据库路径解析、配置检查、Linux per-db key 解析）
 - `vendor/awsl_wechat_chatlog.dll` - awsl-wechat-chatlog 编译产物（11MB，Windows x86-64）
 - `vendor/libawsl_wechat_chatlog.so` - awsl-wechat-chatlog 编译产物（Linux x86-64）
@@ -154,13 +164,15 @@ per group                              │ 广播
 Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`
 
 Chatlog (:7998):
-- v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`
-- v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`（v2 也有 `/decrypt` 但是 no-op，原生库直接读密文）
+- v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`, `GET /api/chatlog/v1/media`
+- v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`, `GET /api/chatlog/v2/media`（v2 也有 `/decrypt` 但是 no-op，原生库直接读密文）
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
+- 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker。image/video-thumb 需要 `IMAGE_AES_KEY`；voice/sticker 不依赖。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
+- 健康端点 `media` 字段：`{image, sticker, video_thumb, voice}` 各 bool，前端据此启用渲染
 
 Cortex (:7999):
 - Web UI: `GET /` (HTML), `GET /style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json`
-- API: `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理 Gateway), `POST /api/send`(代理 Gateway), `GET /api/chatlog/groups`(代理 Chatlog), `GET /api/chatlog/messages`(代理 Chatlog), `POST /api/chatlog/decrypt`(代理 Chatlog)
+- API: `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理 Gateway), `POST /api/send`(代理 Gateway), `GET /api/chatlog/groups`(代理 Chatlog), `GET /api/chatlog/messages`(代理 Chatlog), `POST /api/chatlog/decrypt`(代理 Chatlog), `GET /api/chatlog/health`(代理 Chatlog 无版本健康端点，含 media 能力), `GET /api/chatlog/media`(代理 Chatlog 富媒体)
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 

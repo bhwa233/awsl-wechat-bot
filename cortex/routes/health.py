@@ -64,6 +64,10 @@ def create_routes():
     async def chat_js():
         return _serve_file('chat.js', 'application/javascript')
 
+    @router.get("/wechat_emoji.json")
+    async def wechat_emoji_json():
+        return _serve_file('wechat_emoji.json', 'application/json')
+
     @router.get("/tasks.js")
     async def tasks_js():
         return _serve_file('tasks.js', 'application/javascript')

@@ -135,6 +135,15 @@ body {
 .msg.system { text-align: center; margin: 6px 0; justify-content: center; }
 .msg-system { font-size: 11px; color: var(--text2); background: var(--stat-bg); display: inline-block; padding: 2px 10px; border-radius: 4px; }
 .msg-media { font-style: italic; color: var(--text2); }
+.msg-img { max-width: 240px; max-height: 320px; border-radius: 6px; display: block; cursor: zoom-in; }
+.msg-sticker { max-width: 140px; max-height: 140px; cursor: zoom-in; }
+.msg-video-thumb { max-width: 240px; }
+.msg-video-label { font-size: 11px; color: var(--text2); margin-top: 2px; font-style: italic; }
+.msg-audio { width: 240px; height: 36px; }
+.msg-audio-label { font-size: 11px; color: var(--text2); margin-top: 2px; font-style: italic; }
+.img-lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 9999; align-items: center; justify-content: center; cursor: zoom-out; padding: 20px; flex-direction: column; gap: 8px; }
+.img-lightbox img { max-width: 100%; max-height: 92%; object-fit: contain; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+.img-lightbox-hint { color: #ccc; font-size: 12px; min-height: 16px; }
 .msg-link a { color: var(--blue); text-decoration: underline; }
 .msg-quote { font-size: 12px; color: var(--text2); border-left: 2px solid var(--border); padding-left: 6px; margin-bottom: 4px; }
 .msg-quote-name { font-weight: 600; margin-bottom: 2px; }

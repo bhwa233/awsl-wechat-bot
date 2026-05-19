@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import os
+import signal
 import socket
 import subprocess
 import sys
@@ -114,6 +115,10 @@ class BotProcessManager:
         }
         if sys.platform == "win32":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            # POSIX: 新建进程组让 _kill_posix 能 killpg 整棵子树
+            # (uv → python 链, SIGTERM 给 uv 不一定能传到 python)
+            popen_kwargs["start_new_session"] = True
         self._process = subprocess.Popen(
             ["uv", "run", "python", "-u", str(BOT_ENTRY)],
             **popen_kwargs,
@@ -150,8 +155,8 @@ class BotProcessManager:
                     sys.stdout.flush()
                     with self._lock:
                         self._log_buffer.append(decoded)
-                except Exception:
-                    pass
+                except (UnicodeDecodeError, OSError) as exc:
+                    logger.warning("[daemon] pipe_reader decode/io 失败: %s", exc)
         finally:
             with contextlib.suppress(Exception):
                 process.stdout.close()
@@ -172,8 +177,8 @@ class BotProcessManager:
                     config.CORTEX_HTTP_PORT,
                     config.CHATLOG_HTTP_PORT,
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.error("终止 bot 进程失败 (pid=%s): %s", pid, exc, exc_info=True)
         self._process = None
         self._start_time = None
         return {"ok": True, "message": f"bot 已停止 (pid={pid})"}
@@ -193,12 +198,34 @@ class BotProcessManager:
             self._process.wait(timeout=3)
 
     def _kill_posix(self):
-        self._process.terminate()
+        """杀整个进程组. uv → python 是子进程链, terminate(uv) 不传播给 python."""
+        pid = self._process.pid
+        try:
+            pgid = os.getpgid(pid)
+        except ProcessLookupError:
+            # 子进程已退出, 仍需 wait 收尸避免 <defunct> zombie
+            with contextlib.suppress(Exception):
+                self._process.wait(timeout=1)
+            return
+        # 先 SIGTERM 整组
+        try:
+            os.killpg(pgid, signal.SIGTERM)
+        except ProcessLookupError:
+            with contextlib.suppress(Exception):
+                self._process.wait(timeout=1)
+            return
         try:
             self._process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            self._process.kill()
-            self._process.wait(timeout=3)
+            # SIGKILL 兜底
+            try:
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                self._process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                logger.error("SIGKILL 后 wait 仍超时, pgid=%s", pgid)
 
     def _monitor_loop(self):
         consecutive_failures = 0

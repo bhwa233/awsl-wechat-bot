@@ -107,6 +107,7 @@ class Message:
     msg_type: int
     content: str
     is_self: bool = False
+    server_id: int = 0  # 全局唯一消息 ID, 用于 join MessageResourceInfo 拿明文 md5
 
     def format(self, time_format: str = "%Y-%m-%d %H:%M:%S") -> str:
         sender_display = "我" if self.is_self else (self.sender_name or self.sender)
@@ -220,28 +221,42 @@ class WeChatDBDecryptor:
         return True
 
     def decrypt_directory(self, input_dir: str, output_dir: str) -> int:
-        """解密目录下的所有数据库文件"""
+        """解密目录下的所有数据库文件 (铺平到 output_dir 根, v1 reader 约定).
+
+        覆盖范围:
+        - message_N.db: 聊天消息表 (v1 reader 用)
+        - contact.db: 联系人 (v1 reader 用)
+        - message_resource.db: 图片 / 视频 server_id → md5 索引 (media resolver 用)
+        - media_0.db: voice silk 字节流 (media resolver 用)
+        - emoticon.db: sticker md5 → cdn_url + aes_key (media resolver fallback 用)
+        """
         os.makedirs(output_dir, exist_ok=True)
         success_count = 0
         platform = get_chatlog_platform()
         db_storage_dir = platform.resolve_db_storage_dir(input_dir)
         direct_key = platform.uses_direct_db_key()
 
-        # message 数据库
-        message_dir = os.path.join(db_storage_dir, "message")
-        if os.path.isdir(message_dir):
-            for filename in os.listdir(message_dir):
-                if re.match(r'^message_\d*\.db$', filename):
-                    input_path = os.path.join(message_dir, filename)
-                    key = platform.resolve_db_key(db_storage_dir, input_path, self.key_hex)
-                    if os.path.isfile(input_path) and self._decrypt_file(input_path, os.path.join(output_dir, filename), key, direct_key):
-                        success_count += 1
+        targets = [
+            ("message", re.compile(r"^message_\d*\.db$")),
+            ("message", re.compile(r"^message_resource\.db$")),
+            ("message", re.compile(r"^media_\d+\.db$")),
+            ("contact", re.compile(r"^contact\.db$")),
+            ("emoticon", re.compile(r"^emoticon\.db$")),
+        ]
 
-        # contact 数据库
-        contact_db = os.path.join(db_storage_dir, "contact", "contact.db")
-        key = platform.resolve_db_key(db_storage_dir, contact_db, self.key_hex)
-        if os.path.isfile(contact_db) and self._decrypt_file(contact_db, os.path.join(output_dir, "contact.db"), key, direct_key):
-            success_count += 1
+        for subdir, pattern in targets:
+            src_dir = os.path.join(db_storage_dir, subdir)
+            if not os.path.isdir(src_dir):
+                continue
+            for filename in os.listdir(src_dir):
+                if not pattern.match(filename):
+                    continue
+                src = os.path.join(src_dir, filename)
+                if not os.path.isfile(src):
+                    continue
+                key = platform.resolve_db_key(db_storage_dir, src, self.key_hex)
+                if self._decrypt_file(src, os.path.join(output_dir, filename), key, direct_key):
+                    success_count += 1
 
         return success_count
 
@@ -535,7 +550,7 @@ class WeChatDBReader:
                 params = (*params, per_db_cap)
             cursor.execute(query, params)
 
-            for sort_seq, _server_id, local_type, user_name, create_time, message_content, status in cursor.fetchall():
+            for sort_seq, server_id, local_type, user_name, create_time, message_content, status in cursor.fetchall():
                 msg_type = local_type & 0xFFFFFFFF
                 if text_only and msg_type != MESSAGE_TYPE_TEXT:
                     continue
@@ -560,7 +575,8 @@ class WeChatDBReader:
                     sender_name=sender_name,
                     msg_type=msg_type,
                     content=content,
-                    is_self=is_self
+                    is_self=is_self,
+                    server_id=int(server_id) if server_id is not None else 0,
                 ))
 
         messages.sort(key=lambda m: m.seq, reverse=desc)

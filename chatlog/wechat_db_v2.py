@@ -274,7 +274,7 @@ class WeChatDBReaderV2:
                 continue
 
             for row in rows:
-                sort_seq, _server_id, local_type, user_name, create_time, message_content, status = row
+                sort_seq, server_id, local_type, user_name, create_time, message_content, status = row
                 msg_type = int(local_type) & 0xFFFFFFFF
 
                 content = _decompress_content(_decode_blob(message_content))
@@ -287,6 +287,7 @@ class WeChatDBReaderV2:
                 raw_messages.append((
                     int(sort_seq), talker, sender, msg_type, content,
                     int(create_time), status == 2 or (not is_chatroom and talker != sender),
+                    int(server_id) if server_id is not None else 0,
                 ))
 
         raw_messages.sort(key=lambda m: m[0], reverse=desc)
@@ -300,7 +301,7 @@ class WeChatDBReaderV2:
         contact_names = self._batch_get_contact_names(uncached) if uncached else {}
 
         messages: list[Message] = []
-        for seq, _talker, sender, msg_type, content, create_time, is_self in raw_messages:
+        for seq, _talker, sender, msg_type, content, create_time, is_self, server_id in raw_messages:
             sender_name = (
                 (display_names.get(sender) or contact_names.get(sender, sender))
                 if sender
@@ -316,6 +317,7 @@ class WeChatDBReaderV2:
                     msg_type=msg_type,
                     content=content,
                     is_self=is_self,
+                    server_id=server_id,
                 )
             )
         return messages

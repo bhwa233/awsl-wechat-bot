@@ -12,6 +12,7 @@
 - **多群并发处理**：每群独立检测线程，全局限速发送
 - **内置 Web UI**：访问 Cortex `:7999/` 即可使用聊天、定时任务、Webhook 管理（图片/文件支持点击/拖拽/Ctrl+V 粘贴）
 - **Chatlog 双后端**：v1（pycryptodome 离线解密）/ v2（原生库在线读 SQLCipher v4，Windows/Linux），默认走 v2
+- **富媒体渲染**：图片（V2 .dat 派生 AES + wxgf→JPEG）/ 表情包 / 语音（SILK→MP3）/ 视频缩略图 / 位置 / 名片 / appmsg；Web UI 内置 `[发呆][呲牙]` 等微信表情符 → Unicode emoji 替换
 - **定时任务 / 群聊总结 / @触发 / 动态命令 / Webhook 转发**
 
 <details>
@@ -208,16 +209,25 @@ POST /api/chatlog/v1/decrypt
 GET  /api/chatlog/v1/groups
 GET  /api/chatlog/v1/messages
 GET  /api/chatlog/v1/group-display-name
+GET  /api/chatlog/v1/media
 
 # v2 (原生库在线读 SQLCipher v4，Windows/Linux)
 GET  /api/chatlog/v2/health
 GET  /api/chatlog/v2/groups
 GET  /api/chatlog/v2/messages
 GET  /api/chatlog/v2/group-display-name
+GET  /api/chatlog/v2/media
 
 # 无版本前缀走 CHATLOG_USE_V2 配置（默认 true→v2）
 GET  /api/chatlog/health 等
+
+# 媒体: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker
+GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
+# image/video-thumb 需 IMAGE_AES_KEY；voice/sticker 不依赖
+# 返回原始 bytes + X-Media-Md5/Format + Cache-Control immutable + ETag
 ```
+
+> 消息响应包含 `server_id: int` 与 `server_id_str: str` 双字段，前者保留 JSON 数字合同，后者用于 JS 客户端避免 Number 精度丢失。
 
 ### Cortex (:7999)
 
@@ -236,6 +246,8 @@ POST /api/send                        # 发送消息（代理 Gateway）
 GET  /api/chatlog/groups              # 群聊列表（代理 Chatlog）
 GET  /api/chatlog/messages            # 查询消息（代理 Chatlog）
 POST /api/chatlog/decrypt             # 解密（代理 Chatlog）
+GET  /api/chatlog/health              # 无版本健康端点 + media 能力（代理 Chatlog）
+GET  /api/chatlog/media               # 富媒体 bytes 透传（代理 Chatlog）
 ```
 
 ### Daemon (:8001)

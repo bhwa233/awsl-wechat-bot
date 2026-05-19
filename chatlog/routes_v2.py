@@ -5,8 +5,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from chatlog.media.route import V2MediaBackendBinding, register_media_route
 from chatlog.models import ChatlogGroupResponse, ChatlogMessageResponse
-from chatlog.platform import get_chatlog_platform, is_chatlog_platform_supported
+from chatlog.platform import get_chatlog_platform
 from chatlog.service_v2 import ChatlogServiceV2
 from common.auth import verify_token
 from common.config import config
@@ -117,6 +118,8 @@ def create_v2_router() -> APIRouter:
                     msg_type=m.msg_type,
                     content=m.content,
                     is_self=m.is_self,
+                    server_id=m.server_id,
+                    server_id_str=str(m.server_id),
                 )
                 for m in messages
             ]
@@ -127,6 +130,14 @@ def create_v2_router() -> APIRouter:
         except Exception as e:
             logger.error(f"[ChatlogV2] 查询消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    try:
+        _media_binding = V2MediaBackendBinding(get_chatlog_platform(), config)
+    except RuntimeError:
+        # 当前平台不支持原生库, /media 端点不注册 (其他端点仍然可用并各自 501)
+        _media_binding = None
+    if _media_binding is not None:
+        register_media_route(router, _media_binding)
 
     @router.get("/group-display-name", dependencies=[Depends(verify_token)])
     def get_group_display_name(group: str = Query(..., description="群聊ID")):
@@ -148,19 +159,22 @@ def create_v2_router() -> APIRouter:
 
     @router.get("/health")
     async def health():
-        ready = True
-        detail = None
-        native_path = None
-        if not is_chatlog_platform_supported():
-            ready = False
-            detail = "当前平台不支持 chatlog v2"
-        else:
-            platform = get_chatlog_platform()
-            native_path = platform.library_path()
-            detail = platform.v2_config_error(config)
-            ready = detail is None
-        status = "ok" if ready else "unavailable"
-        resp = {"status": status, "backend": "v2", "native_library": str(native_path) if native_path else None}
+        if _media_binding is None:
+            return {
+                "status": "unavailable",
+                "backend": "v2",
+                "native_library": None,
+                "media": V2MediaBackendBinding.unavailable_media_health(),
+                "detail": "当前平台不支持 chatlog v2",
+            }
+        detail = _media_binding.config_error()
+        ready = detail is None
+        resp = {
+            "status": "ok" if ready else "unavailable",
+            "backend": "v2",
+            "native_library": _media_binding.native_library_path(),
+            "media": _media_binding.media_health(),
+        }
         if detail:
             resp["detail"] = detail
         return resp

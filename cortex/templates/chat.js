@@ -1,5 +1,6 @@
 let chatlogGroups = [];
 let chatlogBackend = null;
+let chatlogMediaCaps = { image: false, sticker: false, video_thumb: false, voice: false };
 let selectedChatlogGroup = null;
 let groupMapping = {};
 let chatFileState = { message: '', filename: '' };
@@ -57,6 +58,14 @@ async function detectChatlogBackend() {
         if (r.ok && r.data) {
             chatlogBackend = r.data.backend || 'v1';
             $('decryptBtn').style.display = chatlogBackend === 'v1' ? '' : 'none';
+            if (r.data.media) {
+                chatlogMediaCaps = {
+                    image: !!r.data.media.image,
+                    sticker: !!r.data.media.sticker,
+                    video_thumb: !!r.data.media.video_thumb,
+                    voice: !!r.data.media.voice,
+                };
+            }
         }
     } catch {}
     await loadChatlogGroups();
@@ -119,6 +128,7 @@ function updateSendState() {
 }
 
 async function loadMessages(chatlogId) {
+    await WECHAT_EMOJI_READY;
     const gen = ++loadGen;
     const params = new URLSearchParams({
         group: chatlogId,
@@ -168,6 +178,22 @@ function chatPageNext() {
 
 const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, NAMECARD: 42, VIDEO: 43, ANIMATION: 47, LOCATION: 48, SHARE: 49, SYSTEM: 10000, REVOKE: 10002 };
 
+let WECHAT_EMOJI = {};
+const WECHAT_EMOJI_RE = /\[([^\[\]]{1,8})\]/g;
+
+const WECHAT_EMOJI_READY = fetch('/wechat_emoji.json')
+    .then(r => r.ok ? r.json() : {})
+    .then(m => { WECHAT_EMOJI = m; })
+    .catch(() => {});
+
+function replaceWechatEmoji(text) {
+    return text.replace(WECHAT_EMOJI_RE, (m, name) => WECHAT_EMOJI[name] || m);
+}
+
+function renderTextWithEmoji(content) {
+    return replaceWechatEmoji(escapeHtml(content));
+}
+
 function formatMsgContent(m) {
     const type = m.msg_type;
     const content = m.content || '';
@@ -178,13 +204,13 @@ function formatMsgContent(m) {
     }
 
     if (type === MSG_TYPE.IMAGE)
-        return `<div class="msg-text msg-media">[图片]</div>`;
+        return renderMediaImage(m, '[图片]');
     if (type === MSG_TYPE.VOICE)
-        return `<div class="msg-text msg-media">[语音]</div>`;
+        return renderMediaVoice(m, '[语音]');
     if (type === MSG_TYPE.VIDEO)
-        return `<div class="msg-text msg-media">[视频]</div>`;
+        return renderMediaVideoThumb(m, '[视频]');
     if (type === MSG_TYPE.ANIMATION)
-        return `<div class="msg-text msg-media">[动画表情]</div>`;
+        return renderMediaSticker(m, '[动画表情]');
     if (type === MSG_TYPE.NAMECARD) {
         const nick = content.match(/nickname="([^"]*)"/);
         const certinfo = content.match(/certinfo="([^"]*)"/);
@@ -196,8 +222,26 @@ function formatMsgContent(m) {
         html += `</div></div>`;
         return html;
     }
-    if (type === MSG_TYPE.LOCATION)
-        return `<div class="msg-text msg-media">[位置]</div>`;
+    if (type === MSG_TYPE.LOCATION) {
+        // <location label="..." poiname="..." x="..." y="..."/>
+        const labelM = content.match(/\blabel="([^"]*)"/);
+        const poiM = content.match(/\bpoiname="([^"]*)"/);
+        const xM = content.match(/\bx="([^"]*)"/);
+        const yM = content.match(/\by="([^"]*)"/);
+        const poi = poiM ? poiM[1] : '';
+        const label = labelM ? labelM[1] : '';
+        const title = poi || label || '[位置]';
+        const desc = poi && label && poi !== label ? label : '';
+        const mapUrl = (xM && yM) ? `https://uri.amap.com/marker?position=${encodeURIComponent(yM[1])},${encodeURIComponent(xM[1])}&name=${encodeURIComponent(title)}` : '';
+        let html = `<div class="msg-card location-card">`;
+        html += `<div class="msg-card-icon">📍</div>`;
+        html += `<div class="msg-card-body">`;
+        html += `<div class="msg-card-title">${escapeHtml(title)}</div>`;
+        if (desc) html += `<div class="msg-card-desc">${escapeHtml(desc)}</div>`;
+        html += `</div></div>`;
+        if (mapUrl) html = `<a href="${mapUrl}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">${html}</a>`;
+        return html;
+    }
 
     if (type === MSG_TYPE.SHARE) {
         const innerType = extractXmlTag(content, 'type');
@@ -281,13 +325,118 @@ function formatMsgContent(m) {
             html += `<div class="msg-text">${escapeHtml(text)}</div>`;
             return html;
         }
+        if (innerType === '4') {
+            // 视频卡片 (B 站等第三方视频分享)
+            const title = extractXmlTag(content, 'title') || '[视频卡片]';
+            const des = extractXmlTag(content, 'des') || '';
+            const url = extractXmlTag(content, 'url');
+            let html = `<div class="msg-card video-card">`;
+            html += `<div class="msg-card-icon">🎬</div>`;
+            html += `<div class="msg-card-body">`;
+            html += `<div class="msg-card-title">${escapeHtml(title)}</div>`;
+            if (des) html += `<div class="msg-card-desc">${escapeHtml(des.length > 80 ? des.slice(0, 80) + '…' : des)}</div>`;
+            html += `</div></div>`;
+            if (url) html = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit">${html}</a>`;
+            return html;
+        }
+        if (innerType === '2') {
+            // 公众号笔记 / 收藏
+            const title = extractXmlTag(content, 'title') || '[笔记]';
+            const des = extractXmlTag(content, 'des') || '';
+            let html = `<div class="msg-card note-card">`;
+            html += `<div class="msg-card-icon">📝</div>`;
+            html += `<div class="msg-card-body">`;
+            html += `<div class="msg-card-title">${escapeHtml(title)}</div>`;
+            if (des) html += `<div class="msg-card-desc">${escapeHtml(des.length > 80 ? des.slice(0, 80) + '…' : des)}</div>`;
+            html += `</div></div>`;
+            return html;
+        }
         const title = extractXmlTag(content, 'title') || '[链接]';
         const url = extractXmlTag(content, 'url');
         if (url) return `<div class="msg-text msg-link"><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(title)}</a></div>`;
         return `<div class="msg-text msg-media">${escapeHtml(title)}</div>`;
     }
 
-    return `<div class="msg-text">${escapeHtml(content)}</div>`;
+    return `<div class="msg-text">${renderTextWithEmoji(content)}</div>`;
+}
+
+function mediaPlaceholder(text) {
+    return `<div class="msg-text msg-media">${escapeHtml(text)}</div>`;
+}
+
+function mediaTokenSuffix() {
+    const t = getToken();
+    return t ? `&token=${encodeURIComponent(t)}` : '';
+}
+
+function renderMediaImage(m, fallbackText) {
+    if (!chatlogMediaCaps.image || !m.server_id_str || !m.talker) return mediaPlaceholder(fallbackText);
+    // 列表用缩略图 (快, JPEG); 点击查看大图 (hd=1, 可能是 wxgf 转码)
+    const tok = mediaTokenSuffix();
+    const base = `/api/chatlog/media?msg_type=3&group=${encodeURIComponent(m.talker)}&server_id=${m.server_id_str}${tok}`;
+    const thumbUrl = base;            // 默认 hd=false
+    const hdUrl = base + '&hd=1';
+    // hdUrl 经 JSON.stringify 安全嵌入 inline onclick (encodeURIComponent 不编码单引号)
+    return `<div class="msg-text msg-media"><img class="msg-img" loading="lazy" src="${thumbUrl}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(${escapeHtml(JSON.stringify(hdUrl))}, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
+}
+
+function renderMediaVideoThumb(m, fallbackText) {
+    if (!chatlogMediaCaps.video_thumb || !m.server_id_str || !m.talker) return mediaPlaceholder(fallbackText);
+    const url = `/api/chatlog/media?msg_type=43&group=${encodeURIComponent(m.talker)}&server_id=${m.server_id_str}${mediaTokenSuffix()}`;
+    return `<div class="msg-text msg-media"><img class="msg-img msg-video-thumb" loading="lazy" src="${url}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"><div class="msg-video-label">▶ 视频</div></div>`;
+}
+
+function renderMediaVoice(m, fallbackText) {
+    if (!chatlogMediaCaps.voice || !m.server_id_str) return mediaPlaceholder(fallbackText);
+    // voicelength 单位 ms, 显示秒数
+    const lenM = (m.content || '').match(/voicelength="(\d+)"/);
+    const seconds = lenM ? Math.round(parseInt(lenM[1], 10) / 1000) : null;
+    const label = seconds ? `🎙 ${seconds}″` : '🎙 语音';
+    const url = `/api/chatlog/media?msg_type=34&server_id=${m.server_id_str}${mediaTokenSuffix()}`;
+    return `<div class="msg-text msg-media"><audio class="msg-audio" preload="none" controls src="${url}"></audio><div class="msg-audio-label">${label}</div></div>`;
+}
+
+function renderMediaSticker(m, fallbackText) {
+    if (!chatlogMediaCaps.sticker) return mediaPlaceholder(fallbackText);
+    const content = m.content || '';
+    if (!content) return mediaPlaceholder(fallbackText);
+    const url = `/api/chatlog/media?msg_type=47&content=${encodeURIComponent(content)}${mediaTokenSuffix()}`;
+    return `<div class="msg-text msg-media"><img class="msg-img msg-sticker" loading="lazy" src="${url}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
+}
+
+/**
+ * 大图查看: 先显示 fallbackSrc (缩略图, 立即可见), 同时拉 hdSrc, 加载完替换;
+ * hdSrc 失败 (onerror) 时保留缩略图, 不报错.
+ */
+function showImageLightbox(hdSrc, fallbackSrc) {
+    let lb = document.getElementById('imgLightbox');
+    if (!lb) {
+        lb = document.createElement('div');
+        lb.id = 'imgLightbox';
+        lb.className = 'img-lightbox';
+        lb.onclick = () => { lb.style.display = 'none'; };
+        lb.innerHTML = '<img><div class="img-lightbox-hint">加载中...</div>';
+        document.body.appendChild(lb);
+    }
+    const imgEl = lb.querySelector('img');
+    const hint = lb.querySelector('.img-lightbox-hint');
+    imgEl.src = fallbackSrc || hdSrc;
+    lb.style.display = 'flex';
+    if (!fallbackSrc || hdSrc === fallbackSrc) {
+        hint.textContent = '';
+        return;
+    }
+    hint.textContent = '加载原图...';
+    const loader = new Image();
+    loader.onload = () => {
+        imgEl.src = hdSrc;
+        hint.textContent = '';
+    };
+    loader.onerror = () => {
+        hint.textContent = '原图不可用, 显示缩略图';
+        setTimeout(() => { hint.textContent = ''; }, 2000);
+    };
+    loader.src = hdSrc;
 }
 
 function extractXmlTag(xml, tag) {
