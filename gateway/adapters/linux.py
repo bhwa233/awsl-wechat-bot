@@ -76,28 +76,6 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._seen_message_keys: dict[str, set[str]] = {}
         self._seen_lock = threading.Lock()
         self._ensure_tools()
-        self._wait_for_chatlog_and_preheat()
-
-    def _wait_for_chatlog_and_preheat(self, *, timeout: float = 30.0, interval: float = 0.5) -> None:
-        """阻塞等待 chatlog 服务就绪并预热群列表 cache.
-
-        gateway/chatlog/cortex 同进程 asyncio.gather 启动, gateway 的 adapter 在 startup
-        早期实例化, 此时 chatlog uvicorn 可能还未 listen. 不预热则 detector 启动后会撞
-        "未匹配 chatlog talker" + 5s retry backoff, 自愈前留下一波 ERROR 日志.
-
-        策略: 每 interval 秒尝试一次 _refresh_group_cache, 命中即返回; 超时仅 warning,
-        不阻塞 gateway 启动 (按需刷新仍会兜底, 只是损失启动期消息基线标记).
-        """
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            # 复位退避, 否则首次失败后 5s 内 _refresh_group_cache 直接 return
-            self._group_cache_retry_at = 0.0
-            self._refresh_group_cache(force=True)
-            if self._title_to_talker:
-                logger.info("chatlog 群列表预热完成: %d 个映射", len(self._title_to_talker))
-                return
-            time.sleep(interval)
-        logger.warning("chatlog 群列表预热超时 (%.1fs), 走按需刷新", timeout)
 
     def close(self) -> None:
         self._chatlog.close()
@@ -241,6 +219,10 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         if talker:
             window.talker = talker
             return talker
+        # cache 空时 (启动早期 chatlog 尚未就绪) 复位退避锁, 每次都尝试刷新;
+        # 已有 cache 但当前 title 不在里面, 走默认 TTL/retry backoff 避免狂刷
+        if not self._title_to_talker:
+            self._group_cache_retry_at = 0.0
         self._refresh_group_cache(force=True)
         window.talker = self._title_to_talker.get(window.title)
         if window.talker:
