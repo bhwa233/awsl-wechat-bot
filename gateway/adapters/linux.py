@@ -61,6 +61,10 @@ def _x11_env() -> dict[str, str]:
 class LinuxWeChatAdapter(BaseWeChatAdapter):
     _TEMP_CLEANUP_DELAY: ClassVar[float] = 15.0
     _CHATLOG_RETRY_INTERVAL: ClassVar[float] = 5.0
+    # 必须 >= gateway.storage.message_db.MessageDB.hash_message_with_context 的 context_size,
+    # 否则同一短文本 (如 'ss') 在不同轮次出现时 hash 上下文相同, 会被 detector db 永久拦截.
+    _HASH_CONTEXT_SIZE: ClassVar[int] = 2
+    _LAST_TEXTS_KEEP: ClassVar[int] = 4
 
     def __init__(self) -> None:
         self._send_lock = threading.Lock()
@@ -73,7 +77,10 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._group_cache_retry_at = 0.0
         self._title_to_talker: dict[str, str] = {}
         self._window_title_to_talker: dict[str, str] = {}
-        self._seen_message_keys: dict[str, set[str]] = {}
+        # 每个 talker 上次拉取结果: (last_time_iso, last_messages_list).
+        # 下次拉消息用 last_time 作 start 边界 + last_messages 作为 hash 上下文前缀,
+        # 避免"重复出现的同一短文本(如 ss)永远撞同一 hash 被 detector db 拦"的问题.
+        self._last_pull: dict[str, tuple[str, list[str]]] = {}
         self._seen_lock = threading.Lock()
         self._ensure_tools()
 
@@ -171,46 +178,60 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         if not talker:
             raise RuntimeError(f"[{window.title}] 未匹配 chatlog talker")
 
+        with self._seen_lock:
+            last_time, last_texts = self._last_pull.get(talker, ("", []))
+
+        params: dict = {
+            "group": talker,
+            "limit": config.LINUX_CHATLOG_MESSAGE_LIMIT,
+            "desc": True,
+        }
+        # 增量: chatlog start 是 'YYYY-MM-DD HH:MM:SS', 用上次最大 time 做下界 (含等号,
+        # 同秒边界靠下面 strict-greater 过滤)
+        if last_time:
+            params["start"] = last_time.replace("T", " ")[:19]
+
         try:
-            response = self._chatlog.get(
-                "/api/chatlog/messages",
-                params={
-                    "group": talker,
-                    "limit": config.LINUX_CHATLOG_MESSAGE_LIMIT,
-                    "desc": True,
-                },
-            )
+            response = self._chatlog.get("/api/chatlog/messages", params=params)
             response.raise_for_status()
             messages = list(reversed(response.json()))
         except httpx.HTTPError as exc:
             raise RuntimeError(f"[{window.title}] Linux chatlog 消息读取失败: {exc}") from exc
 
-        texts = []
+        new_texts: list[str] = []
+        new_last_time = last_time
         for message in messages:
+            msg_time = message.get("time", "")
+            # strict-greater 过滤同秒边界 (chatlog start 是 >=)
+            if last_time and msg_time <= last_time:
+                continue
+            # 跳过自己发的消息. 不推进 new_last_time, 防止把同秒别人的消息一并丢掉
+            # (chatlog start 是 >= 边界 + 下面 strict-greater 过滤是 <=, 同秒边界
+            # 必须等下一轮通过原 last_time 把别人的消息也带出来).
+            if message.get("is_self"):
+                continue
             text = self._message_text(message)
-            if text and self._mark_unseen_message(talker, message):
-                texts.append(text)
-        return texts
+            if not text:
+                continue
+            new_texts.append(text)
+            if msg_time > new_last_time:
+                new_last_time = msg_time
 
-    def _mark_unseen_message(self, talker: str, message: dict) -> bool:
-        key = self._message_hash_key(message)
+        if not new_texts:
+            return []
+
+        # 上下文前缀: 用上次返回过的最后 _HASH_CONTEXT_SIZE 条, 让同一短文本在不同轮次
+        # 出现时, detector hash 上下文不同 → 不撞 db. 前缀那几条之前已经标 processed,
+        # 重复进 db 不影响.
+        prefix = last_texts[-self._HASH_CONTEXT_SIZE:] if last_texts else []
+        result = prefix + new_texts
+
         with self._seen_lock:
-            seen = self._seen_message_keys.setdefault(talker, set())
-            if key in seen:
-                return False
-            seen.add(key)
-            return True
+            # 保留最近 N 条做下次的上下文前缀, 防止内存无限增长
+            tail = (last_texts + new_texts)[-self._LAST_TEXTS_KEEP:]
+            self._last_pull[talker] = (new_last_time, tail)
 
-    @staticmethod
-    def _message_hash_key(message: dict) -> str:
-        seq = message.get("seq")
-        if seq:
-            return f"chatlog:{seq}"
-        return "chatlog:{time}:{sender}:{content}".format(
-            time=message.get("time", ""),
-            sender=message.get("sender", ""),
-            content=message.get("content", ""),
-        )
+        return result
 
     def _resolve_talker(self, window: LinuxWeChatWindow) -> str | None:
         if window.talker:

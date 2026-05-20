@@ -35,7 +35,11 @@ class MessageDatabase:
         logger.debug("数据库初始化完成")
 
     def hash_message_with_context(self, messages: list, index: int, group_name: str) -> str:
-        """结合前向上下文和群名计算消息的唯一哈希值"""
+        """结合前向上下文和群名计算消息的唯一哈希值.
+
+        注意: gateway.adapters.linux.LinuxWeChatAdapter._HASH_CONTEXT_SIZE 必须 >= 此处
+        context_size, 否则 Linux 平台同一短文本会撞同一 hash 被永久拦截. 如需调整请同步.
+        """
         current = messages[index]
         context_size = 2
         context_parts = []
