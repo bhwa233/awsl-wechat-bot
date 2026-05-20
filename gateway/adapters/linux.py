@@ -76,6 +76,11 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._seen_message_keys: dict[str, set[str]] = {}
         self._seen_lock = threading.Lock()
         self._ensure_tools()
+        # 预热 group cache, 避免 detector 启动时撞空字典报 "未匹配 chatlog talker"
+        try:
+            self._refresh_group_cache(force=True)
+        except Exception as exc:
+            logger.warning("初始预热 chatlog 群列表失败, 将在 detector 调用时按需重试: %s", exc)
 
     def close(self) -> None:
         self._chatlog.close()
