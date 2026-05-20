@@ -81,6 +81,10 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         # 下次拉消息用 last_time 作 start 边界 + last_messages 作为 hash 上下文前缀,
         # 避免"重复出现的同一短文本(如 ss)永远撞同一 hash 被 detector db 拦"的问题.
         self._last_pull: dict[str, tuple[str, list[str]]] = {}
+        # detector 是 per-group 线程, 多群并发. 用 threading.local 让
+        # get_messages_from_window → messages_to_check 同线程内传递 "本轮 prefix 长度",
+        # 避免跨线程互相覆盖.
+        self._tls = threading.local()
         self._seen_lock = threading.Lock()
         self._ensure_tools()
 
@@ -88,7 +92,11 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._chatlog.close()
 
     def messages_to_check(self, messages: list[str]) -> list[str]:
-        return messages
+        # get_messages_from_window 返回的 list 前 N 条是上一轮已处理的上下文前缀
+        # (仅让本轮新消息算 hash 时上下文不同, 自身不应再次触发). detector 通过本切片
+        # 跳过前缀的触发循环, prefix 仍能进 hash db 兜底.
+        n = getattr(self._tls, "prefix_len", 0)
+        return messages[n:] if n else messages
 
     def can_trigger_message(self, messages_to_check: list[str], index: int) -> bool:
         return True
@@ -221,8 +229,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             return []
 
         # 上下文前缀: 用上次返回过的最后 _HASH_CONTEXT_SIZE 条, 让同一短文本在不同轮次
-        # 出现时, detector hash 上下文不同 → 不撞 db. 前缀那几条之前已经标 processed,
-        # 重复进 db 不影响.
+        # 出现时, detector hash 上下文不同 → 不撞 db. 前缀本身被 can_trigger_message 拦掉
+        # 不会重复触发, 但 detector 仍会把它的 hash 写进 db (无害).
         prefix = last_texts[-self._HASH_CONTEXT_SIZE:] if last_texts else []
         result = prefix + new_texts
 
@@ -230,7 +238,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             # 保留最近 N 条做下次的上下文前缀, 防止内存无限增长
             tail = (last_texts + new_texts)[-self._LAST_TEXTS_KEEP:]
             self._last_pull[talker] = (new_last_time, tail)
-
+        # per-thread 传递 prefix 长度到下一步 messages_to_check, 避免多群并发覆盖
+        self._tls.prefix_len = len(prefix)
         return result
 
     def _resolve_talker(self, window: LinuxWeChatWindow) -> str | None:
