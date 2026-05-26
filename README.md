@@ -94,8 +94,7 @@ flowchart TB
 cd awsl-wechat-bot
 
 # 安装依赖（需要 uv: https://docs.astral.sh/uv/）
-uv sync                    # 核心依赖
-uv sync --all-extras       # 全部依赖（含解密/总结可选组）
+uv sync
 
 cp .env.example .env  # 编辑配置
 ```
@@ -223,7 +222,9 @@ GET  /api/chatlog/health 等
 
 # 媒体: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file
 GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
-# image/video-thumb 需 IMAGE_AES_KEY；voice 需 --extra media；sticker/file 不依赖密钥
+# image/video-thumb 需 IMAGE_AES_KEY；voice 依赖 av/pilk，已随普通 uv sync 安装
+# image hd=1 会尝试本机原图/高清 .dat（无后缀/_h/_W 等），wxgf/HEVC 会转 JPEG
+# 转发聊天记录 type=19 内嵌图片目前不按普通 msg_type=3 暴露
 # 文件 (49) 直接走 msg/file/<YYYY-MM>/<title> 明文, 带 Content-Disposition (UTF-8) 下载
 # 返回原始 bytes + X-Media-Md5/Format + Cache-Control immutable + ETag
 ```

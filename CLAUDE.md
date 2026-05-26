@@ -10,8 +10,7 @@ AWSL WeChat Bot - 跨平台微信群聊机器人，采用 Gateway + Cortex 微�
 
 ```bash
 # Setup (uv)
-uv sync                    # 安装核心依赖
-uv sync --all-extras       # 安装全部依赖（含 decrypt/summary 可选组）
+uv sync                    # 安装依赖
 cp .env.example .env
 
 # Run (Gateway :8000 + Chatlog :7998 + Cortex :7999)
@@ -167,7 +166,7 @@ Chatlog (:7998):
 - v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`, `GET /api/chatlog/v1/media`
 - v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`, `GET /api/chatlog/v2/media`（v2 也有 `/decrypt` 但是 no-op，原生库直接读密文）
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
-- 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 需 `--extra media`；sticker/file 不依赖密钥。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
+- 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 依赖 av/pilk（必需依赖，普通 `uv sync` 安装）；sticker/file 不依赖密钥。image `hd=1` 通过 message_resource md5 查本机 `.dat`，按无后缀原图 / `_h` / `_W` / 非缩略图 / `_t` 顺序尝试，wxgf/HEVC 经 av 转 JPEG；转发聊天记录 type=19 的内嵌图片当前不按普通 msg_type=3 暴露。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
 - 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
 
 Cortex (:7999):
@@ -210,7 +209,7 @@ Server → Client:
 
 - **No test suite**: 项目当前没有配置 pytest / ruff / mypy 等工具，无自动化测试
 - **Python 3.11+**: `requires-python = ">=3.11"`
-- **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖，可选依赖组：`decrypt`、`summary`
+- **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖；富媒体依赖 av/pilk/numpy 是必需依赖，避免 daemon 普通 `uv sync` 后丢失原图 HEVC 转码和语音能力
 - **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `LINUX_WECHAT_*`, `LINUX_CHATLOG_*`, `DEBUG`）
 
 ## Platform Notes

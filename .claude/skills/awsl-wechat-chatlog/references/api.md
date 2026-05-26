@@ -29,7 +29,7 @@ Health check (no auth required). Exposes backend type and rich-media capabilitie
 Capability fields:
 - `image` / `video_thumb`: require `IMAGE_AES_KEY` in `.env` (derive via `tools/extract_wx_image_key_*.py`)
 - `sticker`: always available
-- `voice`: requires `uv sync --extra media` (pulls `av` + `pilk`)
+- `voice`: requires `av` + `pilk` runtime dependencies (now required project dependencies)
 - `file`: requires `WECHAT_DB_INPUT_PATH` resolvable (file is stored as plaintext, no AES key needed)
 
 ---
@@ -124,18 +124,34 @@ File responses additionally carry `Content-Disposition` for browser downloads.
 - `group` (string, required for `msg_type` 3 / 43): group ID or peer wxid
 - `server_id` (string, required for `msg_type` 3 / 34 / 43): message `server_id_str` from `/messages`
 - `content` (string, required for `msg_type` 47 / 49): the original message XML payload
-- `hd` (bool, default false): image only; high-resolution `_h` source (wxgf → JPEG transcode)
+- `hd` (bool, default false): image only; high-resolution/original local source (wxgf/HEVC -> JPEG transcode)
 - `token` (string, optional): query-string auth fallback for `<img>` / `<audio>` tags
 
 **Usage matrix:**
 
 | msg_type | Required params | Notes |
 |---|---|---|
-| 3 image | `group`, `server_id`, `hd?` | Needs `IMAGE_AES_KEY`. Default returns thumbnail JPEG; `hd=1` returns HD (wxgf-transcoded) |
-| 34 voice | `server_id` | Needs `--extra media` (pilk + av). Returns MP3 |
+| 3 image | `group`, `server_id`, `hd?` | Needs `IMAGE_AES_KEY`. Default returns thumbnail JPEG; `hd=1` tries original/HD local `.dat` and transcodes wxgf/HEVC to JPEG |
+| 34 voice | `server_id` | Needs `pilk` + `av`. Returns MP3 |
 | 43 video thumb | `group`, `server_id` | Needs `IMAGE_AES_KEY`. Returns JPEG; the full video binary is NOT served |
 | 47 sticker | `content` | Fetched from WeChat CDN, fallback to local `emoticon.db` AES key. Returns GIF/WebP |
 | 49 file | `content` | App-msg `<type>6</type>` plaintext file under `msg/file/<YYYY-MM>/<title>`. Returns raw bytes + `Content-Disposition: attachment; filename*=UTF-8'…'`. Max 200 MB |
+
+**Image original/HD behavior (`msg_type=3&hd=1`):**
+
+1. Read the message from `/api/chatlog/messages`.
+2. Use `talker` as `group` and `server_id_str` as `server_id`.
+3. Chatlog resolves `server_id` to image md5 from `message_resource.db`.
+4. It searches local WeChat files under `xwechat_files/<wxid>/msg/attach/<md5(group)>/*/Img/`.
+5. Candidate priority is `<md5>.dat`, `_h.dat`, `_W.dat`, other non-thumbnail variants, then `_t.dat`.
+6. If the chosen original is WeChat `wxgf`/HEVC, Chatlog converts it to JPEG via `av`.
+
+If `hd=1` returns the same bytes/dimensions as thumbnail, the local WeChat client likely only has `_t.dat`, or the original `.dat` is present but not decodable. SSH to the Chatlog host and inspect the candidate files by md5 before assuming the URL is wrong.
+
+**Unsupported / special cases:**
+
+- Forwarded chat-record cards (`msg_type=49`, appmsg `<type>19</type>`) may contain embedded `recorditem -> dataitem datatype=2` images with `cdndataurl`, `cdndatakey`, and `fullmd5`. The current `/media` endpoint does not expose those embedded record images as ordinary `msg_type=3` images.
+- Quote/refer messages (`msg_type=49`, appmsg `<type>57</type>`) often contain only the quoted summary. Do not use the outer `server_id` as a media `server_id` unless the outer message itself is a supported media type.
 
 **Examples:**
 
@@ -146,6 +162,9 @@ curl -OJ "http://127.0.0.1:7998/api/chatlog/media?msg_type=3&group=12345@chatroo
 
 # image (HD)
 curl -OJ "...&msg_type=3&group=...&server_id=...&hd=1" -H "Authorization: ..."
+
+# image (HD/original via browser token fallback)
+open "http://127.0.0.1:7998/api/chatlog/media?msg_type=3&group=12345@chatroom&server_id=6349274343476749755&hd=1&token=$HTTP_API_TOKEN"
 
 # voice
 curl -OJ "...?msg_type=34&server_id=..." -H "Authorization: ..."
