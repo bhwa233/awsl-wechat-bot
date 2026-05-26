@@ -28,12 +28,12 @@ dependencies = [
     "Pillow>=9.0.0",
     "markdown>=3.4.0",
     "jsonpath-ng>=1.8.0",
+    # wxgf (HEVC) -> JPEG, SILK voice -> MP3: 微信 4.x 富媒体解码;
+    # av 自带 ffmpeg (用于 HEVC/MP3), pilk 提供 SILK v3 -> PCM
+    "av>=12.0.0",
+    "pilk>=0.2.0",
+    "numpy>=1.24.0",
 ]
-
-[project.optional-dependencies]
-# wxgf (HEVC) → JPEG, SILK voice → MP3: 微信 4.x 富媒体解码;
-# av 自带 ffmpeg (用于 HEVC/MP3), pilk 提供 SILK v3 → PCM
-media = ["av>=12.0.0", "pilk>=0.2.0", "numpy>=1.24.0"]
 
 [dependency-groups]
 dev = [

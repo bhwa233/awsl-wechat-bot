@@ -66,12 +66,15 @@ name = "awsl-wechat-bot"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "av" },
     { name = "croniter" },
     { name = "fastapi" },
     { name = "html2image" },
     { name = "httpx" },
     { name = "jsonpath-ng" },
     { name = "markdown" },
+    { name = "numpy" },
+    { name = "pilk" },
     { name = "pillow" },
     { name = "pycryptodome" },
     { name = "pydantic" },
@@ -87,13 +90,6 @@ dependencies = [
     { name = "zstandard" },
 ]
 
-[package.optional-dependencies]
-media = [
-    { name = "av" },
-    { name = "numpy" },
-    { name = "pilk" },
-]
-
 [package.dev-dependencies]
 dev = [
     { name = "ruff" },
@@ -101,15 +97,15 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "av", marker = "extra == 'media'", specifier = ">=12.0.0" },
+    { name = "av", specifier = ">=12.0.0" },
     { name = "croniter", specifier = ">=2.0.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
     { name = "html2image", specifier = ">=2.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonpath-ng", specifier = ">=1.8.0" },
     { name = "markdown", specifier = ">=3.4.0" },
-    { name = "numpy", marker = "extra == 'media'", specifier = ">=1.24.0" },
-    { name = "pilk", marker = "extra == 'media'", specifier = ">=0.2.0" },
+    { name = "numpy", specifier = ">=1.24.0" },
+    { name = "pilk", specifier = ">=0.2.0" },
     { name = "pillow", specifier = ">=9.0.0" },
     { name = "pillow", marker = "sys_platform == 'win32'", specifier = ">=9.0.0" },
     { name = "pycryptodome", specifier = ">=3.19.0" },
@@ -125,7 +121,6 @@ requires-dist = [
     { name = "websockets", specifier = ">=12.0" },
     { name = "zstandard", specifier = ">=0.22.0" },
 ]
-provides-extras = ["media"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "ruff", specifier = ">=0.15.12" }]
