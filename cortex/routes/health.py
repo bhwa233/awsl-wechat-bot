@@ -72,6 +72,10 @@ def create_routes():
     async def tasks_js():
         return _serve_file('tasks.js', 'application/javascript')
 
+    @router.get("/custom_commands.js")
+    async def custom_commands_js():
+        return _serve_file('custom_commands.js', 'application/javascript')
+
     @router.get("/webhooks.js")
     async def webhooks_js():
         return _serve_file('webhooks.js', 'application/javascript')

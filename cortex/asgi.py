@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from common.config import config
 from common.logging import setup_uvicorn_logging
-from cortex.routes import chatlog_proxy, gateway_proxy, health, summary, tasks, webhooks
+from cortex.routes import chatlog_proxy, custom_commands, gateway_proxy, health, summary, tasks, webhooks
 from cortex.scheduler import TaskScheduler
 from cortex.services.chatlog_client import ChatlogClient
 from cortex.services.scheduled_task import ScheduledTaskService
@@ -80,6 +80,8 @@ def create_app(cortex_app) -> FastAPI:
     app.include_router(health.create_routes())
     app.include_router(tasks.create_routes(task_service))
     app.include_router(webhooks.create_routes(webhook_service))
+    if cortex_app.custom_command_service:
+        app.include_router(custom_commands.create_routes(cortex_app.custom_command_service))
     app.include_router(summary.create_routes(summary_service))
     app.include_router(gw_proxy_router)
     app.include_router(cl_proxy_router)

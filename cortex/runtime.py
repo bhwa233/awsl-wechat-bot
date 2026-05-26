@@ -1,5 +1,6 @@
 """Cortex 应用 - 业务逻辑中枢"""
 import logging
+import os
 import queue
 import threading
 import time
@@ -11,6 +12,7 @@ from cortex.gateway_client import GatewayClient
 from cortex.models import MessageListener, TriggerType
 from cortex.services.ai import AIService
 from cortex.services.command import CommandService
+from cortex.services.custom_command import CustomCommandService
 from cortex.services.trigger import TriggerMatcher
 
 logger = logging.getLogger(__name__)
@@ -23,7 +25,8 @@ class CortexRuntime(MessageListener):
 
         self.ai_service = self._init_ai_service()
         self.command_service = self._init_command_service()
-        self.trigger_matcher = TriggerMatcher(self.command_service)
+        self.custom_command_service = self._init_custom_command_service()
+        self.trigger_matcher = TriggerMatcher(self.command_service, self.custom_command_service)
         self._running = False
 
         self._rate_limit = config.TRIGGER_RATE_LIMIT
@@ -56,6 +59,14 @@ class CortexRuntime(MessageListener):
             logger.warning(f"命令服务初始化失败: {e}")
             return None
 
+    def _init_custom_command_service(self):
+        try:
+            project_root = os.path.dirname(os.path.dirname(__file__))
+            return CustomCommandService(os.path.join(project_root, "custom_commands.db"))
+        except Exception as e:
+            logger.warning(f"自定义命令服务初始化失败: {e}")
+            return None
+
     def start(self):
         self._running = True
         if not self._workers:
@@ -85,6 +96,8 @@ class CortexRuntime(MessageListener):
             self.ai_service.close()
         if self.command_service:
             self.command_service.close()
+        if self.custom_command_service:
+            self.custom_command_service.close()
         logger.info("Cortex 已停止")
 
     def _is_rate_limited(self, group_name: str) -> bool:
@@ -155,6 +168,17 @@ class CortexRuntime(MessageListener):
             elif trigger_type == TriggerType.COMMAND and self.command_service:
                 logger.info(f"[{group_name}] 执行命令: {content[0]} {content[1][:50]}...")
                 res = self.command_service.execute_command(content[0], content[1])
+                if res:
+                    msg = res["content"]
+                    if res.get("type") == "image":
+                        message_type = MessageType.IMAGE
+                    elif res.get("type") == "file":
+                        message_type = MessageType.FILE
+                        filename = res.get("filename")
+
+            elif trigger_type == TriggerType.CUSTOM_COMMAND and self.custom_command_service:
+                logger.info(f"[{group_name}] 执行自定义命令: {content[0]} {content[1][:50]}...")
+                res = self.custom_command_service.execute_command(content[0], content[1])
                 if res:
                     msg = res["content"]
                     if res.get("type") == "image":

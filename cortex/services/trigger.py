@@ -8,8 +8,9 @@ from cortex.models import TriggerType
 class TriggerMatcher:
     """触发词匹配器"""
 
-    def __init__(self, command_service=None):
+    def __init__(self, command_service=None, custom_command_service=None):
         self.command_service = command_service
+        self.custom_command_service = custom_command_service
 
     def match(self, text: str) -> tuple[TriggerType | None, Any]:
         """
@@ -23,16 +24,16 @@ class TriggerMatcher:
 
         content = text.strip()
 
-        # @BOT_NAMES 触发 -> 转换为 TRIGGER_KEYWORD + 空格 + 内容,走统一匹配流程
+        # @BOT_NAMES 触发 -> 作为普通 AI 请求处理
         for bot_name in config.BOT_NAMES:
             if not bot_name:
                 continue
             at_pattern = f"@{bot_name}"
             if content.lower().startswith(at_pattern.lower()):
                 after_at = content[len(at_pattern):].strip()
-                # 转换为 "a xxx" 格式,继续走后续匹配逻辑
-                content = f"a {after_at}"
-                break
+                if after_at:
+                    return (TriggerType.AI, after_at)
+                return (None, "")
 
         content_lower = content.lower()
         keyword_lower = config.TRIGGER_KEYWORD.lower()
@@ -48,7 +49,13 @@ class TriggerMatcher:
                 return (TriggerType.AI, after_keyword)
             return (None, "")
 
-        # 命令匹配
+        # 自定义命令匹配(本地优先,不影响远程命令服务)
+        if self.custom_command_service:
+            custom_match = self.custom_command_service.match_command(content)
+            if custom_match:
+                return (TriggerType.CUSTOM_COMMAND, custom_match)
+
+        # 远程命令匹配
         if self.command_service:
             cmd_match = self.command_service.match_command(content)
             if cmd_match:
