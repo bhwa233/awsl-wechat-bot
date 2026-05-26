@@ -1,13 +1,15 @@
 """本地自定义命令服务 - 静态文本/图片/文件回复"""
 
+import json
 import logging
 import threading
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 from common.models import MessageType
+from common.sqlite_migrator import SQLiteMigrator
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,7 @@ class CustomCommandBase(SQLModel):
     message_type: MessageType = MessageType.TEXT
     message: str = ""
     filename: str = ""
+    target_groups: str = ""
     enabled: bool = True
 
 
@@ -34,7 +37,7 @@ class CustomCommand(CustomCommandBase, table=True):
 
 
 class CustomCommandCreate(CustomCommandBase):
-    pass
+    target_groups: list[str] | str | None = None
 
 
 class CustomCommandUpdate(SQLModel):
@@ -43,6 +46,7 @@ class CustomCommandUpdate(SQLModel):
     message_type: MessageType | None = None
     message: str | None = None
     filename: str | None = None
+    target_groups: list[str] | str | None = None
     enabled: bool | None = None
 
 
@@ -53,6 +57,7 @@ class CustomCommandResponse(BaseModel):
     message_type: MessageType
     message: str
     filename: str
+    target_groups: list[str] = PydanticField(default_factory=list)
     enabled: bool
     created_at: str | None = None
     updated_at: str | None = None
@@ -68,6 +73,7 @@ class CustomCommandService:
             echo=False,
         )
         CustomCommand.__table__.create(self.engine, checkfirst=True)
+        self._run_migrations(db_path)
         self._cache_lock = threading.Lock()
         self._enabled_cache: list[CustomCommand] = []
         self._reload_cache()
@@ -84,12 +90,71 @@ class CustomCommandService:
         return content
 
     @staticmethod
+    def _normalize_target_groups(value: list[str] | str | None) -> str:
+        if value is None:
+            return "[]"
+        if isinstance(value, str):
+            if not value.strip():
+                return "[]"
+            try:
+                groups = json.loads(value)
+            except json.JSONDecodeError:
+                return "[]"
+        else:
+            groups = value
+        if not isinstance(groups, list):
+            return "[]"
+        normalized = [str(group).strip() for group in groups if str(group).strip()]
+        return json.dumps(normalized, ensure_ascii=False)
+
+    @staticmethod
+    def _target_groups_to_list(value: str | None) -> list[str]:
+        if not value:
+            return []
+        try:
+            groups = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(groups, list):
+            return []
+        return [str(group) for group in groups if str(group)]
+
+    @staticmethod
     def _validate_payload(*, key: str, message_type: MessageType, message: str, filename: str) -> bool:
         if not key.strip() or any(ch.isspace() for ch in key.strip()):
             return False
         if not message.strip():
             return False
         return not (message_type == MessageType.FILE and not filename.strip())
+
+    def _run_migrations(self, db_path: str):
+        migrator = SQLiteMigrator(db_path)
+
+        def add_target_groups(conn):
+            SQLiteMigrator.add_column_if_missing(
+                conn,
+                "custom_commands",
+                "target_groups TEXT NOT NULL DEFAULT '[]'",
+                "target_groups",
+            )
+
+        migrator.migrate([
+            ("20260526_001_custom_commands_add_target_groups", add_target_groups),
+        ])
+
+    def to_response(self, command: CustomCommand) -> CustomCommandResponse:
+        return CustomCommandResponse(
+            id=command.id,
+            key=command.key,
+            description=command.description,
+            message_type=command.message_type,
+            message=command.message,
+            filename=command.filename,
+            target_groups=self._target_groups_to_list(command.target_groups),
+            enabled=command.enabled,
+            created_at=command.created_at,
+            updated_at=command.updated_at,
+        )
 
     def _reload_cache(self):
         with Session(self.engine) as session:
@@ -115,6 +180,7 @@ class CustomCommandService:
     def create(self, data: CustomCommandCreate) -> CustomCommand | None:
         key = self._normalize_key(data.key)
         message = self._normalize_content(data.message_type, data.message)
+        target_groups = self._normalize_target_groups(data.target_groups)
         if not self._validate_payload(
             key=key,
             message_type=data.message_type,
@@ -128,9 +194,10 @@ class CustomCommandService:
             return None
 
         with Session(self.engine) as session:
-            command = CustomCommand.model_validate(data)
+            command = CustomCommand.model_validate(data.model_dump(exclude={"target_groups"}))
             command.key = key
             command.message = message
+            command.target_groups = target_groups
             session.add(command)
             session.commit()
             session.refresh(command)
@@ -157,6 +224,7 @@ class CustomCommandService:
             next_message = update_data.get("message", command.message)
             next_message = self._normalize_content(next_message_type, next_message)
             next_filename = update_data.get("filename", command.filename)
+            next_target_groups = self._normalize_target_groups(update_data.get("target_groups", command.target_groups))
 
             if not self._validate_payload(
                 key=next_key,
@@ -172,6 +240,7 @@ class CustomCommandService:
 
             update_data["key"] = next_key
             update_data["message"] = next_message
+            update_data["target_groups"] = next_target_groups
             command.sqlmodel_update(update_data)
             command.updated_at = _now_local()
             session.add(command)
@@ -190,11 +259,18 @@ class CustomCommandService:
             self._reload_cache()
             return True
 
-    def match_command(self, text: str) -> tuple[str, str] | None:
+    @staticmethod
+    def _matches_group(command: CustomCommand, group_name: str) -> bool:
+        target_groups = CustomCommandService._target_groups_to_list(command.target_groups)
+        return not target_groups or group_name in target_groups
+
+    def match_command(self, text: str, group_name: str = "") -> tuple[str, str] | None:
         text_lower = text.lower().strip()
         with self._cache_lock:
             commands = list(self._enabled_cache)
         for command in sorted(commands, key=lambda item: len(item.key), reverse=True):
+            if not self._matches_group(command, group_name):
+                continue
             if text_lower.startswith(command.key.lower()):
                 params = text[len(command.key):].strip()
                 return (command.key, params)

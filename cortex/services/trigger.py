@@ -12,7 +12,7 @@ class TriggerMatcher:
         self.command_service = command_service
         self.custom_command_service = custom_command_service
 
-    def match(self, text: str) -> tuple[TriggerType | None, Any]:
+    def match(self, text: str, group_name: str = "") -> tuple[TriggerType | None, Any]:
         """
         检查是否包含触发词
 
@@ -51,7 +51,7 @@ class TriggerMatcher:
 
         # 自定义命令匹配(本地优先,不影响远程命令服务)
         if self.custom_command_service:
-            custom_match = self.custom_command_service.match_command(content)
+            custom_match = self.custom_command_service.match_command(content, group_name)
             if custom_match:
                 return (TriggerType.CUSTOM_COMMAND, custom_match)
 

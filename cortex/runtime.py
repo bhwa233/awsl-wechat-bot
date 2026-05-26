@@ -116,7 +116,7 @@ class CortexRuntime(MessageListener):
         return len(times) >= self._rate_limit
 
     def _handle_message(self, msg: WSMessageBroadcast) -> None:
-        trigger_type, content = self.trigger_matcher.match(msg.content)
+        trigger_type, content = self.trigger_matcher.match(msg.content, msg.group_name)
         if not trigger_type:
             return
 

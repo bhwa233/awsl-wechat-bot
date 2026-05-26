@@ -42,6 +42,14 @@ function resetCustomCommandUpload() {
     const fn = $('customCommandFileName'); if (fn) fn.textContent = '';
 }
 
+function updateCustomCommandTargetGroupsCheckboxes() {
+    const container = $('customCommandTargetGroupsCheckboxes');
+    if (!container) return;
+    container.innerHTML = allGroups.map(g =>
+        `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(g.name)}" name="customCommandTargetGroups">${escapeHtml(g.name)}</label>`
+    ).join('');
+}
+
 const customCommandCrud = new CrudManager({
     apiPath: '/api/custom-commands', listId: 'customCommandsList',
     formPanelId: 'customCommandFormPanel', formId: 'customCommandForm',
@@ -65,7 +73,8 @@ const customCommandCrud = new CrudManager({
             contentHtml = escapeHtml(cmd.message || '');
         }
         const contentItem = useRaw ? infoItemRaw(contentLabel, contentHtml) : infoItem(contentLabel, contentHtml);
-        return `<div class="crud-item">${itemHeader(cmd.key, cmd.enabled)}<div class="info-grid">${infoItem('描述', cmd.description || '-')}${infoItem('类型', cmd.message_type)}${contentItem}</div>${itemActions('customCommandCrud', cmd.id, cmd.enabled)}</div>`;
+        const targets = infoItem('目标群组', cmd.target_groups?.length ? cmd.target_groups.join(', ') : '所有群组');
+        return `<div class="crud-item">${itemHeader(cmd.key, cmd.enabled)}<div class="info-grid">${infoItem('描述', cmd.description || '-')}${infoItem('类型', cmd.message_type)}${contentItem}${targets}</div>${itemActions('customCommandCrud', cmd.id, cmd.enabled)}</div>`;
     },
 
     async fetchItem(id) {
@@ -79,6 +88,7 @@ const customCommandCrud = new CrudManager({
             description: $('customCommandDescription').value.trim(),
             message_type: $('customCommandMessageType').value,
             filename: '',
+            target_groups: Array.from(document.querySelectorAll('input[name="customCommandTargetGroups"]:checked')).map(cb => cb.value),
             enabled: $('customCommandEnabled').value === 'true',
         };
         if (!data.key) { toast('请输入命令 Key', 'error'); return null; }
@@ -101,6 +111,7 @@ const customCommandCrud = new CrudManager({
         $('customCommandMessageType').value = cmd.message_type || 'text';
         $('customCommandMessage').value = cmd.message_type === 'text' ? cmd.message : '';
         resetCustomCommandUpload();
+        updateCustomCommandTargetGroupsCheckboxes();
         if (cmd.message_type === 'image' && cmd.message) {
             customCommandImageState.message = cmd.message;
             $('customCommandImagePreviewImg').src = 'data:image/png;base64,' + cmd.message;
@@ -112,6 +123,9 @@ const customCommandCrud = new CrudManager({
             $('customCommandFileName').textContent = cmd.filename || '';
             $('customCommandFilePreview').style.display = '';
         }
+        document.querySelectorAll('input[name="customCommandTargetGroups"]').forEach(cb => {
+            cb.checked = cmd.target_groups?.includes(cb.value);
+        });
         toggleCustomCommandMessageType();
     },
 
@@ -119,6 +133,7 @@ const customCommandCrud = new CrudManager({
         resetCustomCommandUpload();
         $('customCommandMessageType').value = 'text';
         $('customCommandEnabled').value = 'true';
+        updateCustomCommandTargetGroupsCheckboxes();
         toggleCustomCommandMessageType();
     },
 });
