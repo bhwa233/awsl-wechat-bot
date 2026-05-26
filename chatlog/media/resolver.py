@@ -42,7 +42,7 @@ _FILE_MAX_BYTES = 200 * 1024 * 1024  # 200MB, 拒绝异常大文件防内存爆�
 _STICKER_FETCH_TIMEOUT = 5.0
 _STICKER_MAX_BYTES = 8 * 1024 * 1024  # 8MB, GIF/webp 表情包远小于此
 _STICKER_WALL_CLOCK = 10.0  # iter_bytes 总耗时上限 (httpx timeout 是 idle 不是 wall-clock)
-# 限制 sticker 外部 fetch 并发, 防止 40 个 anyio 线程 × 16MB(enc+plain) ≈ 640MB 内存峰值
+# 限制 sticker 外部 fetch 并发, 防止 40 个 anyio 线程 x 16MB(enc+plain) ≈ 640MB 内存峰值
 _STICKER_FETCH_SEM = threading.Semaphore(8)
 
 
@@ -104,14 +104,12 @@ class MediaResolver:
             return None
 
         if not hd:
-            thumb_path = self._pick_dat(group, md5, prefer_hd=False)
-            if not thumb_path:
-                return None
-            result = self._decrypt_v2(thumb_path, md5, msg_type=3)
-            # 缩略图理论可能是 wxgf (hevc), 浏览器不能渲染 → 放弃, 前端 onerror 走 placeholder
-            if result and result.fmt == "hevc":
-                return None
-            return result
+            for thumb_path in self._dat_candidates(group, md5, prefer_hd=False):
+                result = self._decrypt_v2(thumb_path, md5, msg_type=3)
+                # 缩略图理论可能是 wxgf (hevc), 浏览器不能渲染 → 继续尝试下一个候选
+                if result and result.fmt != "hevc":
+                    return result
+            return None
 
         # hd: 先查 negative cache (旧消息 .dat 已清理场景, 短期内不重复 IO)
         if cache.hd_image_negative_get(md5):
@@ -136,30 +134,25 @@ class MediaResolver:
             return None
 
         try:
-            hd_path = self._pick_dat(group, md5, prefer_hd=True)
-            if not hd_path:
+            candidates = self._dat_candidates(group, md5, prefer_hd=True)
+            if not candidates:
                 cache.hd_image_negative_put(md5)
                 return None
-            result = self._decrypt_v2(hd_path, md5, msg_type=3)
-            if result and result.fmt == "hevc":
-                jpeg = convert_wxgf_to_jpeg(result.data)
-                if jpeg:
-                    cache.hd_image.put(md5, (jpeg, "jpg"))
-                    return MediaResult(msg_type=3, fmt="jpg", data=jpeg, md5=md5)
-                # 转码失败 → 回退缩略图, 同时把 thumb 填进 hd cache 避免下次重跑 HEVC
-                thumb_path = self._pick_dat(group, md5, prefer_hd=False)
-                if thumb_path and thumb_path != hd_path:
-                    fallback = self._decrypt_v2(thumb_path, md5, msg_type=3)
-                    if fallback and fallback.fmt != "hevc":
-                        cache.hd_image.put(md5, (fallback.data, fallback.fmt))
-                        return fallback
-                # 无可用 fallback: hevc 原 bytes 浏览器无法渲染, 直接放弃 → 前端 onerror 走 placeholder
-                cache.hd_image_negative_put(md5)
-                return None
-            if result:
-                cache.hd_image.put(md5, (result.data, result.fmt))
+
+            for dat_path in candidates:
+                result = self._decrypt_v2(dat_path, md5, msg_type=3)
+                if not result:
+                    continue
+                if result.fmt == "hevc":
+                    jpeg = convert_wxgf_to_jpeg(result.data)
+                    if jpeg:
+                        cache.hd_image.put(md5, (jpeg, "jpg"))
+                        return MediaResult(msg_type=3, fmt="jpg", data=jpeg, md5=md5)
+                    continue
+                if not self._is_thumb_dat(dat_path, md5):
+                    cache.hd_image.put(md5, (result.data, result.fmt))
                 return result
-            # _decrypt_v2 返 None
+
             cache.hd_image_negative_put(md5)
             return None
         finally:
@@ -275,10 +268,7 @@ class MediaResolver:
         if not file_root.is_dir():
             return None
         stem, dot, ext = title.rpartition(".")
-        if dot:
-            patterns = (f"*/{title}", f"*/{stem}(*).{ext}")
-        else:
-            patterns = (f"*/{title}", f"*/{title}(*)")
+        patterns = (f"*/{title}", f"*/{stem}(*).{ext}") if dot else (f"*/{title}", f"*/{title}(*)")
         candidates: list[Path] = []
         for pat in patterns:
             candidates.extend(file_root.glob(pat))
@@ -359,26 +349,62 @@ class MediaResolver:
 
     # ---------- internal: .dat ---------- #
 
-    def _pick_dat(self, group: str, md5: str, prefer_hd: bool) -> Path | None:
-        """attach/<md5(group)>/*/Img/<md5>[_h|_t]?.dat — 优先 _h > 标清 > _t."""
+    def _dat_candidates(self, group: str, md5: str, prefer_hd: bool) -> list[Path]:
+        """attach/<md5(group)>/*/Img/<md5>*.dat 候选列表.
+
+        高清按 wechat-decrypt 的思路逐个尝试: 原图/最大 > _h > _W > 其他 > _t。
+        缩略图优先 _t 变体, 但会保留 fallback 候选。
+        """
         group_hash = hashlib.md5(group.encode()).hexdigest()
         base = self.attach_root / group_hash
         if not base.is_dir():
-            return None
+            return []
         candidates = sorted(glob.glob(str(base / "*" / "Img" / f"{md5}*.dat")))
         if not candidates:
-            return None
-        # 优先级: _h.dat > 标清 (无后缀) > _t.dat
-        rank = {"_h": 0, "": 1, "_t": 2}
-        def order(p: str) -> int:
-            name = os.path.basename(p)
-            stem = name[len(md5):-len(".dat")]
-            return rank.get(stem, 9)
-        candidates.sort(key=order)
-        if not prefer_hd:
-            # 反过来选缩略图
-            candidates.reverse()
-        return Path(candidates[0])
+            return []
+
+        def file_size(path: str) -> int:
+            try:
+                return os.path.getsize(path)
+            except OSError:
+                return 0
+
+        def order_hd(p: str) -> tuple[int, int, str]:
+            return (self._dat_rank(p, md5), -file_size(p), p)
+
+        def order_thumb(p: str) -> tuple[int, int, str]:
+            if self._is_thumb_dat(Path(p), md5):
+                return (0, file_size(p), p)
+            return (self._dat_rank(p, md5) + 10, file_size(p), p)
+
+        key = order_hd if prefer_hd else order_thumb
+        candidates.sort(key=key)
+        return [Path(path) for path in candidates]
+
+    @staticmethod
+    def _dat_rank(path: str, md5: str) -> int:
+        name = os.path.basename(path).lower()
+        md5_lower = md5.lower()
+        if "_t_" in name:
+            return 5
+        if name.endswith("_t.dat"):
+            return 4
+        if name.endswith("_w.dat"):
+            return 2
+        if name.endswith("_h.dat"):
+            return 1
+        if name == f"{md5_lower}.dat":
+            return 0
+        return 0
+
+    @staticmethod
+    def _is_thumb_dat(path: Path, md5: str) -> bool:
+        name = path.name.lower()
+        md5_lower = md5.lower()
+        if not name.startswith(md5_lower):
+            return False
+        stem = name[len(md5_lower):-len(".dat")]
+        return stem == "_t" or stem.startswith("_t_")
 
     def _decrypt_v2(self, dat_path: Path, md5: str, msg_type: int) -> MediaResult | None:
         if not is_v2_format(dat_path):
