@@ -128,8 +128,8 @@ per group                              │ 广播
 - `services/chatlog_client.py` - ChatlogClient：httpx.Client 调用 Chatlog 服务 API
 - `services/summary.py` - 群聊总结核心算法（格式化/排行榜/LLM 调用/Markdown→图片渲染）
 - `services/summary_service.py` - SummaryService：调 chatlog 拉消息，本地 LLM + 渲染，通过 gateway_client WS 发出
-- `routes/` - tasks, webhooks, health（含 webui 入口 `/` + 静态资源 `/style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json`）, summary, gateway_proxy（代理 Gateway API）, chatlog_proxy（代理 Chatlog API）
-- `templates/` - Cortex Web UI（SPA：聊天/定时任务/Webhook 三个 tab，由 `routes/health.py` 提供静态文件服务）
+- `routes/` - tasks, webhooks, health, webui（入口 `/` + `/manifest.json`，静态资源挂载 `/static/*`）, summary, gateway_proxy（代理 Gateway API）, chatlog_proxy（代理 Chatlog API）
+- `templates/` - Cortex Web UI（SPA：聊天/定时任务/Webhook 三个 tab，由 `/static/*` 挂载提供静态文件）
 
 **daemon/** - Daemon 控制器
 - `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
@@ -170,7 +170,7 @@ Chatlog (:7998):
 - 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
 
 Cortex (:7999):
-- Web UI: `GET /` (HTML), `GET /style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json`
+- Web UI: `GET /` (HTML), `GET /manifest.json`, `GET /static/*`
 - API: `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理 Gateway), `POST /api/send`(代理 Gateway), `GET /api/chatlog/groups`(代理 Chatlog), `GET /api/chatlog/messages`(代理 Chatlog), `POST /api/chatlog/decrypt`(代理 Chatlog), `GET /api/chatlog/health`(代理 Chatlog 无版本健康端点，含 media 能力), `GET /api/chatlog/media`(代理 Chatlog 富媒体)
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`

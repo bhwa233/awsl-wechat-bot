@@ -1,21 +1,17 @@
 """定时任务调度器 - 通过 GatewayClient WS 发送消息"""
-from __future__ import annotations
 
 import json
 import logging
 import threading
 import time
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 import httpx
 
 from common.models import OutgoingMessage, TaskType
-
-if TYPE_CHECKING:
-    from cortex.gateway_client import GatewayClient
-    from cortex.services.scheduled_task import ScheduledTaskService
-    from cortex.services.summary_service import SummaryService
+from cortex.gateway_client import GatewayClient
+from cortex.services.scheduled_task import ScheduledTaskService
+from cortex.services.summary_service import SummaryConfig, SummaryGroup, SummaryResult, SummaryService
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +23,7 @@ class TaskScheduler:
         self,
         task_service: ScheduledTaskService,
         gateway_client: GatewayClient,
-        summary_service: SummaryService | None = None,
+        summary_service: SummaryService,
         gateway_base_url: str = "",
         gateway_token: str = "",
     ):
@@ -110,20 +106,25 @@ class TaskScheduler:
             self._cleanup_executing_task(task.id)
 
     def _execute_summary_task(self, task):
-        if not self._summary_service:
-            logger.warning("[Scheduler] SummaryService 未配置,跳过总结任务")
-            return
         try:
-            from cortex.services.summary_service import SummaryConfig, SummaryGroup, SummaryResult
             config_dict = json.loads(task.message)
-            groups = [SummaryGroup(group_id=g["group_id"], group_name=g["group_name"]) for g in config_dict.get("groups", [])]
-            config = SummaryConfig(groups=groups, date=config_dict.get("date"))
+            config = SummaryConfig(
+                groups=[
+                    SummaryGroup(group_id=item["group_id"], group_name=item["group_name"])
+                    for item in config_dict.get("groups", [])
+                    if item.get("group_id") and item.get("group_name")
+                ],
+                date=config_dict.get("date"),
+            )
+            if not config.groups:
+                logger.warning("[Scheduler] 群聊总结启动失败: 未配置群聊")
+                return
 
             def on_complete(result: SummaryResult):
                 if result.success:
                     logger.info(f"[Scheduler] 群聊总结完成: {result.message}")
-                else:
-                    logger.warning(f"[Scheduler] 群聊总结失败: {result.message}")
+                    return
+                logger.warning(f"[Scheduler] 群聊总结失败: {result.message}")
 
             result = self._summary_service.start_summary_async(config, on_complete)
             if not result.success:

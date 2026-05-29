@@ -184,7 +184,7 @@ uv run run_daemon.py       # Daemon (:8001)
 |---------|------|------|
 | 关键词+问题 | `awsl 今天天气怎么样？` | 触发 AI 回复 |
 | @机器人 | `@机器人 帮我写首诗` | 触发 AI 回复 |
-| 命令帮助 | `awsl hp` | 显示可用命令列表 |
+| 刷新命令 | `awsl refresh` / `awsl 刷新命令` | 刷新远程命令列表 |
 | 动态命令 | `<命令名> <参数>` | 执行远程命令 |
 
 <details>
@@ -236,7 +236,8 @@ GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
 ```
 # Web UI
 GET  /                                # 主页（聊天 / 任务 / Webhook 三个 tab）
-GET  /style.css|/app.js|/chat.js|/tasks.js|/webhooks.js|/manifest.json
+GET  /manifest.json                   # PWA manifest
+GET  /static/*                        # 前端静态资源
 
 # API
 GET  /api/health

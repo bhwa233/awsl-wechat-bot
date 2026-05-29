@@ -1,5 +1,4 @@
 """群聊总结服务 - 调 chatlog HTTP API 拉消息,本地跑 LLM + 渲染,通过 gateway_client 发出"""
-from __future__ import annotations
 
 import base64
 import contextlib
@@ -11,12 +10,13 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
 
 import httpx
 
 from common.config import config as app_config
 from common.models import MessageType, OutgoingMessage
+from cortex.gateway_client import GatewayClient
+from cortex.services.chatlog_client import ChatlogClient
 from cortex.services.summary import (
     build_summary_text,
     extract_overview,
@@ -26,10 +26,6 @@ from cortex.services.summary import (
     render_to_image,
     summarize_with_llm,
 )
-
-if TYPE_CHECKING:
-    from cortex.gateway_client import GatewayClient
-    from cortex.services.chatlog_client import ChatlogClient
 
 logger = logging.getLogger(__name__)
 
@@ -98,14 +94,20 @@ class SummaryService:
             self._is_running = False
             self._running_lock.release()
 
-    def start_summary_async(self, config: SummaryConfig, on_complete: Callable | None = None) -> SummaryResult:
+    def start_summary_async(
+        self,
+        config: SummaryConfig,
+        on_complete: Callable | None = None,
+        *,
+        decrypt_first: bool = True,
+    ) -> SummaryResult:
         if not self._running_lock.acquire(blocking=False):
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
 
         def run_and_release():
             try:
-                result = self._execute(config)
+                result = self._execute(config, decrypt_first=decrypt_first)
                 if on_complete:
                     on_complete(result)
             except Exception as e:
@@ -121,17 +123,64 @@ class SummaryService:
         worker.start()
         return SummaryResult(success=True, message="总结任务已启动")
 
-    def _execute(self, config: SummaryConfig) -> SummaryResult:
+    def start_summary_for_group_name(
+        self,
+        group_name: str,
+        *,
+        log_prefix: str = "[Summary]",
+    ) -> SummaryResult:
+        normalized = group_name.strip()
+        if not normalized:
+            return SummaryResult(success=False, message="群名为空")
+
+        try:
+            decrypt_resp = self._chatlog.decrypt()
+            logger.info(f"{log_prefix} 解密完成: {decrypt_resp}")
+        except Exception as e:
+            logger.error(f"{log_prefix} 解密失败: {e}")
+            return SummaryResult(success=False, message=f"数据库解密失败: {e}")
+
+        def group_names(group: dict) -> set[str]:
+            names = {
+                str(group.get("username") or "").strip(),
+                str(group.get("display_name") or "").strip(),
+                str(group.get("nick_name") or "").strip(),
+            }
+            return {name for name in names if name}
+
+        matched = next((group for group in self._chatlog.list_groups() if normalized in group_names(group)), None)
+        if not matched:
+            return SummaryResult(success=False, message=f"chatlog 未找到群聊: {group_name}")
+
+        group_id = str(matched.get("username") or "").strip()
+        if not group_id:
+            return SummaryResult(success=False, message=f"chatlog 群聊缺少 username: {group_name}")
+
+        config = SummaryConfig(groups=[SummaryGroup(group_id=group_id, group_name=group_name)])
+
+        def on_complete(result: SummaryResult):
+            if result.success:
+                logger.info(f"{log_prefix} 群聊总结完成: {result.message}")
+                return
+            logger.warning(f"{log_prefix} 群聊总结失败: {result.message}")
+
+        result = self.start_summary_async(config, on_complete, decrypt_first=False)
+        if not result.success:
+            logger.warning(f"{log_prefix} 群聊总结启动失败: {result.message}")
+        return result
+
+    def _execute(self, config: SummaryConfig, *, decrypt_first: bool = True) -> SummaryResult:
         results: dict = {"decrypt": None, "groups": {}}
 
         # 1. 触发 chatlog 服务解密(chatlog 自己读 .env 里的路径/密钥)
-        try:
-            decrypt_resp = self._chatlog.decrypt()
-            results["decrypt"] = decrypt_resp
-            logger.info(f"[Summary] 解密完成: {decrypt_resp}")
-        except Exception as e:
-            logger.error(f"[Summary] 解密失败: {e}")
-            return SummaryResult(success=False, message=f"数据库解密失败: {e}", details=results)
+        if decrypt_first:
+            try:
+                decrypt_resp = self._chatlog.decrypt()
+                results["decrypt"] = decrypt_resp
+                logger.info(f"[Summary] 解密完成: {decrypt_resp}")
+            except Exception as e:
+                logger.error(f"[Summary] 解密失败: {e}")
+                return SummaryResult(success=False, message=f"数据库解密失败: {e}", details=results)
 
         # 2. 日期范围
         if config.date:

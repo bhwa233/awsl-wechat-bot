@@ -8,13 +8,14 @@ from common.auth import verify_token
 from cortex.services.custom_command import (
     CustomCommandCreate,
     CustomCommandResponse,
+    CustomCommandService,
     CustomCommandUpdate,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def create_routes(custom_command_service):
+def create_routes(custom_command_service: CustomCommandService):
     router = APIRouter()
 
     @router.get("/api/custom-commands", response_model=list[CustomCommandResponse], dependencies=[Depends(verify_token)])

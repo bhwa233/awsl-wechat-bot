@@ -5,6 +5,8 @@ import logging
 import httpx
 
 from common.config import config
+from common.models import MessageType, OutgoingMessage
+from cortex.models import CommandMatch
 
 logger = logging.getLogger(__name__)
 
@@ -42,15 +44,15 @@ class CommandService:
             logger.error(f"加载命令列表失败: {e}")
             return False
 
-    def match_command(self, text: str) -> tuple[str, str] | None:
+    def match_command(self, text: str) -> CommandMatch | None:
         text_lower = text.lower().strip()
         for key in sorted(self.command_keys, key=len, reverse=True):
             if text_lower.startswith(key.lower()):
                 params = text[len(key):].strip()
-                return (key, params)
+                return CommandMatch(key=key, params=params)
         return None
 
-    def execute_command(self, command_key: str, params: str = "") -> dict | None:
+    def execute_command(self, command_key: str, params: str = "", group_name: str = "") -> OutgoingMessage | None:
         try:
             full_command = f"{command_key} {params}" if params else command_key
             resp = self._client.post(
@@ -65,20 +67,23 @@ class CommandService:
             resp_type = data.get("type", "text")
             filename = data.get("filename")
 
-            if resp_type not in {"text", "image", "file"}:
+            try:
+                message_type = MessageType(resp_type)
+            except ValueError:
                 logger.warning(f"命令 {command_key} 返回了不支持的类型: {resp_type}")
                 return None
-            if resp_type == "file" and not filename:
+            if message_type == MessageType.FILE and not filename:
                 logger.warning(f"命令 {command_key} 返回 file 类型但缺少 filename")
                 return None
 
             content = self._normalize_content(resp_type, content)
 
-            return {
-                "content": content,
-                "type": resp_type,
-                "filename": filename,
-            }
+            return OutgoingMessage(
+                group_name=group_name,
+                message_type=message_type,
+                message=content,
+                filename=filename,
+            )
         except Exception as e:
             logger.error(f"执行命令 {command_key} 失败: {e}")
             return None

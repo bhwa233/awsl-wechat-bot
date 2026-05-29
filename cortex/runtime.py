@@ -9,10 +9,12 @@ from collections import deque
 from common.config import config
 from common.models import MessageType, OutgoingMessage, WSMessageBroadcast
 from cortex.gateway_client import GatewayClient
-from cortex.models import MessageListener, TriggerType
+from cortex.models import MessageListener, TriggerTask, TriggerType
 from cortex.services.ai import AIService
+from cortex.services.chatlog_client import ChatlogClient
 from cortex.services.command import CommandService
 from cortex.services.custom_command import CustomCommandService
+from cortex.services.summary_service import SummaryService
 from cortex.services.trigger import TriggerMatcher
 
 logger = logging.getLogger(__name__)
@@ -22,7 +24,9 @@ _STOP_CORTEX_TASK = object()
 class CortexRuntime(MessageListener):
     def __init__(self, gateway_ws_url: str | None = None):
         ws_url = gateway_ws_url or f"ws://127.0.0.1:{config.HTTP_API_PORT}/ws"
-
+        self.gateway_client = GatewayClient(ws_url=ws_url)
+        self.chatlog_client = self._init_chatlog_client()
+        self.summary_service = SummaryService(self.chatlog_client, self.gateway_client)
         self.ai_service = self._init_ai_service()
         self.command_service = self._init_command_service()
         self.custom_command_service = self._init_custom_command_service()
@@ -32,13 +36,17 @@ class CortexRuntime(MessageListener):
         self._rate_limit = config.TRIGGER_RATE_LIMIT
         self._rate_window = config.TRIGGER_RATE_WINDOW
         self._trigger_times: dict[str, deque[float]] = {}
-        self._task_queue: queue.Queue[tuple[TriggerType, object, str] | object] = queue.Queue(
+        self._task_queue: queue.Queue[TriggerTask | object] = queue.Queue(
             maxsize=config.CORTEX_QUEUE_SIZE
         )
         self._workers: list[threading.Thread] = []
 
-        self.gateway_client = GatewayClient(ws_url=ws_url)
         logger.info("Cortex 初始化完成")
+
+    def _init_chatlog_client(self):
+        chatlog_host = config.CHATLOG_HTTP_HOST if config.CHATLOG_HTTP_HOST != "0.0.0.0" else "127.0.0.1"
+        chatlog_base_url = f"http://{chatlog_host}:{config.CHATLOG_HTTP_PORT}"
+        return ChatlogClient(base_url=chatlog_base_url, token=config.HTTP_API_TOKEN)
 
     def _init_ai_service(self):
         try:
@@ -60,12 +68,11 @@ class CortexRuntime(MessageListener):
             return None
 
     def _init_custom_command_service(self):
-        try:
-            project_root = os.path.dirname(os.path.dirname(__file__))
-            return CustomCommandService(os.path.join(project_root, "custom_commands.db"))
-        except Exception as e:
-            logger.warning(f"自定义命令服务初始化失败: {e}")
-            return None
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        return CustomCommandService(
+            os.path.join(project_root, "custom_commands.db"),
+            summary_service=self.summary_service,
+        )
 
     def start(self):
         self._running = True
@@ -96,8 +103,9 @@ class CortexRuntime(MessageListener):
             self.ai_service.close()
         if self.command_service:
             self.command_service.close()
-        if self.custom_command_service:
-            self.custom_command_service.close()
+        self.custom_command_service.close()
+        self.summary_service.close()
+        self.chatlog_client.close()
         logger.info("Cortex 已停止")
 
     def _is_rate_limited(self, group_name: str) -> bool:
@@ -116,8 +124,8 @@ class CortexRuntime(MessageListener):
         return len(times) >= self._rate_limit
 
     def _handle_message(self, msg: WSMessageBroadcast) -> None:
-        trigger_type, content = self.trigger_matcher.match(msg.content, msg.group_name)
-        if not trigger_type:
+        task = self.trigger_matcher.match(msg.content, msg.group_name)
+        if not task:
             return
 
         if self._is_rate_limited(msg.group_name):
@@ -126,7 +134,7 @@ class CortexRuntime(MessageListener):
         self._trigger_times.setdefault(msg.group_name, deque()).append(time.time())
 
         try:
-            self._task_queue.put_nowait((trigger_type, content, msg.group_name))
+            self._task_queue.put_nowait(task)
         except queue.Full:
             logger.warning(f"[{msg.group_name}] Cortex 处理队列已满,丢弃触发任务")
 
@@ -144,59 +152,49 @@ class CortexRuntime(MessageListener):
                 break
 
             try:
-                trigger_type, content, group_name = task
-                self._process_and_reply(trigger_type, content, group_name)
+                self._process_and_reply(task)
             finally:
                 self._task_queue.task_done()
 
-    def _process_and_reply(self, trigger_type: TriggerType, content, group_name: str):
-        outgoing = self._handle_trigger(trigger_type, content, group_name)
+    def _process_and_reply(self, task: TriggerTask):
+        outgoing = self._handle_trigger(task)
         if outgoing:
             self.gateway_client.send_message(outgoing)
 
-    def _handle_trigger(self, trigger_type: TriggerType, content, group_name: str) -> OutgoingMessage | None:
+    def _handle_trigger(self, task: TriggerTask) -> OutgoingMessage | None:
         msg = None
         message_type = MessageType.TEXT
         filename = None
+        group_name = task.group_name
 
         try:
-            if trigger_type == TriggerType.AI and self.ai_service:
-                logger.info(f"[{group_name}] AI 请求: {content[:50]}")
-                ans = self.ai_service.ask(content)
+            if task.trigger_type == TriggerType.AI and self.ai_service:
+                logger.info(f"[{group_name}] AI 请求: {task.content[:50]}")
+                ans = self.ai_service.ask(task.content)
                 msg = ans or "抱歉,我现在无法回答这个问题"
 
-            elif trigger_type == TriggerType.COMMAND and self.command_service:
-                logger.info(f"[{group_name}] 执行命令: {content[0]} {content[1][:50]}...")
-                res = self.command_service.execute_command(content[0], content[1])
+            elif task.trigger_type == TriggerType.COMMAND and self.command_service:
+                logger.info(f"[{group_name}] 执行命令: {task.content} {task.params[:50]}...")
+                res = self.command_service.execute_command(task.content, task.params, group_name=group_name)
                 if res:
-                    msg = res["content"]
-                    if res.get("type") == "image":
-                        message_type = MessageType.IMAGE
-                    elif res.get("type") == "file":
-                        message_type = MessageType.FILE
-                        filename = res.get("filename")
+                    return res
 
-            elif trigger_type == TriggerType.CUSTOM_COMMAND and self.custom_command_service:
-                logger.info(f"[{group_name}] 执行自定义命令: {content[0]} {content[1][:50]}...")
-                res = self.custom_command_service.execute_command(content[0], content[1])
+            elif task.trigger_type == TriggerType.CUSTOM_COMMAND:
+                logger.info(f"[{group_name}] 执行自定义命令: {task.content} {task.params[:50]}...")
+                res = self.custom_command_service.execute_command(task.content, task.params, group_name=group_name)
                 if res:
-                    msg = res["content"]
-                    if res.get("type") == "image":
-                        message_type = MessageType.IMAGE
-                    elif res.get("type") == "file":
-                        message_type = MessageType.FILE
-                        filename = res.get("filename")
+                    return res
 
-            elif trigger_type == TriggerType.COMMAND_REFRESH and self.command_service:
+            elif task.trigger_type == TriggerType.COMMAND_REFRESH and self.command_service:
                 logger.info(f"[{group_name}] 刷新命令列表")
                 if self.command_service.load_commands():
                     msg = "已经成功了"
 
-            elif trigger_type == TriggerType.TEXT:
-                msg = content
+            elif task.trigger_type == TriggerType.TEXT:
+                msg = task.content
 
-            elif trigger_type == TriggerType.IMAGE:
-                msg = content
+            elif task.trigger_type == TriggerType.IMAGE:
+                msg = task.content
                 message_type = MessageType.IMAGE
 
         except Exception as e:

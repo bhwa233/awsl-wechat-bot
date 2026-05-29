@@ -1,5 +1,4 @@
-const taskImageState = { message: '', filename: '' };
-const taskFileState = { message: '', filename: '' };
+let taskMessageComposer = null;
 
 function loadTaskServerInfo() {
     api('GET', '/api/health').then(r => {
@@ -14,16 +13,13 @@ function loadTaskServerInfo() {
     });
 }
 
-async function toggleTaskFormMode() {
+async function toggleTaskFormMode(opts = {}) {
     const taskType = $('taskType').value;
-    $('taskMessageTypeGroup').style.display = taskType === 'send' ? '' : 'none';
-    $('taskSummaryGroup').style.display = taskType === 'summary' ? '' : 'none';
-    $('taskTargetGroupsGroup').style.display = taskType === 'send' ? '' : 'none';
-    if (taskType === 'send') { toggleTaskMessageType(); return; }
-    $('taskTextGroup').style.display = 'none';
-    $('taskImageGroup').style.display = 'none';
-    $('taskFileGroup').style.display = 'none';
-    if (taskType === 'summary') await loadSummaryGroupOptions();
+    if (taskType === 'summary') {
+        $('taskMessageType').value = 'summary';
+    }
+    toggleTaskMessageType(opts);
+    if ($('taskMessageType').value === 'summary') await loadSummaryGroupOptions();
 }
 
 let summaryGroupOptionsLoaded = false;
@@ -53,8 +49,8 @@ function buildGatewayGroupOptionHtml(selectedValue) {
     }).join('');
 }
 
-function addSummaryRow(groupId = '', groupName = '') {
-    const container = $('summaryRows');
+function addSummaryRow(groupId = '', groupName = '', containerId = 'summaryRows') {
+    const container = $(containerId);
     const row = document.createElement('div');
     row.className = 'summary-row';
     row.innerHTML = `
@@ -82,8 +78,8 @@ function syncSummaryRowName(sourceSelect) {
     }
 }
 
-function getSummaryConfig() {
-    const rows = document.querySelectorAll('.summary-row');
+function getSummaryConfig(containerId = 'summaryRows') {
+    const rows = document.querySelectorAll(`#${containerId} .summary-row`);
     const groups = [];
     for (const row of rows) {
         const source = row.querySelector('.summary-source').value;
@@ -95,64 +91,25 @@ function getSummaryConfig() {
     return { groups };
 }
 
-function populateSummaryRows(configStr) {
-    const container = $('summaryRows');
+function populateSummaryRows(configStr, containerId = 'summaryRows') {
+    const container = $(containerId);
     container.innerHTML = '';
     loadSummaryGroupOptions().then(() => {
         try {
             const cfg = JSON.parse(configStr);
             if (cfg.groups && Array.isArray(cfg.groups)) {
-                for (const g of cfg.groups) addSummaryRow(g.group_id || '', g.group_name || '');
+                for (const g of cfg.groups) addSummaryRow(g.group_id || '', g.group_name || '', containerId);
             }
-        } catch { addSummaryRow(); }
+        } catch { addSummaryRow('', '', containerId); }
     });
 }
 
-function toggleTaskMessageType() {
-    const mt = $('taskMessageType').value;
-    if ($('taskType').value !== 'send') {
-        $('taskTextGroup').style.display = 'none';
-        $('taskImageGroup').style.display = 'none';
-        $('taskFileGroup').style.display = 'none';
-        return;
-    }
-    $('taskTextGroup').style.display = mt === 'text' ? '' : 'none';
-    $('taskImageGroup').style.display = mt === 'image' ? '' : 'none';
-    $('taskFileGroup').style.display = mt === 'file' ? '' : 'none';
-}
-
-function previewTaskImage(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        taskImageState.message = e.target.result.split(',')[1];
-        $('taskImagePreviewImg').src = e.target.result;
-        $('taskImagePreview').style.display = '';
-    };
-    reader.readAsDataURL(file);
-}
-
-function previewTaskFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        taskFileState.message = e.target.result.split(',')[1];
-        taskFileState.filename = file.name;
-        $('taskFileName').textContent = file.name;
-        $('taskFilePreview').style.display = '';
-    };
-    reader.readAsDataURL(file);
+function toggleTaskMessageType(opts = {}) {
+    if (taskMessageComposer) taskMessageComposer.syncType(opts);
 }
 
 function resetTaskUpload() {
-    taskImageState.message = ''; taskImageState.filename = '';
-    taskFileState.message = ''; taskFileState.filename = '';
-    const ip = $('taskImagePreview'); if (ip) ip.style.display = 'none';
-    const ii = $('taskImagePreviewImg'); if (ii) ii.src = '';
-    const fp = $('taskFilePreview'); if (fp) fp.style.display = 'none';
-    const fn = $('taskFileName'); if (fn) fn.textContent = '';
+    if (taskMessageComposer) taskMessageComposer.resetUpload();
 }
 
 function updateTargetGroupsCheckboxes() {
@@ -285,7 +242,8 @@ const taskCrud = new CrudManager({
     },
 
     getFormData: () => {
-        const taskType = $('taskType').value;
+        const composerType = taskMessageComposer.getType();
+        const taskType = composerType === 'summary' ? 'summary' : 'send';
         const data = {
             name: $('taskName').value, cron_expression: $('cronExpression').value,
             task_type: taskType, enabled: $('taskEnabled').value === 'true',
@@ -298,13 +256,11 @@ const taskCrud = new CrudManager({
             data.message_type = 'text'; data.filename = ''; data.target_groups = [];
             return data;
         }
-        data.message_type = $('taskMessageType').value;
-        data.filename = '';
-        if (data.message_type === 'text') data.message = $('taskMessage').value.trim();
-        else if (data.message_type === 'image') data.message = taskImageState.message;
-        else if (data.message_type === 'file') { data.message = taskFileState.message; data.filename = taskFileState.filename; }
-        if (!data.message) { toast(data.message_type === 'text' ? '请输入消息' : '请选择内容', 'error'); return null; }
-        if (data.message_type === 'file' && !data.filename) { toast('请选择文件', 'error'); return null; }
+        const payload = taskMessageComposer.getPayload({ text: '请输入消息', attachment: '请选择内容' });
+        if (!payload) return null;
+        data.message_type = payload.message_type;
+        data.message = payload.message;
+        data.filename = payload.filename;
         return data;
     },
 
@@ -314,21 +270,17 @@ const taskCrud = new CrudManager({
         $('taskEnabled').value = task.enabled.toString();
         resetTaskUpload();
         $('taskType').value = task.task_type || 'send';
-        $('taskMessageType').value = task.message_type || 'text';
-        toggleTaskFormMode();
+        $('taskMessageType').value = task.task_type === 'summary' ? 'summary' : (task.message_type || 'text');
         if (task.task_type === 'summary') { populateSummaryRows(task.message); $('taskMessage').value = ''; }
         else { $('summaryRows').innerHTML = ''; $('taskMessage').value = task.message_type === 'text' ? task.message : ''; }
         if (task.task_type === 'send' && task.message_type === 'image' && task.message) {
-            taskImageState.message = task.message;
-            $('taskImagePreviewImg').src = 'data:image/png;base64,' + task.message;
-            $('taskImagePreview').style.display = '';
+            taskMessageComposer.setAttachment(task.message, '', 'data:image/png;base64,' + task.message);
         }
         if (task.task_type === 'send' && task.message_type === 'file' && task.message) {
-            taskFileState.message = task.message; taskFileState.filename = task.filename || '';
-            $('taskFileName').textContent = task.filename || '';
-            $('taskFilePreview').style.display = '';
+            taskMessageComposer.setAttachment(task.message, task.filename || '');
         }
         document.querySelectorAll('input[name="targetGroups"]').forEach(cb => { cb.checked = task.target_groups?.includes(cb.value); });
+        toggleTaskFormMode({ resetUpload: false });
     },
 
     resetForm: () => {
@@ -336,5 +288,23 @@ const taskCrud = new CrudManager({
         $('taskType').value = 'send'; $('taskMessageType').value = 'text'; $('summaryRows').innerHTML = '';
         toggleTaskFormMode();
         updateTargetGroupsCheckboxes();
+    },
+});
+
+taskMessageComposer = new MessageComposer({
+    typeId: 'taskMessageType',
+    textGroupId: 'taskTextGroup',
+    textInputId: 'taskMessage',
+    attachmentGroupId: 'taskAttachmentGroup',
+    fileInputId: 'taskFileSelect',
+    dropzoneId: 'taskFileDropzone',
+    previewId: 'taskFilePreview',
+    infoId: 'taskFileInfo',
+    summaryGroupId: 'taskSummaryGroup',
+    isActive: () => $('tasks-panel')?.classList.contains('active') && $('taskFormPanel')?.style.display !== 'none',
+    onTypeChange: type => {
+        $('taskType').value = type === 'summary' ? 'summary' : 'send';
+        $('taskTargetGroupsGroup').style.display = type === 'summary' ? 'none' : '';
+        if (type === 'summary') loadSummaryGroupOptions();
     },
 });

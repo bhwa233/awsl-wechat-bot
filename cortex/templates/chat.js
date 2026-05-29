@@ -3,7 +3,7 @@ let chatlogBackend = null;
 let chatlogMediaCaps = { image: false, sticker: false, video_thumb: false, voice: false, file: false };
 let selectedChatlogGroup = null;
 let groupMapping = {};
-let chatFileState = { message: '', filename: '' };
+let chatMessageComposer = null;
 let _recordContents = {};
 let _recordSeq = 0;
 let chatPage = 0;
@@ -183,7 +183,7 @@ const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, NAMECARD: 42, VIDEO: 43, ANIMAT
 let WECHAT_EMOJI = {};
 const WECHAT_EMOJI_RE = /\[([^\[\]]{1,8})\]/g;
 
-const WECHAT_EMOJI_READY = fetch('/wechat_emoji.json')
+const WECHAT_EMOJI_READY = fetch('/static/wechat_emoji.json')
     .then(r => r.ok ? r.json() : {})
     .then(m => { WECHAT_EMOJI = m; })
     .catch(() => {});
@@ -510,99 +510,15 @@ function renderMessages(msgs) {
 function toggleChatMsgType() {
     const t = $('msgType').value;
     const isSummary = t === 'summary';
-    $('chatTextInput').style.display = t === 'text' ? '' : 'none';
-    $('chatFileInput').style.display = (t === 'image' || t === 'file') ? '' : 'none';
+    if (chatMessageComposer) chatMessageComposer.syncType();
     $('sendMsgBtn').textContent = isSummary ? '生成总结' : '发送';
-    if (t === 'image' || t === 'file') {
-        $('chatFileSelect').accept = t === 'image' ? 'image/*' : '';
-        $('chatFileSelect').value = '';
-        chatFileState = { message: '', filename: '' };
-        resetChatFileUI();
-    }
     updateSendState();
 }
-
-function onChatFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    loadChatFile(file);
-}
-
-function resetChatFileUI() {
-    const dz = $('chatFileDropzone');
-    const preview = $('chatFilePreview');
-    dz.classList.remove('has-file');
-    preview.hidden = true;
-    preview.removeAttribute('src');
-    $('chatFileInfo').textContent = '点击选择 / 拖拽 / Ctrl+V 粘贴';
-}
-
-function loadChatFile(file) {
-    const reader = new FileReader();
-    reader.onload = e => {
-        chatFileState.message = e.target.result.split(',')[1];
-        chatFileState.filename = file.name;
-        const dz = $('chatFileDropzone');
-        const preview = $('chatFilePreview');
-        dz.classList.add('has-file');
-        if (file.type.startsWith('image/')) {
-            preview.src = e.target.result;
-            preview.hidden = false;
-        } else {
-            preview.hidden = true;
-        }
-        $('chatFileInfo').textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
-        updateSendState();
-    };
-    reader.readAsDataURL(file);
-}
-
-(function setupDropzone() {
-    const dz = document.getElementById('chatFileDropzone');
-    if (!dz) return;
-    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
-    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-    dz.addEventListener('drop', e => {
-        e.preventDefault();
-        dz.classList.remove('dragover');
-        const file = e.dataTransfer.files[0];
-        if (file) loadChatFile(file);
-    });
-})();
-
-document.addEventListener('paste', e => {
-    const t = $('msgType')?.value;
-    if (t !== 'image' && t !== 'file') return;
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-        if (t === 'image' && item.kind === 'file' && item.type.startsWith('image/')) {
-            const file = item.getAsFile();
-            if (file) {
-                e.preventDefault();
-                const ext = item.type.split('/')[1] || 'png';
-                const named = new File([file], `pasted-${Date.now()}.${ext}`, { type: item.type });
-                loadChatFile(named);
-                toast('已粘贴图片', 'success');
-                return;
-            }
-        }
-        if (t === 'file' && item.kind === 'file') {
-            const file = item.getAsFile();
-            if (file) {
-                e.preventDefault();
-                loadChatFile(file);
-                toast('已粘贴文件', 'success');
-                return;
-            }
-        }
-    }
-});
 
 async function sendChatMessage() {
     const target = $('sendWindowSelect').value;
     if (!target) { toast('请选择发送目标窗口', 'error'); return; }
-    const type = $('msgType').value;
+    const type = chatMessageComposer.getType();
     const btn = $('sendMsgBtn');
     btn.disabled = true;
 
@@ -617,22 +533,15 @@ async function sendChatMessage() {
         return;
     }
 
-    let body;
-    if (type === 'text') {
-        const msg = $('msgInput').value.trim();
-        if (!msg) { btn.disabled = false; return; }
-        body = { group_name: target, message_type: 'text', message: msg };
-    } else {
-        if (!chatFileState.message) { toast('请选择文件', 'error'); btn.disabled = false; return; }
-        body = { group_name: target, message_type: type, message: chatFileState.message };
-        if (type === 'file') body.filename = chatFileState.filename;
-    }
+    const payload = chatMessageComposer.getPayload({ attachment: '请选择文件' });
+    if (!payload) { btn.disabled = false; return; }
+    const body = { group_name: target, ...payload };
 
     const r = await api('POST', '/api/send', { body });
     btn.disabled = false;
     if (r.ok) {
         if (type === 'text') $('msgInput').value = '';
-        else { chatFileState = { message: '', filename: '' }; $('chatFileSelect').value = ''; resetChatFileUI(); }
+        else chatMessageComposer.resetUpload();
         toast('已发送', 'success');
         if (selectedChatlogGroup) setTimeout(() => loadMessages(selectedChatlogGroup), 1000);
     } else {
@@ -666,6 +575,22 @@ $('msgInput').addEventListener('keydown', e => {
 });
 $('chatGroupSelect').addEventListener('change', onChatGroupSelect);
 $('chatGroupSelect').addEventListener('input', onChatGroupSelect);
+
+chatMessageComposer = new MessageComposer({
+    typeId: 'msgType',
+    textGroupId: 'chatTextInput',
+    textInputId: 'msgInput',
+    attachmentGroupId: 'chatFileInput',
+    fileInputId: 'chatFileSelect',
+    dropzoneId: 'chatFileDropzone',
+    previewId: 'chatFilePreview',
+    infoId: 'chatFileInfo',
+    isActive: () => $('chat-panel')?.classList.contains('active'),
+    onTypeChange: type => {
+        $('sendMsgBtn').textContent = type === 'summary' ? '生成总结' : '发送';
+        updateSendState();
+    },
+});
 
 function showRecordDetail(rid) {
     const content = _recordContents[rid];

@@ -1,45 +1,11 @@
-const customCommandImageState = { message: '', filename: '' };
-const customCommandFileState = { message: '', filename: '' };
+let customCommandMessageComposer = null;
 
-function toggleCustomCommandMessageType() {
-    const mt = $('customCommandMessageType').value;
-    $('customCommandTextGroup').style.display = mt === 'text' ? '' : 'none';
-    $('customCommandImageGroup').style.display = mt === 'image' ? '' : 'none';
-    $('customCommandFileGroup').style.display = mt === 'file' ? '' : 'none';
-}
-
-function previewCustomCommandImage(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        customCommandImageState.message = e.target.result.split(',')[1];
-        $('customCommandImagePreviewImg').src = e.target.result;
-        $('customCommandImagePreview').style.display = '';
-    };
-    reader.readAsDataURL(file);
-}
-
-function previewCustomCommandFile(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = e => {
-        customCommandFileState.message = e.target.result.split(',')[1];
-        customCommandFileState.filename = file.name;
-        $('customCommandFileName').textContent = file.name;
-        $('customCommandFilePreview').style.display = '';
-    };
-    reader.readAsDataURL(file);
+function toggleCustomCommandMessageType(opts = {}) {
+    if (customCommandMessageComposer) customCommandMessageComposer.syncType(opts);
 }
 
 function resetCustomCommandUpload() {
-    customCommandImageState.message = ''; customCommandImageState.filename = '';
-    customCommandFileState.message = ''; customCommandFileState.filename = '';
-    const ip = $('customCommandImagePreview'); if (ip) ip.style.display = 'none';
-    const ii = $('customCommandImagePreviewImg'); if (ii) ii.src = '';
-    const fp = $('customCommandFilePreview'); if (fp) fp.style.display = 'none';
-    const fn = $('customCommandFileName'); if (fn) fn.textContent = '';
+    if (customCommandMessageComposer) customCommandMessageComposer.resetUpload();
 }
 
 function updateCustomCommandTargetGroupsCheckboxes() {
@@ -62,11 +28,15 @@ const customCommandCrud = new CrudManager({
         let contentHtml;
         let contentLabel = '回复内容';
         let useRaw = false;
-        if (cmd.message_type === 'image') {
+        const actionType = cmd.action_type || cmd.message_type || 'text';
+        if (actionType === 'summary') {
+            contentHtml = '触发群';
+            contentLabel = '总结范围';
+        } else if (actionType === 'image') {
             contentHtml = cmd.message ? `<img src="data:image/png;base64,${escapeHtml(cmd.message)}" style="max-width:160px;max-height:80px;border-radius:4px">` : '无图片';
             contentLabel = '图片';
             useRaw = true;
-        } else if (cmd.message_type === 'file') {
+        } else if (actionType === 'file') {
             contentHtml = escapeHtml(cmd.filename || '未命名');
             contentLabel = '文件';
         } else {
@@ -74,7 +44,7 @@ const customCommandCrud = new CrudManager({
         }
         const contentItem = useRaw ? infoItemRaw(contentLabel, contentHtml) : infoItem(contentLabel, contentHtml);
         const targets = infoItem('目标群组', cmd.target_groups?.length ? cmd.target_groups.join(', ') : '所有群组');
-        return `<div class="crud-item">${itemHeader(cmd.key, cmd.enabled)}<div class="info-grid">${infoItem('描述', cmd.description || '-')}${infoItem('类型', cmd.message_type)}${contentItem}${targets}</div>${itemActions('customCommandCrud', cmd.id, cmd.enabled)}</div>`;
+        return `<div class="crud-item">${itemHeader(cmd.key, cmd.enabled)}<div class="info-grid">${infoItem('描述', cmd.description || '-')}${infoItem('类型', actionType)}${contentItem}${targets}</div>${itemActions('customCommandCrud', cmd.id, cmd.enabled)}</div>`;
     },
 
     async fetchItem(id) {
@@ -83,24 +53,25 @@ const customCommandCrud = new CrudManager({
     },
 
     getFormData: () => {
+        const actionType = customCommandMessageComposer.getType();
         const data = {
             key: $('customCommandKey').value.trim(),
             description: $('customCommandDescription').value.trim(),
-            message_type: $('customCommandMessageType').value,
+            action_type: actionType,
             filename: '',
             target_groups: Array.from(document.querySelectorAll('input[name="customCommandTargetGroups"]:checked')).map(cb => cb.value),
             enabled: $('customCommandEnabled').value === 'true',
         };
         if (!data.key) { toast('请输入命令 Key', 'error'); return null; }
         if (/\s/.test(data.key)) { toast('命令 Key 不能包含空白字符', 'error'); return null; }
-        if (data.message_type === 'text') data.message = $('customCommandMessage').value.trim();
-        else if (data.message_type === 'image') data.message = customCommandImageState.message;
-        else if (data.message_type === 'file') {
-            data.message = customCommandFileState.message;
-            data.filename = customCommandFileState.filename;
+        if (actionType === 'summary') {
+            data.message = '';
+            return data;
         }
-        if (!data.message) { toast(data.message_type === 'text' ? '请输入回复内容' : '请选择内容', 'error'); return null; }
-        if (data.message_type === 'file' && !data.filename) { toast('请选择文件', 'error'); return null; }
+        const payload = customCommandMessageComposer.getPayload({ text: '请输入回复内容', attachment: '请选择内容' });
+        if (!payload) return null;
+        data.message = payload.message;
+        data.filename = payload.filename;
         return data;
     },
 
@@ -108,25 +79,21 @@ const customCommandCrud = new CrudManager({
         $('customCommandKey').value = cmd.key;
         $('customCommandDescription').value = cmd.description || '';
         $('customCommandEnabled').value = cmd.enabled.toString();
-        $('customCommandMessageType').value = cmd.message_type || 'text';
-        $('customCommandMessage').value = cmd.message_type === 'text' ? cmd.message : '';
+        const actionType = cmd.action_type || cmd.message_type || 'text';
+        $('customCommandMessageType').value = actionType;
+        $('customCommandMessage').value = actionType === 'text' ? cmd.message : '';
         resetCustomCommandUpload();
         updateCustomCommandTargetGroupsCheckboxes();
-        if (cmd.message_type === 'image' && cmd.message) {
-            customCommandImageState.message = cmd.message;
-            $('customCommandImagePreviewImg').src = 'data:image/png;base64,' + cmd.message;
-            $('customCommandImagePreview').style.display = '';
+        if (actionType === 'image' && cmd.message) {
+            customCommandMessageComposer.setAttachment(cmd.message, '', 'data:image/png;base64,' + cmd.message);
         }
-        if (cmd.message_type === 'file' && cmd.message) {
-            customCommandFileState.message = cmd.message;
-            customCommandFileState.filename = cmd.filename || '';
-            $('customCommandFileName').textContent = cmd.filename || '';
-            $('customCommandFilePreview').style.display = '';
+        if (actionType === 'file' && cmd.message) {
+            customCommandMessageComposer.setAttachment(cmd.message, cmd.filename || '');
         }
         document.querySelectorAll('input[name="customCommandTargetGroups"]').forEach(cb => {
             cb.checked = cmd.target_groups?.includes(cb.value);
         });
-        toggleCustomCommandMessageType();
+        toggleCustomCommandMessageType({ resetUpload: false });
     },
 
     resetForm: () => {
@@ -136,4 +103,16 @@ const customCommandCrud = new CrudManager({
         updateCustomCommandTargetGroupsCheckboxes();
         toggleCustomCommandMessageType();
     },
+});
+
+customCommandMessageComposer = new MessageComposer({
+    typeId: 'customCommandMessageType',
+    textGroupId: 'customCommandTextGroup',
+    textInputId: 'customCommandMessage',
+    attachmentGroupId: 'customCommandAttachmentGroup',
+    fileInputId: 'customCommandFileSelect',
+    dropzoneId: 'customCommandFileDropzone',
+    previewId: 'customCommandFilePreview',
+    infoId: 'customCommandFileInfo',
+    isActive: () => $('custom-commands-panel')?.classList.contains('active') && $('customCommandFormPanel')?.style.display !== 'none',
 });

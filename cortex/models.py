@@ -1,6 +1,7 @@
 """Cortex 数据模型"""
 import logging
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import StrEnum
 
 from common.models import WSMessageBroadcast
@@ -15,6 +16,20 @@ class TriggerType(StrEnum):
     CUSTOM_COMMAND = "custom_command"
     COMMAND_REFRESH = "command_refresh"
     AI = "ai"
+
+
+@dataclass(frozen=True)
+class CommandMatch:
+    key: str
+    params: str = ""
+
+
+@dataclass(frozen=True, kw_only=True)
+class TriggerTask:
+    trigger_type: TriggerType
+    group_name: str
+    content: str = ""
+    params: str = ""
 
 
 class MessageListener(ABC):
