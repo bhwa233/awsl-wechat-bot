@@ -37,3 +37,7 @@ class ChatlogPlatform(ABC):
     @abstractmethod
     def query_raw_sql(self, db_path: str | Path, hex_key: str, sql: str) -> dict[str, Any]:
         """对 SQLCipher v4 微信数据库执行 raw SQL."""
+
+    @abstractmethod
+    def wechat_running(self) -> bool:
+        """微信进程是否在运行."""

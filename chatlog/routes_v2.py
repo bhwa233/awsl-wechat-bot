@@ -26,9 +26,12 @@ def create_v2_router() -> APIRouter:
             raise HTTPException(status_code=501, detail=str(exc)) from exc
 
     def _ensure_ready() -> None:
-        detail = _platform_or_501().v2_config_error(config)
+        platform = _platform_or_501()
+        detail = platform.v2_config_error(config)
         if detail:
             raise HTTPException(status_code=400, detail=detail)
+        if not platform.wechat_running():
+            raise HTTPException(status_code=503, detail="微信进程未运行, 暂不可读取数据库")
 
     @router.post("/decrypt", dependencies=[Depends(verify_token)])
     def decrypt_database():

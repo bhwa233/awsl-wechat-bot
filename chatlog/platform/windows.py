@@ -55,3 +55,17 @@ class WindowsChatlogPlatform(ChatlogPlatform):
 
     def query_raw_sql(self, db_path: str | Path, hex_key: str, sql: str) -> dict[str, Any]:
         return self._native.query_raw_sql(db_path, hex_key, sql)
+
+    def wechat_running(self) -> bool:
+        """psutil 枚举进程匹配 Windows 微信进程名.出错时按存活处理避免误阻断,不抛异常."""
+        import psutil
+
+        names = {"weixin.exe", "wechat.exe"}
+        try:
+            for proc in psutil.process_iter(["name"]):
+                name = (proc.info["name"] or "").lower()
+                if name in names:
+                    return True
+        except psutil.Error:
+            return True  # 枚举失败时不阻断读取
+        return False
