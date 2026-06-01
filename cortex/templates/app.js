@@ -124,13 +124,13 @@ function escapeHtml(s) {
 
 async function init() {
     initTheme();
+    document.querySelectorAll('.tab').forEach(t => {
+        t.addEventListener('click', () => switchTab(t.dataset.tab));
+    });
     await loadServerInfo();
     await loadGroups();
     const saved = localStorage.getItem('cortex_tab') || 'chat';
     switchTab(saved);
-    document.querySelectorAll('.tab').forEach(t => {
-        t.addEventListener('click', () => switchTab(t.dataset.tab));
-    });
 }
 
 init();

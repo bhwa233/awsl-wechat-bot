@@ -3,7 +3,7 @@
 
 const CONSOLE_POLL_INTERVAL_MS = 3000;
 
-const consoleTab = (() => {
+window.consoleTab = (() => {
     let selectedPath = '';
     let selectedName = '';
     let opening = false;
@@ -150,6 +150,10 @@ const consoleTab = (() => {
         const btn = $('consoleRefreshBtn');
         if (btn) btn.disabled = true;
         setStatus('正在读取主窗口 UIA 状态');
+        const box = $('consoleMessages');
+        if (box && !$('consoleChatList')?.children.length) {
+            box.innerHTML = '<div class="loading-hint">正在读取主窗口状态...</div>';
+        }
         try {
             const r = await consoleApi('/api/console/state', {});
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
