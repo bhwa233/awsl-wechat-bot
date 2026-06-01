@@ -13,6 +13,7 @@ window.consoleTab = (() => {
     let pollTimer = null;
     let activated = false;
     let unsupported = false;
+    let composer = null;
 
     function setStatus(text, error = false) {
         const el = $('consoleStatus');
@@ -191,18 +192,18 @@ window.consoleTab = (() => {
 
     async function send() {
         if (sending || unsupported) return;
-        const input = $('consoleMsgInput');
-        const text = input.value.trim();
-        if (!text) return;
+        const payload = composer?.getPayload({ attachment: '请选择文件' });
+        if (!payload) return;
         sending = true;
         const btn = $('consoleSendBtn');
         btn.disabled = true;
         setStatus('正在发送消息');
         try {
-            const r = await consoleApi('/api/console/send-text', { text });
+            const r = await consoleApi('/api/console/send-message', payload);
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
             if (!r.ok || !r.data?.available) { setStatus(r.data?.detail || r.error || '发送失败', true); renderError(r.data?.detail || r.error); return; }
-            input.value = '';
+            if (payload.message_type === 'text') $('consoleMsgInput').value = '';
+            else composer.resetUpload();
             renderMessages(r.data.chat_area, r.data.chat_list);
             setStatus('消息已发送');
         } finally {
@@ -247,6 +248,17 @@ window.consoleTab = (() => {
     function activate() {
         if (!activated) {
             activated = true;
+            composer = new MessageComposer({
+                typeId: 'consoleMsgType',
+                textGroupId: 'consoleTextInput',
+                textInputId: 'consoleMsgInput',
+                attachmentGroupId: 'consoleFileInput',
+                fileInputId: 'consoleFileSelect',
+                dropzoneId: 'consoleFileDropzone',
+                previewId: 'consoleFilePreview',
+                infoId: 'consoleFileInfo',
+                isActive: () => $('console-panel')?.classList.contains('active'),
+            });
             $('consoleMsgInput').addEventListener('keydown', e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
             });

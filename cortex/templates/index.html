@@ -124,9 +124,23 @@
                         </div>
                     </div>
                     <div class="chat-input" id="consoleInput">
+                        <div class="chat-input-row1">
+                            <select id="consoleMsgType" class="msg-type-select">
+                                <option value="text">文本</option>
+                                <option value="image">图片</option>
+                                <option value="file">文件</option>
+                            </select>
+                        </div>
                         <div class="chat-input-row2">
-                            <div class="chat-input-body">
+                            <div class="chat-input-body" id="consoleTextInput">
                                 <textarea id="consoleMsgInput" placeholder="输入消息... (Enter 发送)" rows="1"></textarea>
+                            </div>
+                            <div class="chat-input-body" id="consoleFileInput" style="display:none">
+                                <label class="file-dropzone" id="consoleFileDropzone">
+                                    <input type="file" id="consoleFileSelect" hidden>
+                                    <img id="consoleFilePreview" alt="" hidden>
+                                    <span id="consoleFileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
+                                </label>
                             </div>
                             <button class="btn btn-green" id="consoleSendBtn" onclick="consoleTab.send()">发送</button>
                         </div>

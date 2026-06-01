@@ -45,11 +45,15 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
             return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
-    @router.post("/api/console/send-text", dependencies=[Depends(verify_token)])
-    async def proxy_console_send_text(request: Request):
+    @router.post("/api/console/send-message", dependencies=[Depends(verify_token)])
+    async def proxy_console_send_message(request: Request):
         body = await request.json()
         try:
-            resp = await client.post("/api/console/send-text", json=body)
+            resp = await client.post(
+                "/api/console/send-message",
+                json=body,
+                timeout=httpx.Timeout(connect=5.0, read=60.0, write=60.0, pool=5.0),
+            )
         except httpx.HTTPError as e:
             return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")

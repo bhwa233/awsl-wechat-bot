@@ -175,6 +175,8 @@
         .btn:focus-visible,
         .chat-row:focus-visible,
         .compose textarea:focus-visible,
+        .message-type:focus-visible,
+        .file-dropzone:focus-visible,
         .token:focus-visible {
             outline: 2px solid rgba(31,157,85,.38);
             outline-offset: 2px;
@@ -471,6 +473,26 @@
             border-top: 1px solid var(--line);
             background: linear-gradient(180deg, #fff, var(--paper));
         }
+        .compose-main {
+            min-width: 0;
+            display: grid;
+            gap: 8px;
+        }
+        .compose-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .message-type {
+            min-width: 88px;
+            padding: 7px 9px;
+            border: 1px solid var(--line-strong);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--ink);
+            font-size: 12px;
+            outline: none;
+        }
         .compose textarea {
             width: 100%;
             min-height: 44px;
@@ -485,9 +507,43 @@
             line-height: 1.4;
         }
         .compose textarea:focus,
+        .message-type:focus,
         .token:focus {
             border-color: var(--green);
             box-shadow: 0 0 0 3px rgba(31,157,85,.14);
+        }
+        .file-dropzone {
+            min-height: 44px;
+            padding: 8px 10px;
+            border: 1px dashed var(--line-strong);
+            border-radius: 8px;
+            background: #fff;
+            color: var(--muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            outline: none;
+        }
+        .file-dropzone:hover,
+        .file-dropzone.dragover {
+            border-color: var(--green);
+            background: var(--green-soft);
+            color: var(--ink);
+        }
+        .file-dropzone.has-file {
+            border-style: solid;
+            color: var(--ink);
+        }
+        .file-dropzone[hidden] {
+            display: none;
+        }
+        .file-dropzone img {
+            max-width: 72px;
+            max-height: 36px;
+            border-radius: 6px;
+            object-fit: cover;
         }
         .token {
             width: 100%;
@@ -691,8 +747,22 @@
                 </div>
                 <div class="panel-body" id="chatArea"></div>
                 <div class="compose">
-                    <textarea id="messageInput" placeholder="输入消息..."></textarea>
-                    <button class="btn send-btn" id="sendText" type="button" aria-label="发送" title="发送">
+                    <div class="compose-main">
+                        <div class="compose-tools">
+                            <select class="message-type" id="messageType" aria-label="消息类型">
+                                <option value="text">文本</option>
+                                <option value="image">图片</option>
+                                <option value="file">文件</option>
+                            </select>
+                        </div>
+                        <textarea id="messageInput" placeholder="输入消息..."></textarea>
+                        <label class="file-dropzone" id="fileDropzone" hidden tabindex="0">
+                            <input type="file" id="fileInput" hidden>
+                            <img id="filePreview" alt="" hidden>
+                            <span id="fileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
+                        </label>
+                    </div>
+                    <button class="btn send-btn" id="sendMessage" type="button" aria-label="发送" title="发送">
                         <span class="send-label">发送</span>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
                             <path d="m22 2-7 20-4-9-9-4Z"></path>

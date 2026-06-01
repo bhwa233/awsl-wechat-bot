@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
 from common.auth import verify_token
+from common.models import MessagePayload
 
 router = APIRouter()
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
@@ -31,8 +32,7 @@ class ConsoleOpenChatRequest(BaseModel):
     max_nodes: int = Field(default=5000, ge=1, le=10000)
 
 
-class ConsoleSendTextRequest(BaseModel):
-    text: str = Field(min_length=1, max_length=10_000)
+class ConsoleSendMessageRequest(MessagePayload):
     max_nodes: int = Field(default=5000, ge=1, le=10000)
 
 
@@ -61,13 +61,18 @@ def create_routes(gateway_app=None):
 
         return _windows_service(gateway_app).open_chat(path=request.path, max_nodes=request.max_nodes)
 
-    @router.post("/api/console/send-text", dependencies=[Depends(verify_token)])
-    def console_send_text(request: ConsoleSendTextRequest):
-        """在主窗口当前聊天输入框发送文本."""
+    @router.post("/api/console/send-message", dependencies=[Depends(verify_token)])
+    def console_send_message(request: ConsoleSendMessageRequest):
+        """在主窗口当前聊天输入框发送文本、图片或文件."""
         if sys.platform != "win32":
-            raise HTTPException(status_code=501, detail="console/send-text 当前只支持 Windows")
+            raise HTTPException(status_code=501, detail="console/send-message 当前只支持 Windows")
 
-        return _windows_service(gateway_app).send_text(text=request.text, max_nodes=request.max_nodes)
+        return _windows_service(gateway_app).send_message(
+            message_type=request.message_type,
+            message=request.message or "",
+            filename=request.filename or "",
+            max_nodes=request.max_nodes,
+        )
 
     @router.post("/api/console/debug/list", dependencies=[Depends(verify_token)])
     def console_debug_list():
@@ -117,4 +122,6 @@ def _windows_service(gateway_app=None):
         ui_operation_lock=adapter.ui_operation_lock,
         activate_window=adapter.activate_specific_window,
         set_clipboard_text=adapter.set_clipboard_text_verified,
+        send_image_to_window=adapter.send_image_to_window,
+        send_file_to_window=adapter.send_file_to_window,
     )

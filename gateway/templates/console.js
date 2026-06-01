@@ -4,9 +4,10 @@ let selectedPath = '';
 let selectedName = '';
 let openingChat = false;
 let refreshingState = false;
-let sendingText = false;
+let sendingMessage = false;
 let pollingState = false;
 let pollTimer = null;
+let attachment = { message: '', filename: '', preview: '' };
 
 function showChatPanel(show) {
     document.body.classList.toggle('chat-open', show);
@@ -175,6 +176,87 @@ function setButtonBusy(button, busy) {
     button.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
+function getMessageType() {
+    return $('messageType')?.value || 'text';
+}
+
+function syncComposerType(reset = true) {
+    const type = getMessageType();
+    const isText = type === 'text';
+    $('messageInput').hidden = !isText;
+    $('fileDropzone').hidden = isText;
+    $('fileInput').accept = type === 'image' ? 'image/*' : '';
+    if (reset && !isText) resetAttachment();
+}
+
+function resetAttachment() {
+    attachment = { message: '', filename: '', preview: '' };
+    $('fileInput').value = '';
+    $('fileDropzone').classList.remove('has-file', 'dragover');
+    $('filePreview').hidden = true;
+    $('filePreview').removeAttribute('src');
+    $('fileInfo').textContent = '点击选择 / 拖拽 / Ctrl+V 粘贴';
+}
+
+function formatFileSize(bytes) {
+    if (!bytes || bytes < 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let idx = 0;
+    let value = bytes;
+    while (value >= 1024 && idx < units.length - 1) {
+        value /= 1024;
+        idx++;
+    }
+    return (idx === 0 ? value : value.toFixed(1)) + ' ' + units[idx];
+}
+
+function loadAttachmentFile(file) {
+    if (!file) return;
+    const type = getMessageType();
+    if (type === 'image' && !file.type.startsWith('image/')) {
+        setStatus('请选择图片文件', true);
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = event => {
+        const dataUrl = String(event.target.result || '');
+        attachment = {
+            message: dataUrl.split(',')[1] || '',
+            filename: file.name || '',
+            preview: dataUrl,
+        };
+        $('fileDropzone').classList.add('has-file');
+        if (file.type.startsWith('image/')) {
+            $('filePreview').src = dataUrl;
+            $('filePreview').hidden = false;
+        } else {
+            $('filePreview').hidden = true;
+            $('filePreview').removeAttribute('src');
+        }
+        const size = formatFileSize(file.size);
+        $('fileInfo').textContent = `${file.name}${size ? ` (${size})` : ''}`;
+    };
+    reader.readAsDataURL(file);
+}
+
+function buildMessagePayload() {
+    const messageType = getMessageType();
+    if (messageType === 'text') {
+        const message = $('messageInput').value.trim();
+        if (!message) return null;
+        return { message_type: 'text', message, filename: '' };
+    }
+    if (!attachment.message) {
+        setStatus(messageType === 'image' ? '请选择图片' : '请选择文件', true);
+        return null;
+    }
+    return {
+        message_type: messageType,
+        message: attachment.message,
+        filename: messageType === 'file' ? attachment.filename : '',
+    };
+}
+
 function showTokenModal(show) {
     $('tokenModal').classList.toggle('show', show);
     $('tokenModal').setAttribute('aria-hidden', show ? 'false' : 'true');
@@ -232,27 +314,27 @@ async function openChat(path, name = '') {
     }
 }
 
-async function sendText() {
-    if (sendingText) return;
-    const input = $('messageInput');
-    const text = input.value.trim();
-    if (!text) return;
-    sendingText = true;
-    setButtonBusy($('sendText'), true);
+async function sendMessage() {
+    if (sendingMessage) return;
+    const payload = buildMessagePayload();
+    if (!payload) return;
+    sendingMessage = true;
+    setButtonBusy($('sendMessage'), true);
     setStatus('正在发送消息', false, true);
     try {
-        const res = await api('/api/console/send-text', { text });
+        const res = await api('/api/console/send-message', payload);
         if (!res.ok || !res.data?.available) {
             setStatus(res.data?.detail || res.data?.message || '发送失败', true);
             renderError(res.data);
             return;
         }
-        input.value = '';
+        if (payload.message_type === 'text') $('messageInput').value = '';
+        else resetAttachment();
         renderCurrentChat(res.data);
         setStatus('消息已发送');
     } finally {
-        sendingText = false;
-        setButtonBusy($('sendText'), false);
+        sendingMessage = false;
+        setButtonBusy($('sendMessage'), false);
     }
 }
 
@@ -260,7 +342,7 @@ function shouldPoll() {
     return document.visibilityState === 'visible'
         && !openingChat
         && !refreshingState
-        && !sendingText;
+        && !sendingMessage;
 }
 
 async function pollState() {
@@ -306,13 +388,46 @@ function init() {
         showTokenModal(false);
     });
     $('refresh').addEventListener('click', refreshState);
-    $('sendText').addEventListener('click', sendText);
+    $('messageType').addEventListener('change', () => syncComposerType());
+    $('fileInput').addEventListener('change', e => loadAttachmentFile(e.target.files[0]));
+    $('fileDropzone').addEventListener('dragover', e => {
+        e.preventDefault();
+        $('fileDropzone').classList.add('dragover');
+    });
+    $('fileDropzone').addEventListener('dragleave', () => $('fileDropzone').classList.remove('dragover'));
+    $('fileDropzone').addEventListener('drop', e => {
+        e.preventDefault();
+        $('fileDropzone').classList.remove('dragover');
+        loadAttachmentFile(e.dataTransfer.files[0]);
+    });
+    document.addEventListener('paste', e => {
+        const type = getMessageType();
+        if (type !== 'image' && type !== 'file') return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+            if (item.kind !== 'file') continue;
+            if (type === 'image' && !item.type.startsWith('image/')) continue;
+            const file = item.getAsFile();
+            if (!file) continue;
+            e.preventDefault();
+            if (type === 'image') {
+                const ext = item.type.split('/')[1] || 'png';
+                loadAttachmentFile(new File([file], `pasted-${Date.now()}.${ext}`, { type: item.type }));
+                return;
+            }
+            loadAttachmentFile(file);
+            return;
+        }
+    });
+    $('sendMessage').addEventListener('click', sendMessage);
     $('messageInput').addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            sendText();
+            sendMessage();
         }
     });
+    syncComposerType(false);
     refreshState();
     startPolling();
 }

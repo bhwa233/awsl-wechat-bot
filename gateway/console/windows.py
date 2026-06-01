@@ -30,10 +30,14 @@ class WindowsConsoleDebugService:
         ui_operation_lock: threading.Lock | None = None,
         activate_window: Callable[[Any], None] | None = None,
         set_clipboard_text: Callable[[str], None] | None = None,
+        send_image_to_window: Callable[[Any, str], bool] | None = None,
+        send_file_to_window: Callable[[Any, str, str], bool] | None = None,
     ):
         self._ui_lock = ui_operation_lock or threading.Lock()
         self._activate_window_func = activate_window
         self._set_clipboard_text = set_clipboard_text
+        self._send_image_to_window = send_image_to_window
+        self._send_file_to_window = send_file_to_window
         self._thread_inits: dict[int, Any] = {}
 
     def list_windows(self) -> dict[str, Any]:
@@ -193,7 +197,7 @@ class WindowsConsoleDebugService:
             self._focus_input(window)
             return self.get_state(max_nodes=max_nodes)
 
-    def send_text(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
+    def _send_text_message(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
         auto = self._ensure_uia()
         with self._ui_operation_lock():
             window = self._find_main_window(auto)
@@ -243,6 +247,42 @@ class WindowsConsoleDebugService:
 
             time.sleep(0.35)
             return self.get_state(max_nodes=max_nodes)
+
+    def send_message(
+        self,
+        *,
+        message_type: str,
+        message: str,
+        filename: str = "",
+        max_nodes: int = 5000,
+    ) -> dict[str, Any]:
+        if message_type == "text":
+            return self._send_text_message(text=message, max_nodes=max_nodes)
+
+        auto = self._ensure_uia()
+        window = self._find_main_window(auto)
+        if window is None:
+            return self._action_error("未找到微信主窗口")
+
+        if message_type == "image":
+            if not self._send_image_to_window:
+                return self._action_error("当前 Console 未配置图片发送能力", window=window)
+            ok = self._send_image_to_window(window, message)
+            if not ok:
+                return self._action_error("发送图片失败", window=window)
+        elif message_type == "file":
+            if not filename:
+                return self._action_error("文件消息缺少 filename", window=window)
+            if not self._send_file_to_window:
+                return self._action_error("当前 Console 未配置文件发送能力", window=window)
+            ok = self._send_file_to_window(window, message, filename)
+            if not ok:
+                return self._action_error("发送文件失败", window=window)
+        else:
+            return self._action_error(f"不支持的消息类型: {message_type}", window=window)
+
+        time.sleep(0.35)
+        return self.get_state(max_nodes=max_nodes)
 
     @staticmethod
     def _parse_at_prefix(text: str) -> tuple[list[str], str]:
