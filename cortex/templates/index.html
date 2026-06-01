@@ -42,6 +42,7 @@
 
         <div class="tabs">
             <button class="tab active" data-tab="chat">聊天</button>
+            <button class="tab" data-tab="console">控制台</button>
             <button class="tab" data-tab="tasks">定时任务</button>
             <button class="tab" data-tab="custom-commands">自定义命令</button>
             <button class="tab" data-tab="webhooks">Webhook</button>
@@ -95,6 +96,42 @@
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- ==================== 控制台 Tab ==================== -->
+        <div class="panel" id="console-panel">
+            <div class="console-layout">
+                <aside class="console-list">
+                    <div class="console-list-head">
+                        <span class="panel-title">聊天列表</span>
+                        <span class="console-count" id="consoleChatCount">0</span>
+                    </div>
+                    <div class="console-list-body" id="consoleChatList"></div>
+                </aside>
+                <section class="console-chat">
+                    <div class="chat-header">
+                        <div class="chat-header-left">
+                            <span class="console-chat-title" id="consoleChatTitle">聊天区域</span>
+                            <span class="console-status" id="consoleStatus">等待加载主窗口状态</span>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" id="consoleRefreshBtn" onclick="consoleTab.refresh()">刷新</button>
+                    </div>
+                    <div class="messages" id="consoleMessages">
+                        <div class="chat-empty" id="consoleEmpty">
+                            <div class="chat-empty-icon">🖥️</div>
+                            <p>等待加载主窗口状态</p>
+                        </div>
+                    </div>
+                    <div class="chat-input" id="consoleInput">
+                        <div class="chat-input-row2">
+                            <div class="chat-input-body">
+                                <textarea id="consoleMsgInput" placeholder="输入消息... (Enter 发送)" rows="1"></textarea>
+                            </div>
+                            <button class="btn btn-green" id="consoleSendBtn" onclick="consoleTab.send()">发送</button>
+                        </div>
+                    </div>
+                </section>
             </div>
         </div>
 
@@ -221,6 +258,7 @@
     <script src="/static/app.js"></script>
     <script src="/static/message_composer.js"></script>
     <script src="/static/chat.js"></script>
+    <script src="/static/console.js"></script>
     <script src="/static/tasks.js"></script>
     <script src="/static/custom_commands.js"></script>
     <script src="/static/webhooks.js"></script>
