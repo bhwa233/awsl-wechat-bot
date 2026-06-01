@@ -14,6 +14,7 @@ window.consoleTab = (() => {
     let activated = false;
     let unsupported = false;
     let composer = null;
+    let historyLoadGen = 0;
 
     function setStatus(text, error = false) {
         const el = $('consoleStatus');
@@ -67,50 +68,76 @@ window.consoleTab = (() => {
         });
     }
 
-    function msgAlign(msg) {
-        if (msg.align === 'left' || msg.align === 'right' || msg.align === 'center') return msg.align;
-        if (msg.is_self === true) return 'right';
-        if (msg.kind === 'timestamp' || msg.kind === 'system') return 'center';
-        return 'left';
+    async function ensureChatlogReady() {
+        if (chatlogBackend && chatlogGroups.length) return true;
+        try {
+            const health = await api('GET', '/api/chatlog/health');
+            if (health.ok && health.data) {
+                chatlogBackend = health.data.backend || 'v1';
+                if (health.data.media) {
+                    chatlogMediaCaps = {
+                        image: !!health.data.media.image,
+                        sticker: !!health.data.media.sticker,
+                        video_thumb: !!health.data.media.video_thumb,
+                        voice: !!health.data.media.voice,
+                        file: !!health.data.media.file,
+                    };
+                }
+            }
+            const groups = await api('GET', '/api/chatlog/groups');
+            if (!groups.ok) return false;
+            chatlogGroups = groups.data || [];
+            buildGroupMapping();
+            return true;
+        } catch {
+            return false;
+        }
     }
 
-    function renderBubbleInner(msg) {
-        const content = escapeHtml(msg.content || '');
-        if (!msg.quote) return content;
-        const sender = escapeHtml(msg.quote.sender || '');
-        const qc = escapeHtml(msg.quote.content || '');
-        const text = content ? `<div class="msg-text">${content}</div>` : '';
-        return `${text}<div class="msg-quote">${sender ? `<div class="msg-quote-name">${sender}</div>` : ''}${qc}</div>`;
+    function chatlogDisplayName(group) {
+        return group?.display_name || group?.remark || group?.nick_name || group?.username || '';
     }
 
-    function renderMessages(chatArea, chatList, options = {}) {
+    function findChatlogGroup(name) {
+        const target = String(name || '').trim();
+        if (!target) return null;
+        return chatlogGroups.find(group => {
+            const names = [group.username, group.display_name, group.remark, group.nick_name]
+                .map(item => String(item || '').trim())
+                .filter(Boolean);
+            return names.includes(target);
+        }) || null;
+    }
+
+    function renderChatlogMessages(msgs, options = {}) {
         const box = $('consoleMessages');
         const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
         const oldScrollTop = box.scrollTop;
-        const messages = chatArea?.messages || [];
-        $('consoleChatTitle').textContent = chatArea?.title || '聊天区域';
-        if (!chatArea?.available) {
-            const hasChats = (chatList?.items || []).length > 0;
-            const text = hasChats ? '请选择聊天列表中的会话' : '主窗口当前没有可解析的聊天消息区';
-            box.innerHTML = `<div class="chat-empty"><div class="chat-empty-icon">🖥️</div><p>${escapeHtml(text)}</p></div>`;
+        if (!msgs.length) {
+            box.innerHTML = '<div class="empty-hint">暂无 Chatlog 消息</div>';
             return;
         }
-        if (!messages.length) {
-            box.innerHTML = '<div class="empty-hint">消息区为空</div>';
-            return;
+        let lastDate = '';
+        let html = '';
+        for (const msg of msgs) {
+            const date = msg.time.split('T')[0];
+            if (date !== lastDate) {
+                html += `<div class="msg-date">${date}</div>`;
+                lastDate = date;
+            }
+            const time = formatTime(msg.time);
+            if (isSystemLike(msg)) {
+                html += `<div class="msg system">${formatMsgContent(msg)}</div>`;
+                continue;
+            }
+            if (msg.is_self) {
+                html += `<div class="msg self"><div class="msg-bubble self">${formatMsgContent(msg)}<div class="msg-time">${time}</div></div></div>`;
+            } else {
+                const name = msg.sender_name || msg.sender || '?';
+                html += `<div class="msg other"><div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(msg)}<div class="msg-time">${time}</div></div></div>`;
+            }
         }
-        box.innerHTML = messages.map(msg => {
-            const align = msgAlign(msg);
-            if (align === 'center') {
-                return `<div class="msg system"><div class="msg-system">${escapeHtml(msg.content || '')}</div></div>`;
-            }
-            if (align === 'right') {
-                return `<div class="msg self"><div class="msg-bubble self">${renderBubbleInner(msg)}</div></div>`;
-            }
-            const name = msg.sender || msg.name || '';
-            const senderHtml = name ? `<div class="msg-sender">${escapeHtml(name)}</div>` : '';
-            return `<div class="msg other"><div class="msg-bubble other">${senderHtml}${renderBubbleInner(msg)}</div></div>`;
-        }).join('');
+        box.innerHTML = html;
         if (options.preserveScroll && !wasNearBottom) {
             box.scrollTop = oldScrollTop;
             return;
@@ -118,9 +145,49 @@ window.consoleTab = (() => {
         box.scrollTop = box.scrollHeight;
     }
 
-    function renderState(data, options = {}) {
+    async function loadChatlogMessages(name, options = {}) {
+        const gen = ++historyLoadGen;
+        if (!options.quiet) $('consoleMessages').innerHTML = '<div class="loading-hint">正在加载 Chatlog 记录...</div>';
+        if (!await ensureChatlogReady()) {
+            if (gen === historyLoadGen) $('consoleMessages').innerHTML = '<div class="empty-hint">Chatlog 不可用</div>';
+            return false;
+        }
+        const group = findChatlogGroup(name);
+        if (!group) {
+            if (gen === historyLoadGen) {
+                $('consoleMessages').innerHTML = `<div class="empty-hint">未匹配到 Chatlog 会话: ${escapeHtml(name)}</div>`;
+            }
+            return false;
+        }
+        $('consoleChatTitle').textContent = chatlogDisplayName(group);
+        await WECHAT_EMOJI_READY;
+        const params = new URLSearchParams({
+            group: group.username,
+            limit: '101',
+            offset: '0',
+            desc: 'true',
+        });
+        const result = await api('GET', `/api/chatlog/messages?${params}`);
+        if (gen !== historyLoadGen) return false;
+        if (!result.ok) {
+            $('consoleMessages').innerHTML = `<div class="empty-hint">${escapeHtml(result.data?.detail || result.error || 'Chatlog 加载失败')}</div>`;
+            return false;
+        }
+        const msgs = result.data || [];
+        if (msgs.length > 100) msgs.pop();
+        msgs.reverse();
+        renderChatlogMessages(msgs, options);
+        return true;
+    }
+
+    function renderState(data) {
         renderList(data.chat_list);
-        renderMessages(data.chat_area, data.chat_list, options);
+        if (!selectedName) {
+            const hasChats = (data.chat_list?.items || []).length > 0;
+            const text = hasChats ? '请选择聊天列表中的会话' : '主窗口当前没有可解析的聊天列表';
+            $('consoleChatTitle').textContent = '聊天区域';
+            $('consoleMessages').innerHTML = `<div class="chat-empty"><div class="chat-empty-icon">🖥️</div><p>${escapeHtml(text)}</p></div>`;
+        }
     }
 
     function renderError(detail) {
@@ -160,7 +227,8 @@ window.consoleTab = (() => {
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
             if (!r.ok) { setStatus(r.data?.detail || r.error || `请求失败 ${r.status}`, true); renderError(r.data?.detail || r.error); return; }
             renderState(r.data);
-            setStatus(r.data.available ? '主窗口状态已更新' : (r.data.message || '主窗口不可用'), !r.data.available);
+            if (selectedName) await loadChatlogMessages(selectedName, { preserveScroll: true, quiet: true });
+            setStatus(r.data.available ? '主窗口状态已更新，聊天记录来自 Chatlog' : (r.data.message || '主窗口不可用'), !r.data.available);
         } catch {
             setStatus('网络错误，无法读取 console 状态', true);
         } finally {
@@ -182,8 +250,9 @@ window.consoleTab = (() => {
             const r = await consoleApi('/api/console/open-chat', { path });
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
             if (!r.ok || !r.data?.available) { setStatus(r.data?.detail || r.error || '切换聊天失败', true); renderError(r.data?.detail || r.error); return; }
-            renderState(r.data);
-            setStatus('聊天已切换，输入框已聚焦');
+            renderList(r.data.chat_list);
+            await loadChatlogMessages(selectedName);
+            setStatus('聊天已切换，聊天记录来自 Chatlog');
         } finally {
             opening = false;
             setListBusy(false);
@@ -204,7 +273,10 @@ window.consoleTab = (() => {
             if (!r.ok || !r.data?.available) { setStatus(r.data?.detail || r.error || '发送失败', true); renderError(r.data?.detail || r.error); return; }
             if (payload.message_type === 'text') $('consoleMsgInput').value = '';
             else composer.resetUpload();
-            renderMessages(r.data.chat_area, r.data.chat_list);
+            renderList(r.data.chat_list);
+            setTimeout(() => {
+                if (selectedName) loadChatlogMessages(selectedName, { quiet: true });
+            }, 1000);
             setStatus('消息已发送');
         } finally {
             sending = false;
@@ -229,7 +301,7 @@ window.consoleTab = (() => {
             if (!r.ok || !r.data?.available) return;
             if (selectedPath || selectedName) {
                 renderList(r.data.chat_list);
-                renderMessages(r.data.chat_area, r.data.chat_list, { preserveScroll: true });
+                if (selectedName) await loadChatlogMessages(selectedName, { preserveScroll: true, quiet: true });
                 return;
             }
             renderState(r.data);
