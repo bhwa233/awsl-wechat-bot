@@ -22,6 +22,7 @@ from chatlog.wechat_db import (
     HAS_ZSTD,
     MESSAGE_TYPE_TEXT,
     ChatRoom,
+    Contact,
     Message,
     _parse_room_data,
 )
@@ -140,7 +141,8 @@ class WeChatDBReaderV2:
     def list_groups(self, limit: int = 0) -> list[ChatRoom]:
         contact_db = self._contact_db_path()
         sql = (
-            "SELECT c.username, COALESCE(cr.owner, ''), c.nick_name, c.remark "
+            "SELECT c.username, COALESCE(cr.owner, ''), c.nick_name, c.remark, "
+            "c.small_head_url, c.big_head_url "
             "FROM contact c "
             "LEFT JOIN chat_room cr ON c.username = cr.username "
             "WHERE c.local_type IN (1, 2) "
@@ -159,6 +161,38 @@ class WeChatDBReaderV2:
                 owner=row[1] or "",
                 nick_name=row[2] or "",
                 remark=row[3] or "",
+                avatar=row[4] or "",
+                big_avatar=row[5] or "",
+            )
+            for row in rows
+        ]
+
+    def get_contacts(self, usernames: list[str]) -> list[Contact]:
+        """批量查询联系人/群成员信息(含头像 URL)"""
+        safe = []
+        for u in usernames:
+            try:
+                _validate_username(u)
+                safe.append(u)
+            except ValueError:
+                continue
+        if not safe:
+            return []
+        in_clause = ",".join(f"'{u}'" for u in safe)
+        contact_db = self._contact_db_path()
+        _, rows = self._query(
+            contact_db,
+            f"SELECT username, nick_name, remark, alias, small_head_url, big_head_url "
+            f"FROM contact WHERE username IN ({in_clause})",
+        )
+        return [
+            Contact(
+                username=row[0] or "",
+                nick_name=row[1] or "",
+                remark=row[2] or "",
+                alias=row[3] or "",
+                avatar=row[4] or "",
+                big_avatar=row[5] or "",
             )
             for row in rows
         ]

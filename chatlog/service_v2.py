@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from chatlog.wechat_db import ChatRoom, Message
+from chatlog.wechat_db import ChatRoom, Contact, Message
 from chatlog.wechat_db_v2 import WeChatDBReaderV2
 
 
@@ -42,3 +42,11 @@ class ChatlogServiceV2:
         group_id: str,
     ) -> str | None:
         return WeChatDBReaderV2(encrypted_dir, hex_key).get_group_display_name(group_id)
+
+    def get_contacts(
+        self,
+        encrypted_dir: str,
+        hex_key: str,
+        usernames: list[str],
+    ) -> list[Contact]:
+        return WeChatDBReaderV2(encrypted_dir, hex_key).get_contacts(usernames)

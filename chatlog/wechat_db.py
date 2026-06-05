@@ -77,6 +77,8 @@ class ChatRoom:
     owner: str
     remark: str = ""
     nick_name: str = ""
+    avatar: str = ""        # small_head_url (/132 小图), 腾讯 CDN 直链
+    big_avatar: str = ""    # big_head_url (/0 原图)
     user_display_names: dict = None  # username -> display_name 映射
 
     def __post_init__(self):
@@ -92,7 +94,30 @@ class ChatRoom:
             "owner": self.owner,
             "remark": self.remark,
             "nick_name": self.nick_name,
-            "display_name": self.display_name()
+            "display_name": self.display_name(),
+            "avatar": self.avatar,
+            "big_avatar": self.big_avatar,
+        }
+
+
+@dataclass
+class Contact:
+    """联系人/群成员信息"""
+    username: str
+    nick_name: str = ""
+    remark: str = ""
+    alias: str = ""
+    avatar: str = ""        # small_head_url (/132 小图)
+    big_avatar: str = ""    # big_head_url (/0 原图)
+
+    def to_dict(self) -> dict:
+        return {
+            "username": self.username,
+            "nick_name": self.nick_name,
+            "remark": self.remark,
+            "alias": self.alias,
+            "avatar": self.avatar,
+            "big_avatar": self.big_avatar,
         }
 
 
@@ -448,11 +473,17 @@ class WeChatDBReader:
         chat_rooms = []
         for username, owner in cursor.fetchall():
             chat_room = ChatRoom(username=username, owner=owner or "")
-            cursor.execute("SELECT nick_name, remark FROM contact WHERE username = ?", (username,))
+            cursor.execute(
+                "SELECT nick_name, remark, small_head_url, big_head_url "
+                "FROM contact WHERE username = ?",
+                (username,),
+            )
             row = cursor.fetchone()
             if row:
                 chat_room.nick_name = row[0] or ""
                 chat_room.remark = row[1] or ""
+                chat_room.avatar = row[2] or ""
+                chat_room.big_avatar = row[3] or ""
             chat_rooms.append(chat_room)
         return chat_rooms
 
@@ -475,6 +506,30 @@ class WeChatDBReader:
         if row:
             return row[1] or row[0] or row[2] or username
         return username
+
+    def get_contacts(self, usernames: list[str]) -> list[Contact]:
+        """批量查询联系人/群成员信息(含头像 URL)"""
+        if not usernames:
+            return []
+        db = self._get_contact_db()
+        cursor = db.cursor()
+        placeholders = ",".join("?" * len(usernames))
+        cursor.execute(
+            f"SELECT username, nick_name, remark, alias, small_head_url, big_head_url "
+            f"FROM contact WHERE username IN ({placeholders})",
+            list(usernames),
+        )
+        return [
+            Contact(
+                username=r[0] or "",
+                nick_name=r[1] or "",
+                remark=r[2] or "",
+                alias=r[3] or "",
+                avatar=r[4] or "",
+                big_avatar=r[5] or "",
+            )
+            for r in cursor.fetchall()
+        ]
 
     def _get_chatroom_display_names(self, chatroom: str) -> dict[str, str]:
         """获取群成员的群昵称映射"""

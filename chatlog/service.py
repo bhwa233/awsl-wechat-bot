@@ -4,7 +4,14 @@ ChatlogService - 聊天记录服务统一接口
 
 from datetime import datetime
 
-from chatlog.wechat_db import HAS_CRYPTO, ChatRoom, Message, WeChatDBDecryptor, WeChatDBReader
+from chatlog.wechat_db import (
+    HAS_CRYPTO,
+    ChatRoom,
+    Contact,
+    Message,
+    WeChatDBDecryptor,
+    WeChatDBReader,
+)
 
 
 class ChatlogService:
@@ -55,6 +62,14 @@ class ChatlogService:
         reader = WeChatDBReader(db_path)
         try:
             return reader.get_group_display_name(group_id)
+        finally:
+            reader.close()
+
+    def get_contacts(self, db_path: str, usernames: list[str]) -> list[Contact]:
+        """批量查询联系人/群成员信息(含头像 URL)"""
+        reader = WeChatDBReader(db_path)
+        try:
+            return reader.get_contacts(usernames)
         finally:
             reader.close()
 

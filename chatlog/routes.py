@@ -8,7 +8,11 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from chatlog.media.route import V1MediaBackendBinding, register_media_route
-from chatlog.models import ChatlogGroupResponse, ChatlogMessageResponse
+from chatlog.models import (
+    ChatlogContactResponse,
+    ChatlogGroupResponse,
+    ChatlogMessageResponse,
+)
 from chatlog.platform import get_chatlog_platform
 from chatlog.service import ChatlogService
 from common.auth import verify_token
@@ -75,6 +79,8 @@ def create_routes() -> APIRouter:
                     remark=g.remark,
                     nick_name=g.nick_name,
                     display_name=g.display_name(),
+                    avatar=g.avatar,
+                    big_avatar=g.big_avatar,
                 )
                 for g in groups
             ]
@@ -82,6 +88,35 @@ def create_routes() -> APIRouter:
             raise HTTPException(status_code=404, detail=str(e)) from e
         except Exception as e:
             logger.error(f"[Chatlog] 列出群聊失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    @router.get("/contacts", response_model=list[ChatlogContactResponse], dependencies=[Depends(verify_token)])
+    def list_contacts(usernames: str = Query(..., description="逗号分隔的 username 列表(联系人或群成员 wxid), 最多 200 个")):
+        _ensure_v1_config()
+        if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
+        ids = [u.strip() for u in usernames.split(",") if u.strip()]
+        if not ids:
+            raise HTTPException(status_code=400, detail="usernames 不能为空")
+        if len(ids) > 200:
+            raise HTTPException(status_code=400, detail="一次最多查询 200 个 username")
+        try:
+            contacts = chatlog.get_contacts(config.WECHAT_DB_OUTPUT_PATH, ids)
+            return [
+                ChatlogContactResponse(
+                    username=c.username,
+                    nick_name=c.nick_name,
+                    remark=c.remark,
+                    alias=c.alias,
+                    avatar=c.avatar,
+                    big_avatar=c.big_avatar,
+                )
+                for c in contacts
+            ]
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[Chatlog] 查询联系人失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
     @router.get("/messages", response_model=list[ChatlogMessageResponse], dependencies=[Depends(verify_token)])

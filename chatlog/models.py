@@ -12,6 +12,18 @@ class ChatlogGroupResponse(BaseModel):
     remark: str
     nick_name: str
     display_name: str
+    avatar: str = ""       # small_head_url (/132 小图), 来自 contact 表, 腾讯 CDN 直链
+    big_avatar: str = ""   # big_head_url (/0 原图)
+
+
+class ChatlogContactResponse(BaseModel):
+    """联系人/群成员信息响应"""
+    username: str
+    nick_name: str = ""
+    remark: str = ""
+    alias: str = ""
+    avatar: str = ""       # small_head_url (/132 小图)
+    big_avatar: str = ""   # big_head_url (/0 原图)
 
 
 class ChatlogMessageResponse(BaseModel):

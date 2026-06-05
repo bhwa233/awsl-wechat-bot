@@ -69,6 +69,11 @@ def create_routes(chatlog_base_url: str, chatlog_token: str) -> tuple[APIRouter,
         resp = await client.get("/api/chatlog/group-display-name", params=dict(request.query_params))
         return _proxy_response(resp)
 
+    @router.get("/api/chatlog/contacts", dependencies=[Depends(verify_token)])
+    async def proxy_chatlog_contacts(request: Request):
+        resp = await client.get("/api/chatlog/contacts", params=dict(request.query_params))
+        return _proxy_response(resp)
+
     @router.get("/api/chatlog/health")
     async def proxy_chatlog_health():
         """统一 health, chatlog 服务侧按 CHATLOG_USE_V2 决定 v1/v2 行为, 前端用 media 字段判断能力."""

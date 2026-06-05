@@ -52,6 +52,17 @@ class ChatlogClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_contacts(self, usernames: list[str]) -> list[dict]:
+        """批量查询联系人/群成员信息(含头像 URL)"""
+        if not usernames:
+            return []
+        resp = self._client.get(
+            "/api/chatlog/contacts",
+            params={"usernames": ",".join(usernames)},
+        )
+        resp.raise_for_status()
+        return resp.json()
+
     def get_group_display_name(self, group: str) -> str | None:
         resp = self._client.get("/api/chatlog/group-display-name", params={"group": group})
         if resp.status_code == 404:
