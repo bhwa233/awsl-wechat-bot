@@ -162,6 +162,7 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
             adapter=binding.adapter,
             image_aes_key=cfg.IMAGE_AES_KEY or "",
             image_xor_key=cfg.IMAGE_XOR_KEY,
+            emoticon_aes_key=cfg.EMOTICON_AES_KEY or "",
         )
 
     def _require_image_key() -> None:
@@ -203,7 +204,8 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
             elif msg_type == 47:
                 if not content:
                     raise HTTPException(status_code=400, detail="sticker 需 content")
-                result = _build_resolver(need_base=False).decode_sticker(content)
+                # need_base=True: 无 cdnurl 的表情走 <base>/cache 本地缓存解密兜底
+                result = _build_resolver(need_base=True).decode_sticker(content)
             elif msg_type == 49:
                 if not content:
                     raise HTTPException(status_code=400, detail="file 需 content")

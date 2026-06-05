@@ -5,6 +5,7 @@
 
 依赖:
 - common.config.IMAGE_AES_KEY / IMAGE_XOR_KEY (V2 .dat 解密)
+- common.config.EMOTICON_AES_KEY (表情本地缓存 AES-128-CBC 解密)
 - common.config.WECHAT_DB_KEY (per-db SQLCipher 密钥, Linux 是 per-db JSON)
 - chatlog.platform.get_chatlog_platform() (原生库读 SQLCipher)
 """
@@ -67,12 +68,15 @@ class MediaResolver:
         adapter: MediaAdapter,
         image_aes_key: str,
         image_xor_key: int = 0x88,
+        emoticon_aes_key: str = "",
     ):
-        # base=None 表示仅 voice/sticker 路径; image/video-thumb 调用时会在 _require_base 报错
+        # base=None 表示仅 voice/sticker(cdnurl/emoticon.db) 路径; image/video-thumb 及
+        # sticker 本地缓存兜底需要 base, 调用时缺 base 会跳过(image/video-thumb 则 _require_base 报错)
         self.base: Path | None = Path(wechat_base_dir) if wechat_base_dir is not None else None
         self.adapter = adapter
         self.aes_key = image_aes_key
         self.xor_key = image_xor_key
+        self.emoticon_aes_key = emoticon_aes_key
 
     @cached_property
     def attach_root(self) -> Path:
@@ -213,11 +217,12 @@ class MediaResolver:
         return MediaResult(msg_type=34, fmt="mp3", data=mp3, md5=str(server_id))
 
     def decode_sticker(self, content_xml: str) -> MediaResult | None:
-        """type=47 sticker: content XML cdnurl 直链, 必要时查 emoticon.db AES key.
+        """type=47 sticker: content XML cdnurl 直链, 必要时查 emoticon.db / 本地缓存.
 
         策略:
         1. XML 自带 cdnurl → HTTP GET 明文 → 检测格式返回
         2. fallback: emoticon.db 查 md5 → (cdn_url, aes_key, encrypt_url) 重试
+        3. fallback: 本地按 md5 缓存的加密表情文件 → AES-128-CBC 解密 (无 cdnurl 的群表情主要靠这步)
         """
         md5_m = _STICKER_MD5_RE.search(content_xml)
         if not md5_m:
@@ -241,6 +246,9 @@ class MediaResolver:
                     data, fmt = self._fetch_sticker_from_url(info["cdn_url"])
                 if (data is None or fmt is None) and info.get("encrypt_url") and info.get("aes_key"):
                     data, fmt = self._fetch_sticker_encrypted(info["encrypt_url"], info["aes_key"])
+        # 本地缓存兜底: 无 cdnurl(群里收到的商店/个人表情) 时, 微信按 md5 缓存的加密文件
+        if data is None or fmt is None:
+            data, fmt = self._decode_local_emoticon(md5)
         if data is None or fmt is None:
             return None
         cache.sticker.put(md5, (data, fmt))
@@ -477,6 +485,75 @@ class MediaResolver:
                 logger.warning("[sticker] encrypt 解密失败: %s", exc)
                 return None, None
         return data, _detect_sticker_format(data)
+
+    # ---------- internal: 本地缓存表情 ---------- #
+
+    def _local_emoticon_path(self, md5: str) -> Path | None:
+        """微信按 md5 把收到的表情缓存到 <base>/cache/<YYYY-MM>/Emoticon/<md5[:2]>/<md5>.
+
+        跨多个月份目录时取最近修改的那个 (同一表情可能多月重复缓存).
+        """
+        if self.base is None:
+            return None
+        md5l = md5.lower()
+        pattern = str(self.base / "cache" / "*" / "Emoticon" / md5l[:2] / md5l)
+        hits = [p for p in glob.glob(pattern) if os.path.isfile(p)]
+        if not hits:
+            return None
+        return Path(max(hits, key=os.path.getmtime))
+
+    def _decode_local_emoticon(self, md5: str) -> tuple[bytes | None, str | None]:
+        """本地缓存表情: 全文件 AES-128-CBC(iv=key) 解密 → 去填充 → 识别/转码.
+
+        微信 4.x 用全局密钥 EMOTICON_AES_KEY 加密 cache 下的表情文件 (与图片 V2 .dat 的
+        per-账号 key 不同). wxgf(HEVC) 动图取末帧转 JPEG (与 hd 图片处理一致).
+        """
+        if not self.emoticon_aes_key:
+            return None, None
+        path = self._local_emoticon_path(md5)
+        if path is None:
+            return None, None
+        try:
+            key = bytes.fromhex(self.emoticon_aes_key)
+        except ValueError:
+            logger.warning("[sticker] EMOTICON_AES_KEY 不是合法 hex, 跳过本地缓存解密")
+            return None, None
+        if len(key) not in (16, 24, 32):
+            logger.warning("[sticker] EMOTICON_AES_KEY 长度非法 (需 16/24/32 字节)")
+            return None, None
+
+        # 读取前先看大小, 防坏缓存/异常大文件撑爆内存 (与远端 sticker 的 _STICKER_MAX_BYTES 一致)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            return None, None
+        if size > _STICKER_MAX_BYTES:
+            logger.warning("[sticker] 本地缓存文件超过 %dB 上限, 跳过: %s", _STICKER_MAX_BYTES, path)
+            return None, None
+
+        from Crypto.Cipher import AES
+        try:
+            enc = path.read_bytes()
+            if len(enc) < 16 or len(enc) % 16:
+                return None, None
+            data = AES.new(key, AES.MODE_CBC, iv=key).decrypt(enc)
+        except Exception as exc:
+            logger.warning("[sticker] 本地缓存解密失败 %s: %s", path, exc)
+            return None, None
+        # 去 PKCS7 填充; 不是 PKCS7 时保留原样 (图片渲染器容忍尾部多余字节)
+        pad = data[-1] if data else 0
+        if 1 <= pad <= 16 and data[-pad:] == bytes([pad]) * pad:
+            data = data[:-pad]
+
+        fmt = _detect_sticker_format(data)
+        if fmt is None:
+            return None, None
+        if fmt == "hevc":
+            jpg = convert_wxgf_to_jpeg(data)
+            if not jpg:
+                return None, None
+            return jpg, "jpg"
+        return data, fmt
 
 
 # ---------- helpers ---------- #

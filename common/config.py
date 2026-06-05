@@ -104,6 +104,10 @@ class Config(BaseSettings):
     IMAGE_AES_KEY: str = ""          # 16 字节 ASCII (hex 字符串)
     IMAGE_XOR_KEY: int = 0x88        # XOR 字节, 默认 0x88; .env 支持 "0x1a"/"26"/"0o32" 写法
 
+    # 微信表情本地缓存(cache/<YYYY-MM>/Emoticon)解密密钥: AES-128-CBC(iv=key) 全局密钥.
+    # 默认值为微信 4.x 内置常量(对收到的表情按 md5 缓存时使用), 个别版本不同可在 .env 覆盖.
+    EMOTICON_AES_KEY: str = "4e514cb9da6282d0f70de78089c43f6c"  # 16 字节, hex 字符串(32 hex)
+
     @field_validator("IMAGE_XOR_KEY", mode="before")
     @classmethod
     def _parse_xor_key(cls, v):
