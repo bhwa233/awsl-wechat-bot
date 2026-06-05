@@ -122,7 +122,32 @@ body {
 .chat-empty-icon { font-size: 48px; margin-bottom: 8px; }
 .msg { margin-bottom: 10px; display: flex; }
 .msg.self { justify-content: flex-end; }
-.msg.other { justify-content: flex-start; }
+.msg.other { justify-content: flex-start; align-items: flex-start; gap: 8px; }
+.msg-avatar,
+.msg-avatar-wrap {
+    width: 32px; height: 32px; flex: 0 0 32px;
+}
+.msg-avatar-wrap {
+    position: relative; display: inline-block; margin-top: 2px;
+}
+.msg-avatar {
+    border-radius: 8px; object-fit: cover; display: inline-flex;
+    align-items: center; justify-content: center;
+    background: var(--stat-bg); color: var(--text2);
+    border: 1px solid var(--border); font-size: 13px; font-weight: 700;
+}
+.msg-avatar-img {
+    display: block; background: var(--stat-bg);
+}
+.msg-avatar-wrap .msg-avatar-fallback {
+    display: none;
+}
+.msg-avatar-wrap.avatar-error .msg-avatar-img {
+    display: none;
+}
+.msg-avatar-wrap.avatar-error .msg-avatar-fallback {
+    display: inline-flex;
+}
 .msg-bubble {
     max-width: 70%; padding: 8px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5;
     word-break: break-word; white-space: pre-wrap;

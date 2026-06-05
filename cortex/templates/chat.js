@@ -9,6 +9,9 @@ let _recordSeq = 0;
 let chatPage = 0;
 const chatPageSize = 100;
 let loadGen = 0;
+const CHATLOG_CONTACT_BATCH_SIZE = 200;
+const chatlogContactCache = new Map();
+const chatlogContactPending = new Map();
 
 function onGroupsLoaded() {
     populateSendWindowSelect();
@@ -17,7 +20,84 @@ function onGroupsLoaded() {
 function onTokenSaved() {
     loadGroups();
     chatlogBackend = null;
+    chatlogContactCache.clear();
+    chatlogContactPending.clear();
     detectChatlogBackend();
+}
+
+function avatarInitial(name) {
+    const text = String(name || '').trim();
+    if (!text) return '?';
+    return (Array.from(text)[0] || '?').toUpperCase();
+}
+
+function chunkArray(items, size) {
+    const chunks = [];
+    for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+    return chunks;
+}
+
+async function fetchChatlogContacts(usernames) {
+    if (!usernames.length) return;
+    const params = new URLSearchParams({ usernames: usernames.join(',') });
+    const r = await api('GET', `/api/chatlog/contacts?${params}`);
+    if (!r.ok || !Array.isArray(r.data)) return;
+
+    const found = new Set();
+    for (const contact of r.data) {
+        if (!contact?.username) continue;
+        found.add(contact.username);
+        chatlogContactCache.set(contact.username, contact);
+    }
+    for (const username of usernames) {
+        if (!found.has(username)) chatlogContactCache.set(username, null);
+    }
+}
+
+async function ensureChatlogSenderContacts(messages) {
+    const senders = [...new Set((messages || [])
+        .filter(m => !m.is_self && m.sender)
+        .map(m => m.sender)
+        .filter(sender => !chatlogContactCache.has(sender)))];
+    if (!senders.length) return;
+
+    const waits = [];
+    const missing = [];
+    for (const sender of senders) {
+        const pending = chatlogContactPending.get(sender);
+        if (pending) {
+            waits.push(pending);
+            continue;
+        }
+        missing.push(sender);
+    }
+
+    for (const chunk of chunkArray(missing, CHATLOG_CONTACT_BATCH_SIZE)) {
+        const pending = fetchChatlogContacts(chunk).finally(() => {
+            for (const sender of chunk) chatlogContactPending.delete(sender);
+        });
+        for (const sender of chunk) chatlogContactPending.set(sender, pending);
+        waits.push(pending);
+    }
+
+    if (waits.length) await Promise.allSettled(waits);
+}
+
+function getChatlogSenderContact(sender) {
+    const contact = chatlogContactCache.get(sender);
+    return contact && typeof contact === 'object' ? contact : null;
+}
+
+function chatlogContactAvatar(contact) {
+    return contact?.avatar || contact?.big_avatar || '';
+}
+
+function renderMessageAvatar(message, displayName) {
+    const contact = getChatlogSenderContact(message.sender);
+    const avatar = chatlogContactAvatar(contact);
+    const fallback = `<span class="msg-avatar msg-avatar-fallback">${escapeHtml(avatarInitial(displayName))}</span>`;
+    if (!avatar) return fallback;
+    return `<span class="msg-avatar-wrap"><img class="msg-avatar msg-avatar-img" loading="lazy" src="${escapeHtml(avatar)}" alt="${escapeHtml(displayName)}" onerror="this.parentElement.classList.add('avatar-error')">${fallback}</span>`;
 }
 
 function onTabSwitch(name) {
@@ -153,6 +233,10 @@ async function loadMessages(chatlogId) {
     msgs.reverse();
     renderMessages(msgs);
     renderPagination(msgs.length, hasMore);
+    ensureChatlogSenderContacts(msgs).then(() => {
+        if (gen !== loadGen) return;
+        renderMessages(msgs);
+    });
 }
 
 function renderPagination(count, hasMore) {
@@ -501,7 +585,7 @@ function renderMessages(msgs) {
             html += `<div class="msg self"><div class="msg-bubble self">${formatMsgContent(m)}<div class="msg-time">${time}</div></div></div>`;
         } else {
             const name = m.sender_name || m.sender || '?';
-            html += `<div class="msg other"><div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(m)}<div class="msg-time">${time}</div></div></div>`;
+            html += `<div class="msg other">${renderMessageAvatar(m, name)}<div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(m)}<div class="msg-time">${time}</div></div></div>`;
         }
     }
     box.innerHTML = html;

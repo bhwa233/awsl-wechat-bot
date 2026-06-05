@@ -134,7 +134,7 @@ window.consoleTab = (() => {
                 html += `<div class="msg self"><div class="msg-bubble self">${formatMsgContent(msg)}<div class="msg-time">${time}</div></div></div>`;
             } else {
                 const name = msg.sender_name || msg.sender || '?';
-                html += `<div class="msg other"><div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(msg)}<div class="msg-time">${time}</div></div></div>`;
+                html += `<div class="msg other">${renderMessageAvatar(msg, name)}<div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(msg)}<div class="msg-time">${time}</div></div></div>`;
             }
         }
         box.innerHTML = html;
@@ -177,6 +177,10 @@ window.consoleTab = (() => {
         if (msgs.length > 100) msgs.pop();
         msgs.reverse();
         renderChatlogMessages(msgs, options);
+        ensureChatlogSenderContacts(msgs).then(() => {
+            if (gen !== historyLoadGen) return;
+            renderChatlogMessages(msgs, { ...options, preserveScroll: true });
+        });
         return true;
     }
 
