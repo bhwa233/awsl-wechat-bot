@@ -63,6 +63,12 @@ class ChatlogClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_room_members(self, group: str) -> list[dict]:
+        """列出群成员(群内昵称 + 联系人资料), 群主排首位"""
+        resp = self._client.get("/api/chatlog/members", params={"group": group})
+        resp.raise_for_status()
+        return resp.json()
+
     def get_group_display_name(self, group: str) -> str | None:
         resp = self._client.get("/api/chatlog/group-display-name", params={"group": group})
         if resp.status_code == 404:

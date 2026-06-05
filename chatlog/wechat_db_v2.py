@@ -24,7 +24,10 @@ from chatlog.wechat_db import (
     ChatRoom,
     Contact,
     Message,
+    RoomMember,
+    _build_room_member,
     _parse_room_data,
+    _parse_room_members,
 )
 
 if HAS_ZSTD:
@@ -196,6 +199,33 @@ class WeChatDBReaderV2:
             )
             for row in rows
         ]
+
+    def get_room_members(self, chatroom: str) -> list[RoomMember]:
+        """列出群成员: 群内昵称 + 联系人昵称/头像, 群主排首位"""
+        _validate_username(chatroom)
+        contact_db = self._contact_db_path()
+        _, rows = self._query(
+            contact_db,
+            f"SELECT owner, ext_buffer FROM chat_room WHERE username='{chatroom}' LIMIT 1",
+        )
+        if not rows or not rows[0][1]:
+            return []
+        owner = rows[0][0] or ""
+        ext_buffer = _decode_blob(rows[0][1])
+        if isinstance(ext_buffer, str):
+            ext_buffer = ext_buffer.encode("latin-1", errors="ignore")
+        members = _parse_room_members(ext_buffer)
+        if not members:
+            return []
+
+        display_map = {wxid: name for wxid, name in members}
+        contacts = {c.username: c for c in self.get_contacts(list(display_map.keys()))}
+        result = [
+            _build_room_member(wxid, name, contacts.get(wxid), wxid == owner)
+            for wxid, name in display_map.items()
+        ]
+        result.sort(key=lambda m: not m.is_owner)
+        return result
 
     def get_group_display_name(self, group_id: str) -> str:
         _validate_username(group_id)

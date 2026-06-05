@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from chatlog.media.route import V1MediaBackendBinding, register_media_route
 from chatlog.models import (
     ChatlogContactResponse,
+    ChatlogGroupMemberResponse,
     ChatlogGroupResponse,
     ChatlogMessageResponse,
 )
@@ -117,6 +118,34 @@ def create_routes() -> APIRouter:
             raise HTTPException(status_code=404, detail=str(e)) from e
         except Exception as e:
             logger.error(f"[Chatlog] 查询联系人失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    @router.get("/members", response_model=list[ChatlogGroupMemberResponse], dependencies=[Depends(verify_token)])
+    def list_group_members(group: str = Query(..., description="群聊ID (xxx@chatroom)")):
+        _ensure_v1_config()
+        if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
+        if not group.endswith("@chatroom"):
+            raise HTTPException(status_code=400, detail="group 必须是群聊ID (xxx@chatroom)")
+        try:
+            members = chatlog.get_room_members(config.WECHAT_DB_OUTPUT_PATH, group)
+            return [
+                ChatlogGroupMemberResponse(
+                    username=m.username,
+                    display_name=m.display_name,
+                    nick_name=m.nick_name,
+                    remark=m.remark,
+                    alias=m.alias,
+                    avatar=m.avatar,
+                    big_avatar=m.big_avatar,
+                    is_owner=m.is_owner,
+                )
+                for m in members
+            ]
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[Chatlog] 查询群成员失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
     @router.get("/messages", response_model=list[ChatlogMessageResponse], dependencies=[Depends(verify_token)])

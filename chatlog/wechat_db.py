@@ -122,6 +122,50 @@ class Contact:
 
 
 @dataclass
+class RoomMember:
+    """群成员信息: 群内昵称(display_name) + 联系人资料(nick_name/头像)"""
+    username: str
+    display_name: str = ""   # 群内昵称 (来自 chat_room.ext_buffer)
+    nick_name: str = ""      # 微信昵称 (来自 contact 表)
+    remark: str = ""
+    alias: str = ""
+    avatar: str = ""         # small_head_url (/132 小图)
+    big_avatar: str = ""     # big_head_url (/0 原图)
+    is_owner: bool = False   # 是否群主
+
+    def to_dict(self) -> dict:
+        return {
+            "username": self.username,
+            "display_name": self.display_name,
+            "nick_name": self.nick_name,
+            "remark": self.remark,
+            "alias": self.alias,
+            "avatar": self.avatar,
+            "big_avatar": self.big_avatar,
+            "is_owner": self.is_owner,
+        }
+
+
+def _build_room_member(
+    username: str,
+    display_name: str,
+    contact: "Contact | None",
+    is_owner: bool,
+) -> "RoomMember":
+    """组合 ext_buffer 群昵称与 contact 表资料为 RoomMember (v1/v2 共用)"""
+    return RoomMember(
+        username=username,
+        display_name=display_name,
+        nick_name=contact.nick_name if contact else "",
+        remark=contact.remark if contact else "",
+        alias=contact.alias if contact else "",
+        avatar=contact.avatar if contact else "",
+        big_avatar=contact.big_avatar if contact else "",
+        is_owner=is_owner,
+    )
+
+
+@dataclass
 class Message:
     """消息"""
     seq: int
@@ -303,24 +347,23 @@ def _parse_varint(data: bytes, pos: int) -> tuple[int, int]:
     return result, pos
 
 
-def _parse_room_data(ext_buffer: bytes) -> dict[str, str]:
+def _parse_room_members(ext_buffer: bytes) -> list[tuple[str, str]]:
     """
-    解析 chat_room.ext_buffer 中的 protobuf 数据,提取群成员昵称
+    解析 chat_room.ext_buffer 中的 protobuf 数据,提取全部群成员
+
+    与 _parse_room_data 不同: 这里保留没有设置群昵称的成员(display_name 为空),
+    用于获取完整成员名单.
 
     Returns:
-        dict: username -> display_name 映射
+        list: [(username, display_name), ...], 保持原始顺序
     """
+    members: list[tuple[str, str]] = []
     if not ext_buffer or len(ext_buffer) < 2:
-        return {}
+        return members
 
-    user_display_names = {}
     pos = 0
-
     try:
         while pos < len(ext_buffer):
-            if pos >= len(ext_buffer):
-                break
-
             # 读取 field tag
             tag, pos = _parse_varint(ext_buffer, pos)
             field_number = tag >> 3
@@ -334,10 +377,9 @@ def _parse_room_data(ext_buffer: bytes) -> dict[str, str]:
                     break
 
                 if field_number == 1:  # users 字段
-                    user_data = ext_buffer[pos:pos + length]
-                    user_info = _parse_room_data_user(user_data)
-                    if user_info and user_info[0] and user_info[1]:
-                        user_display_names[user_info[0]] = user_info[1]
+                    username, display_name = _parse_room_data_user(ext_buffer[pos:pos + length])
+                    if username:
+                        members.append((username, display_name))
 
                 pos += length
             else:
@@ -345,7 +387,17 @@ def _parse_room_data(ext_buffer: bytes) -> dict[str, str]:
     except Exception:
         pass
 
-    return user_display_names
+    return members
+
+
+def _parse_room_data(ext_buffer: bytes) -> dict[str, str]:
+    """
+    解析 chat_room.ext_buffer, 提取群成员昵称(仅含设置了群昵称的成员)
+
+    Returns:
+        dict: username -> display_name 映射
+    """
+    return {u: d for u, d in _parse_room_members(ext_buffer) if u and d}
 
 
 def _parse_room_data_user(data: bytes) -> tuple[str, str]:
@@ -530,6 +582,28 @@ class WeChatDBReader:
             )
             for r in cursor.fetchall()
         ]
+
+    def get_room_members(self, chatroom: str) -> list[RoomMember]:
+        """列出群成员: 群内昵称 + 联系人昵称/头像, 群主排首位"""
+        db = self._get_contact_db()
+        cursor = db.cursor()
+        cursor.execute("SELECT owner, ext_buffer FROM chat_room WHERE username = ?", (chatroom,))
+        row = cursor.fetchone()
+        if not row or not row[1]:
+            return []
+        owner = row[0] or ""
+        members = _parse_room_members(row[1])
+        if not members:
+            return []
+
+        display_map = {wxid: name for wxid, name in members}
+        contacts = {c.username: c for c in self.get_contacts(list(display_map.keys()))}
+        result = [
+            _build_room_member(wxid, name, contacts.get(wxid), wxid == owner)
+            for wxid, name in display_map.items()
+        ]
+        result.sort(key=lambda m: not m.is_owner)
+        return result
 
     def _get_chatroom_display_names(self, chatroom: str) -> dict[str, str]:
         """获取群成员的群昵称映射"""

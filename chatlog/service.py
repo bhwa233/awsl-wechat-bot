@@ -9,6 +9,7 @@ from chatlog.wechat_db import (
     ChatRoom,
     Contact,
     Message,
+    RoomMember,
     WeChatDBDecryptor,
     WeChatDBReader,
 )
@@ -70,6 +71,14 @@ class ChatlogService:
         reader = WeChatDBReader(db_path)
         try:
             return reader.get_contacts(usernames)
+        finally:
+            reader.close()
+
+    def get_room_members(self, db_path: str, chatroom: str) -> list[RoomMember]:
+        """列出群成员(群内昵称 + 联系人资料)"""
+        reader = WeChatDBReader(db_path)
+        try:
+            return reader.get_room_members(chatroom)
         finally:
             reader.close()
 

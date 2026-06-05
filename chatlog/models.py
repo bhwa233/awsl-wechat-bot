@@ -26,6 +26,18 @@ class ChatlogContactResponse(BaseModel):
     big_avatar: str = ""   # big_head_url (/0 原图)
 
 
+class ChatlogGroupMemberResponse(BaseModel):
+    """群成员信息响应"""
+    username: str
+    display_name: str = ""   # 群内昵称 (来自 chat_room.ext_buffer)
+    nick_name: str = ""      # 微信昵称 (来自 contact 表)
+    remark: str = ""
+    alias: str = ""
+    avatar: str = ""         # small_head_url (/132 小图)
+    big_avatar: str = ""     # big_head_url (/0 原图)
+    is_owner: bool = False   # 是否群主
+
+
 class ChatlogMessageResponse(BaseModel):
     """消息响应"""
     seq: int
