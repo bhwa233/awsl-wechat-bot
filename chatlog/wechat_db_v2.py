@@ -26,6 +26,7 @@ from chatlog.wechat_db import (
     Message,
     RoomMember,
     _build_room_member,
+    _parse_at_users,
     _parse_room_data,
     _parse_room_members,
 )
@@ -325,7 +326,7 @@ class WeChatDBReaderV2:
                     continue
                 sql = (
                     f"SELECT m.sort_seq, m.server_id, m.local_type, n.user_name, "
-                    f"m.create_time, m.message_content, m.status "
+                    f"m.create_time, m.message_content, m.status, m.source "
                     f"FROM {table_name} m "
                     f"LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
                     f"WHERE m.create_time >= {start_ts} AND m.create_time <= {end_ts}"
@@ -338,10 +339,11 @@ class WeChatDBReaderV2:
                 continue
 
             for row in rows:
-                sort_seq, server_id, local_type, user_name, create_time, message_content, status = row
+                sort_seq, server_id, local_type, user_name, create_time, message_content, status, source = row
                 msg_type = int(local_type) & 0xFFFFFFFF
 
                 content = _decompress_content(_decode_blob(message_content))
+                at_users = _parse_at_users(source) if is_chatroom else []
                 sender = user_name or ""
                 if is_chatroom and ":\n" in content:
                     parts = content.split(":\n", 1)
@@ -355,6 +357,7 @@ class WeChatDBReaderV2:
                     (not is_chatroom and talker != sender) if msg_type == 50
                     else (status == 2 or (not is_chatroom and talker != sender)),
                     int(server_id) if server_id is not None else 0,
+                    at_users,
                 ))
 
         raw_messages.sort(key=lambda m: m[0], reverse=desc)
@@ -368,7 +371,7 @@ class WeChatDBReaderV2:
         contact_names = self._batch_get_contact_names(uncached) if uncached else {}
 
         messages: list[Message] = []
-        for seq, _talker, sender, msg_type, content, create_time, is_self, server_id in raw_messages:
+        for seq, _talker, sender, msg_type, content, create_time, is_self, server_id, at_users in raw_messages:
             sender_name = (
                 (display_names.get(sender) or contact_names.get(sender, sender))
                 if sender
@@ -385,6 +388,7 @@ class WeChatDBReaderV2:
                     content=content,
                     is_self=is_self,
                     server_id=server_id,
+                    at_users=at_users,
                 )
             )
         return messages

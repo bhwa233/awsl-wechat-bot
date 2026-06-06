@@ -197,6 +197,7 @@ def create_routes() -> APIRouter:
                     is_self=m.is_self,
                     server_id=m.server_id,
                     server_id_str=str(m.server_id),
+                    at_users=m.at_users,
                 )
                 for m in messages
             ]

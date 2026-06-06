@@ -51,6 +51,8 @@ class ChatlogMessageResponse(BaseModel):
     server_id: int = 0
     # server_id 是 64-bit 整数, 字符串版本给 JS 客户端避免 Number 精度丢失 (2^53 上限)
     server_id_str: str = ""
+    # 群聊被 @ 人的 wxid 列表 (来自 source 字段 zstd XML 的 <atuserlist>); 非群聊/无@时为空
+    at_users: list[str] = []
 
     @model_validator(mode="after")
     def _sync_server_id_str(self):

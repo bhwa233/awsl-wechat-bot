@@ -14,6 +14,7 @@
 """
 
 import argparse
+import base64
 import hashlib
 import hmac
 import json
@@ -22,7 +23,7 @@ import re
 import shutil
 import sqlite3
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from hashlib import pbkdf2_hmac, sha512
 
@@ -177,6 +178,7 @@ class Message:
     content: str
     is_self: bool = False
     server_id: int = 0  # 全局唯一消息 ID, 用于 join MessageResourceInfo 拿明文 md5
+    at_users: list[str] = field(default_factory=list)  # 群聊被 @ 人的 wxid 列表
 
     def format(self, time_format: str = "%Y-%m-%d %H:%M:%S") -> str:
         sender_display = "我" if self.is_self else (self.sender_name or self.sender)
@@ -191,8 +193,54 @@ class Message:
             "sender_name": self.sender_name,
             "msg_type": self.msg_type,
             "content": self.content,
-            "is_self": self.is_self
+            "is_self": self.is_self,
+            "at_users": self.at_users,
         }
+
+
+def _decode_source_xml(raw) -> str:
+    """消息 source 列 → XML 文本.
+
+    v1(sqlite 直读) source 是 zstd 压缩 bytes; v2(原生库) 是 base64(zstd) 字符串.
+    短消息可能未压缩, 直接是明文 XML. 本函数统一兼容这几种形态.
+    """
+    if raw is None:
+        return ""
+    data = raw
+    if isinstance(data, str):
+        # v2 原生库把 BLOB 编码为 base64; 明文 XML(含 '<') base64 解码会失败, 原样返回
+        try:
+            data = base64.b64decode(data, validate=True)
+        except Exception:
+            return data
+    if isinstance(data, (bytes, bytearray)):
+        b = bytes(data)
+        if len(b) >= 4 and b[:4] == b"\x28\xb5\x2f\xfd" and HAS_ZSTD:
+            try:
+                return zstd.ZstdDecompressor().decompress(b).decode("utf-8", "ignore")
+            except Exception:
+                pass
+        return b.decode("utf-8", "ignore")
+    return str(data)
+
+
+def _parse_at_users(source_raw) -> list[str]:
+    """从消息 source 字段解析被 @ 人的 wxid 列表 (群聊 @mention).
+
+    source 解出的 XML 形如:
+      <msgsource><atuserlist><![CDATA[wxid_a,wxid_b]]></atuserlist>...</msgsource>
+    兼容: 自闭合 <atuserlist/>、CDATA 空、裸 wxid、逗号分隔多个.
+    """
+    xml = _decode_source_xml(source_raw)
+    if not xml or "atuserlist" not in xml:
+        return []
+    m = re.search(r"<atuserlist>(.*?)</atuserlist>", xml, re.S)
+    if not m:
+        return []
+    inner = m.group(1)
+    cdata = re.search(r"<!\[CDATA\[(.*?)\]\]>", inner, re.S)
+    text = cdata.group(1) if cdata else inner
+    return [w.strip() for w in text.split(",") if w.strip()]
 
 
 # ============================================================
@@ -664,7 +712,7 @@ class WeChatDBReader:
 
             query = f"""
                 SELECT m.sort_seq, m.server_id, m.local_type, n.user_name,
-                       m.create_time, m.message_content, m.status
+                       m.create_time, m.message_content, m.status, m.source
                 FROM {table_name} m
                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                 WHERE m.create_time >= ? AND m.create_time <= ?
@@ -679,12 +727,13 @@ class WeChatDBReader:
                 params = (*params, per_db_cap)
             cursor.execute(query, params)
 
-            for sort_seq, server_id, local_type, user_name, create_time, message_content, status in cursor.fetchall():
+            for sort_seq, server_id, local_type, user_name, create_time, message_content, status, source in cursor.fetchall():
                 msg_type = local_type & 0xFFFFFFFF
                 if text_only and msg_type != MESSAGE_TYPE_TEXT:
                     continue
 
                 content = self._decompress_content(message_content) if message_content else ""
+                at_users = _parse_at_users(source) if is_chatroom else []
                 sender = user_name or ""
 
                 if is_chatroom and ":\n" in content:
@@ -710,6 +759,7 @@ class WeChatDBReader:
                     content=content,
                     is_self=is_self,
                     server_id=int(server_id) if server_id is not None else 0,
+                    at_users=at_users,
                 ))
 
         messages.sort(key=lambda m: m.seq, reverse=desc)
