@@ -14,6 +14,7 @@ class TriggerType(StrEnum):
     IMAGE = "image"
     COMMAND = "command"
     CUSTOM_COMMAND = "custom_command"
+    CUSTOM_COMMAND_LIST = "custom_command_list"
     COMMAND_REFRESH = "command_refresh"
     AI = "ai"
 

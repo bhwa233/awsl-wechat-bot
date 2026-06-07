@@ -185,6 +185,10 @@ class CortexRuntime(MessageListener):
                 if res:
                     return res
 
+            elif task.trigger_type == TriggerType.CUSTOM_COMMAND_LIST:
+                logger.info(f"[{group_name}] 查询自定义命令列表")
+                msg = self.custom_command_service.get_list_text(group_name)
+
             elif task.trigger_type == TriggerType.COMMAND_REFRESH and self.command_service:
                 logger.info(f"[{group_name}] 刷新命令列表")
                 if self.command_service.load_commands():

@@ -548,6 +548,19 @@ class CustomCommandService:
             )
         return None
 
+    def get_list_text(self, group_name: str = "") -> str:
+        with self._cache_lock:
+            commands = list(self._enabled_cache)
+        available = [c for c in commands if self._matches_group(c, group_name)]
+        if not available:
+            return "当前没有可用的自定义命令"
+        lines = ["自定义命令列表:"]
+        for cmd in sorted(available, key=lambda c: c.key):
+            desc = f" - {cmd.description}" if cmd.description else ""
+            type_hint = f" [{cmd.action_type.value}]" if cmd.action_type != CustomCommandActionType.TEXT else ""
+            lines.append(f"  {cmd.key}{desc}{type_hint}")
+        return "\n".join(lines)
+
     def close(self):
         if self.engine:
             self.engine.dispose()

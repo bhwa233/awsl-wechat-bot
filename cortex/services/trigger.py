@@ -56,6 +56,16 @@ class TriggerMatcher:
                 group_name=group_name,
             )
 
+        # 自定义命令列表(keyword 为空则跳过)
+        if keyword_lower and content_lower in {
+            f"{keyword_lower} 自定义命令",
+            f"{keyword_lower} custom commands",
+        }:
+            return TriggerTask(
+                trigger_type=TriggerType.CUSTOM_COMMAND_LIST,
+                group_name=group_name,
+            )
+
         # AI 触发(keyword 为空则跳过)
         if keyword_lower and content_lower.startswith(keyword_lower):
             after_keyword = content[len(config.TRIGGER_KEYWORD):].strip()
