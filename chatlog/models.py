@@ -2,7 +2,7 @@
 聊天记录数据模型 - HTTP API 响应模型
 """
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChatlogGroupResponse(BaseModel):
@@ -58,3 +58,22 @@ class ChatlogMessageResponse(BaseModel):
     def _sync_server_id_str(self):
         self.server_id_str = str(self.server_id)
         return self
+
+
+class ChatlogBatchItem(BaseModel):
+    """批量增量查询的单个群游标"""
+    group: str
+    # 上次已见最大 seq(sort_seq); 闭区间 >=, 调用方自行去重边界行
+    since_seq: int = Field(default=0, ge=0)
+
+
+class ChatlogBatchMessagesRequest(BaseModel):
+    """POST /messages/batch 请求体"""
+    items: list[ChatlogBatchItem] = Field(min_length=1, max_length=200)
+    # 每个群最多返回条数
+    limit: int = Field(default=500, ge=1, le=10000)
+
+
+class ChatlogBatchMessagesResponse(BaseModel):
+    """POST /messages/batch 响应: group -> 升序消息列表"""
+    results: dict[str, list[ChatlogMessageResponse]]

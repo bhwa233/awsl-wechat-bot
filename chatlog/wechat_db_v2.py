@@ -14,6 +14,8 @@ import logging
 import os
 import re
 import sys
+import threading
+import time
 from datetime import datetime
 from typing import Any
 
@@ -39,6 +41,28 @@ logger = logging.getLogger(__name__)
 _TABLE_NAME_RE = re.compile(r"^Msg_[0-9a-f]{32}$")
 _MESSAGE_DB_RE = re.compile(r"^message_([0-9]?[0-9])?\.db$")
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_@.\-]{1,128}$")
+
+# sort_seq ≈ create_time*1000 + 同秒内序号, 实测偏移落在 [0, ~4000ms];
+# 用 sort_seq 索引替代 create_time 全表扫描时, 范围两端各放宽该余量再叠加精确过滤.
+_SORT_SEQ_SLACK_MS = 10_000
+
+# ---- 进程级缓存: reader 每请求新建, 这些状态跨请求复用以消除重复的原生库查询 ----
+_CACHE_LOCK = threading.Lock()
+# storage_dir -> (message db 文件集合, [(path, start_ts, end_ts)]); 文件集合变化时自动重建
+_DB_TIMES_CACHE: dict[str, tuple[frozenset[str], list[tuple[str, int, int]]]] = {}
+# (db_path, table) -> (过期时间, 是否存在); 存在缓存 1h, 不存在缓存 30s (新群建表后能较快被发现)
+_TABLE_EXISTS_CACHE: dict[tuple[str, str], tuple[float, bool]] = {}
+_TABLE_EXISTS_POS_TTL = 3600.0
+_TABLE_EXISTS_NEG_TTL = 30.0
+# (storage_dir, chatroom) -> (过期时间, 群内昵称表)
+_DISPLAY_NAMES_CACHE: dict[tuple[str, str], tuple[float, dict[str, str]]] = {}
+_DISPLAY_NAMES_TTL = 60.0
+# (storage_dir, username) -> (过期时间, 显示名)
+_CONTACT_NAMES_CACHE: dict[tuple[str, str], tuple[float, str]] = {}
+_CONTACT_NAMES_TTL = 300.0
+
+# 微信写库与读取并发时偶发的瞬时错误, 重试一次即可恢复
+_TRANSIENT_DB_ERRORS = ("malformed", "not a database", "disk i/o", "database is locked")
 
 
 def _validate_username(name: str) -> str:
@@ -110,19 +134,30 @@ class WeChatDBReaderV2:
         return sorted(files)
 
     def _query(self, db_path: str, sql: str) -> tuple[list[str], list[list]]:
-        result = self.platform.query_raw_sql(
-            db_path,
-            self.platform.resolve_db_key(self.db_storage_dir, db_path, self.hex_key),
-            sql,
-        )
+        key = self.platform.resolve_db_key(self.db_storage_dir, db_path, self.hex_key)
+        try:
+            result = self.platform.query_raw_sql(db_path, key, sql)
+        except RuntimeError as e:
+            msg = str(e).lower()
+            if not any(t in msg for t in _TRANSIENT_DB_ERRORS):
+                raise
+            time.sleep(0.05)
+            result = self.platform.query_raw_sql(db_path, key, sql)
         return result.get("columns", []) or [], result.get("rows", []) or []
 
     def _init_message_dbs(self) -> None:
         if self._message_db_times:
             return
+        paths = self._list_message_db_paths()
+        file_set = frozenset(paths)
+        with _CACHE_LOCK:
+            cached = _DB_TIMES_CACHE.get(self.db_storage_dir)
+        if cached and cached[0] == file_set:
+            self._message_db_times = list(cached[1])
+            return
         infos = []
         errors = []
-        for path in self._list_message_db_paths():
+        for path in paths:
             try:
                 _, rows = self._query(path, "SELECT timestamp FROM Timestamp LIMIT 1")
                 if rows and rows[0]:
@@ -137,10 +172,42 @@ class WeChatDBReaderV2:
         for i, (path, start_time) in enumerate(infos):
             end_time = infos[i + 1][1] if i < len(infos) - 1 else sys.maxsize
             self._message_db_times.append((path, start_time, end_time))
+        # 仅在全部 db 都成功读出时间索引时缓存, 避免固化半残状态
+        if not errors:
+            with _CACHE_LOCK:
+                _DB_TIMES_CACHE[self.db_storage_dir] = (file_set, list(self._message_db_times))
 
     def _get_dbs_for_time_range(self, start_ts: int, end_ts: int) -> list[str]:
         self._init_message_dbs()
         return [p for p, s, e in self._message_db_times if s < end_ts and e > start_ts]
+
+    def _tables_exist(self, db_path: str, tables: list[str]) -> set[str]:
+        """批量检查表是否存在(带进程级正/负缓存), 返回存在的表名集合."""
+        now = time.time()
+        exist: set[str] = set()
+        misses: list[str] = []
+        with _CACHE_LOCK:
+            for t in tables:
+                hit = _TABLE_EXISTS_CACHE.get((db_path, t))
+                if hit and hit[0] > now:
+                    if hit[1]:
+                        exist.add(t)
+                else:
+                    misses.append(t)
+        if misses:
+            in_clause = ",".join(f"'{t}'" for t in misses)
+            _, rows = self._query(
+                db_path,
+                f"SELECT name FROM sqlite_master WHERE type='table' AND name IN ({in_clause})",
+            )
+            found = {row[0] for row in rows}
+            exist |= found
+            with _CACHE_LOCK:
+                for t in misses:
+                    ok = t in found
+                    ttl = _TABLE_EXISTS_POS_TTL if ok else _TABLE_EXISTS_NEG_TTL
+                    _TABLE_EXISTS_CACHE[(db_path, t)] = (now + ttl, ok)
+        return exist
 
     def list_groups(self, limit: int = 0) -> list[ChatRoom]:
         contact_db = self._contact_db_path()
@@ -242,31 +309,57 @@ class WeChatDBReaderV2:
     def _batch_get_contact_names(self, usernames: set[str]) -> dict[str, str]:
         if not usernames:
             return {}
+        now = time.time()
+        result: dict[str, str] = {}
+        misses: list[str] = []
+        with _CACHE_LOCK:
+            for u in usernames:
+                hit = _CONTACT_NAMES_CACHE.get((self.db_storage_dir, u))
+                if hit and hit[0] > now:
+                    result[u] = hit[1]
+                else:
+                    misses.append(u)
         safe = []
-        for u in usernames:
+        for u in misses:
             try:
                 _validate_username(u)
                 safe.append(u)
             except ValueError:
                 continue
         if not safe:
-            return {}
+            return result
         in_clause = ",".join(f"'{u}'" for u in safe)
         contact_db = self._contact_db_path()
         _, rows = self._query(
             contact_db,
             f"SELECT username, nick_name, remark, alias FROM contact WHERE username IN ({in_clause})",
         )
-        result: dict[str, str] = {}
+        fetched: dict[str, str] = {}
         for row in rows:
             username = row[0] or ""
             name = row[2] or row[1] or row[3] or username
-            result[username] = name
+            fetched[username] = name
+        with _CACHE_LOCK:
+            for u in safe:
+                # 查不到的也缓存为 wxid 本身, 避免每次重查
+                _CONTACT_NAMES_CACHE[(self.db_storage_dir, u)] = (
+                    now + _CONTACT_NAMES_TTL,
+                    fetched.get(u, u),
+                )
+        for u in safe:
+            result[u] = fetched.get(u, u)
         return result
 
     def _get_chatroom_display_names(self, chatroom: str) -> dict[str, str]:
         if chatroom in self._chatroom_display_names:
             return self._chatroom_display_names[chatroom]
+        now = time.time()
+        cache_key = (self.db_storage_dir, chatroom)
+        with _CACHE_LOCK:
+            hit = _DISPLAY_NAMES_CACHE.get(cache_key)
+        if hit and hit[0] > now:
+            self._chatroom_display_names[chatroom] = hit[1]
+            return hit[1]
         names: dict[str, str] = {}
         try:
             _validate_username(chatroom)
@@ -283,6 +376,8 @@ class WeChatDBReaderV2:
         except Exception:
             return names
         self._chatroom_display_names[chatroom] = names
+        with _CACHE_LOCK:
+            _DISPLAY_NAMES_CACHE[cache_key] = (now + _DISPLAY_NAMES_TTL, names)
         return names
 
     def get_messages(
@@ -314,22 +409,23 @@ class WeChatDBReaderV2:
         sql_limit = ""
         if limit > 0:
             sql_limit = f" LIMIT {int(offset + limit)}"
+        # create_time 无索引; 用 sort_seq(有索引, ≈create_time*1000) 圈定范围避免全表扫描,
+        # 两端放宽余量后仍叠加精确的 create_time 过滤, 结果不变
+        seq_lo = start_ts * 1000 - _SORT_SEQ_SLACK_MS
+        seq_hi = end_ts * 1000 + _SORT_SEQ_SLACK_MS
 
         raw_messages: list[tuple] = []
         for db_path in db_paths:
             try:
-                _, exists_rows = self._query(
-                    db_path,
-                    f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{table_name}' LIMIT 1",
-                )
-                if not exists_rows:
+                if table_name not in self._tables_exist(db_path, [table_name]):
                     continue
                 sql = (
                     f"SELECT m.sort_seq, m.server_id, m.local_type, n.user_name, "
                     f"m.create_time, m.message_content, m.status, m.source "
                     f"FROM {table_name} m "
                     f"LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
-                    f"WHERE m.create_time >= {start_ts} AND m.create_time <= {end_ts}"
+                    f"WHERE m.sort_seq >= {seq_lo} AND m.sort_seq <= {seq_hi} "
+                    f"AND m.create_time >= {start_ts} AND m.create_time <= {end_ts}"
                     f"{type_filter} "
                     f"ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}{sql_limit}"
                 )
@@ -337,28 +433,7 @@ class WeChatDBReaderV2:
             except Exception as e:
                 logger.warning("[ChatlogV2] 查询 %s 失败: %s", db_path, e)
                 continue
-
-            for row in rows:
-                sort_seq, server_id, local_type, user_name, create_time, message_content, status, source = row
-                msg_type = int(local_type) & 0xFFFFFFFF
-
-                content = _decompress_content(_decode_blob(message_content))
-                at_users = _parse_at_users(source) if is_chatroom else []
-                sender = user_name or ""
-                if is_chatroom and ":\n" in content:
-                    parts = content.split(":\n", 1)
-                    if len(parts) == 2 and " " not in parts[0] and "\n" not in parts[0]:
-                        sender, content = parts
-
-                raw_messages.append((
-                    int(sort_seq), talker, sender, msg_type, content,
-                    int(create_time),
-                    # voip (local_type=50) status 恒为 2 不可靠, 退化纯 sender 判
-                    (not is_chatroom and talker != sender) if msg_type == 50
-                    else (status == 2 or (not is_chatroom and talker != sender)),
-                    int(server_id) if server_id is not None else 0,
-                    at_users,
-                ))
+            raw_messages.extend(self._process_rows(talker, is_chatroom, rows))
 
         raw_messages.sort(key=lambda m: m[0], reverse=desc)
         if offset > 0:
@@ -366,9 +441,45 @@ class WeChatDBReaderV2:
         if limit > 0:
             raw_messages = raw_messages[:limit]
 
-        unique_senders = {m[2] for m in raw_messages if m[2]}
-        uncached = unique_senders - set(display_names)
-        contact_names = self._batch_get_contact_names(uncached) if uncached else {}
+        return self._finalize_messages(raw_messages, display_names)
+
+    def _process_rows(self, talker: str, is_chatroom: bool, rows: list[list]) -> list[tuple]:
+        """把原生库查询行转成 raw_message 元组(与列顺序耦合, 供 get_messages/get_messages_since 复用)."""
+        raw_messages: list[tuple] = []
+        for row in rows:
+            sort_seq, server_id, local_type, user_name, create_time, message_content, status, source = row
+            msg_type = int(local_type) & 0xFFFFFFFF
+
+            content = _decompress_content(_decode_blob(message_content))
+            at_users = _parse_at_users(source) if is_chatroom else []
+            sender = user_name or ""
+            if is_chatroom and ":\n" in content:
+                parts = content.split(":\n", 1)
+                if len(parts) == 2 and " " not in parts[0] and "\n" not in parts[0]:
+                    sender, content = parts
+
+            raw_messages.append((
+                int(sort_seq), talker, sender, msg_type, content,
+                int(create_time),
+                # voip (local_type=50) status 恒为 2 不可靠, 退化纯 sender 判
+                (not is_chatroom and talker != sender) if msg_type == 50
+                else (status == 2 or (not is_chatroom and talker != sender)),
+                int(server_id) if server_id is not None else 0,
+                at_users,
+            ))
+        return raw_messages
+
+    def _finalize_messages(
+        self,
+        raw_messages: list[tuple],
+        display_names: dict[str, str],
+        contact_names: dict[str, str] | None = None,
+    ) -> list[Message]:
+        """补全 sender_name 并构造 Message; contact_names 缺省时按需批量查询."""
+        if contact_names is None:
+            unique_senders = {m[2] for m in raw_messages if m[2]}
+            uncached = unique_senders - set(display_names)
+            contact_names = self._batch_get_contact_names(uncached) if uncached else {}
 
         messages: list[Message] = []
         for seq, _talker, sender, msg_type, content, create_time, is_self, server_id, at_users in raw_messages:
@@ -392,6 +503,89 @@ class WeChatDBReaderV2:
                 )
             )
         return messages
+
+    def get_messages_since(
+        self,
+        items: list[tuple[str, int]],
+        limit: int = 500,
+    ) -> dict[str, list[Message]]:
+        """批量增量查询: 每个 (talker, since_seq) 返回 sort_seq >= since_seq 的消息(升序, 每群最多 limit 条).
+
+        专为低延迟轮询设计: 全部群合并为对每个 message db 的一条 UNION ALL SQL,
+        sort_seq 走索引, 整批耗时与单群查询同量级. since_seq 为闭区间(>=),
+        调用方用上次返回的最大 seq 做游标并自行去重边界行.
+        """
+        seen: dict[str, int] = {}
+        for talker, since_seq in items:
+            _validate_username(talker)
+            since = int(since_seq)
+            # 同一群取最小 since, 去重
+            if talker not in seen or since < seen[talker]:
+                seen[talker] = since
+        if not seen:
+            return {}
+        limit = max(1, int(limit))
+
+        # since_seq ≈ 毫秒时间戳, 换算成秒并放宽余量, 只查可能覆盖该范围的 message db
+        min_start_ts = min(seen.values()) // 1000 - _SORT_SEQ_SLACK_MS // 1000
+        db_paths = self._get_dbs_for_time_range(min_start_ts, sys.maxsize)
+
+        tables = {talker: _talker_to_table_name(talker) for talker in seen}
+        results_raw: dict[str, list[tuple]] = {talker: [] for talker in seen}
+        cols = (
+            "m.sort_seq, m.server_id, m.local_type, n.user_name, "
+            "m.create_time, m.message_content, m.status, m.source"
+        )
+        for db_path in db_paths:
+            exist = self._tables_exist(db_path, list(tables.values()))
+            parts = []
+            ordered_talkers = []
+            for talker, table in tables.items():
+                if table not in exist:
+                    continue
+                ordered_talkers.append(talker)
+                parts.append(
+                    f"SELECT * FROM (SELECT '{talker}' AS talker, {cols} "
+                    f"FROM {table} m LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
+                    f"WHERE m.sort_seq >= {seen[talker]} "
+                    f"ORDER BY m.sort_seq ASC LIMIT {limit})"
+                )
+            if not parts:
+                continue
+            try:
+                _, rows = self._query(db_path, " UNION ALL ".join(parts))
+            except Exception as e:
+                logger.warning("[ChatlogV2] 批量查询 %s 失败: %s", db_path, e)
+                continue
+            by_talker: dict[str, list[list]] = {}
+            for row in rows:
+                by_talker.setdefault(row[0], []).append(row[1:])
+            for talker, talker_rows in by_talker.items():
+                is_chatroom = talker.endswith("@chatroom")
+                results_raw[talker].extend(self._process_rows(talker, is_chatroom, talker_rows))
+
+        # 跨群一次性解析 sender 显示名, 避免按群重复查 contact 库
+        all_senders: set[str] = set()
+        display_by_talker: dict[str, dict[str, str]] = {}
+        for talker, raws in results_raw.items():
+            if not raws:
+                continue
+            display = (
+                self._get_chatroom_display_names(talker)
+                if talker.endswith("@chatroom")
+                else {}
+            )
+            display_by_talker[talker] = display
+            all_senders |= {m[2] for m in raws if m[2] and m[2] not in display}
+        contact_names = self._batch_get_contact_names(all_senders) if all_senders else {}
+
+        results: dict[str, list[Message]] = {}
+        for talker, raws in results_raw.items():
+            raws.sort(key=lambda m: m[0])
+            results[talker] = self._finalize_messages(
+                raws[:limit], display_by_talker.get(talker, {}), contact_names
+            )
+        return results
 
     def close(self) -> None:
         return

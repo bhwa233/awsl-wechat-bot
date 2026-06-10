@@ -35,6 +35,15 @@ class ChatlogServiceV2:
             desc=desc,
         )
 
+    def get_messages_since(
+        self,
+        encrypted_dir: str,
+        hex_key: str,
+        items: list[tuple[str, int]],
+        limit: int = 500,
+    ) -> dict[str, list[Message]]:
+        return WeChatDBReaderV2(encrypted_dir, hex_key).get_messages_since(items, limit=limit)
+
     def get_group_display_name(
         self,
         encrypted_dir: str,

@@ -1,12 +1,16 @@
 """Chatlog v2 HTTP 路由 - 原生库后端"""
 
 import logging
+import threading
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from chatlog.media.route import V2MediaBackendBinding, register_media_route
 from chatlog.models import (
+    ChatlogBatchMessagesRequest,
+    ChatlogBatchMessagesResponse,
     ChatlogContactResponse,
     ChatlogGroupMemberResponse,
     ChatlogGroupResponse,
@@ -20,9 +24,15 @@ from common.config import config
 logger = logging.getLogger(__name__)
 
 
+# wechat_running 是全进程扫描, 高频轮询场景下缓存几秒足够
+_WECHAT_RUNNING_TTL = 3.0
+
+
 def create_v2_router() -> APIRouter:
     router = APIRouter()
     chatlog = ChatlogServiceV2()
+    running_cache_lock = threading.Lock()
+    running_cache: list = [0.0, True]  # [过期时间, 结果]
 
     def _platform_or_501():
         try:
@@ -30,12 +40,23 @@ def create_v2_router() -> APIRouter:
         except RuntimeError as exc:
             raise HTTPException(status_code=501, detail=str(exc)) from exc
 
+    def _wechat_running_cached(platform) -> bool:
+        now = time.time()
+        with running_cache_lock:
+            if running_cache[0] > now:
+                return running_cache[1]
+        result = platform.wechat_running()
+        with running_cache_lock:
+            running_cache[0] = now + _WECHAT_RUNNING_TTL
+            running_cache[1] = result
+        return result
+
     def _ensure_ready() -> None:
         platform = _platform_or_501()
         detail = platform.v2_config_error(config)
         if detail:
             raise HTTPException(status_code=400, detail=detail)
-        if not platform.wechat_running():
+        if not _wechat_running_cached(platform):
             raise HTTPException(status_code=503, detail="微信进程未运行, 暂不可读取数据库")
 
     @router.post("/decrypt", dependencies=[Depends(verify_token)])
@@ -213,6 +234,50 @@ def create_v2_router() -> APIRouter:
             raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
             logger.error(f"[ChatlogV2] 查询消息失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    @router.post(
+        "/messages/batch",
+        response_model=ChatlogBatchMessagesResponse,
+        dependencies=[Depends(verify_token)],
+    )
+    def query_messages_batch(req: ChatlogBatchMessagesRequest):
+        """批量增量查询: 按每群 since_seq(闭区间)拉新消息, 整批合并为单条 SQL, 供低延迟轮询."""
+        _ensure_ready()
+        try:
+            results = chatlog.get_messages_since(
+                config.WECHAT_DB_INPUT_PATH,
+                config.WECHAT_DB_KEY,
+                [(item.group, item.since_seq) for item in req.items],
+                limit=req.limit,
+            )
+            return ChatlogBatchMessagesResponse(
+                results={
+                    talker: [
+                        ChatlogMessageResponse(
+                            seq=m.seq,
+                            time=m.time.isoformat(),
+                            talker=m.talker,
+                            sender=m.sender,
+                            sender_name=m.sender_name,
+                            msg_type=m.msg_type,
+                            content=m.content,
+                            is_self=m.is_self,
+                            server_id=m.server_id,
+                            server_id_str=str(m.server_id),
+                            at_users=m.at_users,
+                        )
+                        for m in msgs
+                    ]
+                    for talker, msgs in results.items()
+                }
+            )
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[ChatlogV2] 批量查询消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
     try:
