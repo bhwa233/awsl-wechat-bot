@@ -4,6 +4,8 @@ __pycache__/
 *$py.class
 *.so
 !chatlog/vendor/libawsl_wechat_chatlog.so
+!chatlog/vendor/libawsl_wechat_chatlog_linux_amd64.so
+!chatlog/vendor/libawsl_wechat_chatlog_linux_arm64.so
 .Python
 venv/
 .venv/

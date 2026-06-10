@@ -112,7 +112,8 @@ per group                              │ 广播
   - `voice.py` - pilk + PyAV 将 SILK v3 转 MP3
 - `platform/` - Chatlog 平台特性封装（Windows/Linux 原生库加载、数据库路径解析、配置检查、Linux per-db key 解析）
 - `vendor/awsl_wechat_chatlog.dll` - awsl-wechat-chatlog 编译产物（11MB，Windows x86-64）
-- `vendor/libawsl_wechat_chatlog.so` - awsl-wechat-chatlog 编译产物（Linux x86-64）
+- `vendor/libawsl_wechat_chatlog.so` - awsl-wechat-chatlog 编译产物（Linux x86-64 兼容文件）
+- `vendor/libawsl_wechat_chatlog_linux_amd64.so` / `vendor/libawsl_wechat_chatlog_linux_arm64.so` - awsl-wechat-chatlog Linux 分架构编译产物
 
 **cortex/** - Cortex 服务
 - `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）

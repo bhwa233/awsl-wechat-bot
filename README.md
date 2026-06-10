@@ -86,7 +86,7 @@ flowchart TB
 - Python 3.11+
 - **macOS**: macOS 10.15+，微信客户端，辅助功能权限 + 屏幕录制权限
 - **Windows**: Windows 10/11，微信客户端，建议管理员身份运行
-- **Linux**: Linux WeChat + X11 会话，需安装 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐安装 `xsel`
+- **Linux**: Linux WeChat + X11 会话（x86_64/arm64），需安装 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐安装 `xsel`
 
 ## 安装
 

@@ -67,8 +67,11 @@ class NativeQueryLibrary:
             return self._lib
 
 
-def vendor_library_path(filename: str) -> Path:
+def vendor_library_path(filename: str, *, fallback: str | None = None) -> Path:
     override = os.environ.get("AWSL_WECHAT_CHATLOG_LIBRARY")
     if override:
         return Path(override).expanduser()
-    return _VENDOR_DIR / filename
+    path = _VENDOR_DIR / filename
+    if path.is_file() or not fallback:
+        return path
+    return _VENDOR_DIR / fallback

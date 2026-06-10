@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import re
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,11 @@ class LinuxChatlogPlatform(ChatlogPlatform):
         return None
 
     def library_path(self) -> Path:
+        machine = platform.machine().lower()
+        if machine in {"x86_64", "amd64"}:
+            return vendor_library_path("libawsl_wechat_chatlog_linux_amd64.so", fallback="libawsl_wechat_chatlog.so")
+        if machine in {"aarch64", "arm64"}:
+            return vendor_library_path("libawsl_wechat_chatlog_linux_arm64.so")
         return vendor_library_path("libawsl_wechat_chatlog.so")
 
     def resolve_db_storage_dir(self, input_dir: str) -> str:
