@@ -151,6 +151,7 @@ per group                              │ 广播
 - **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，发送载荷统一为 `message_type + message + filename`
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池，AI service 限制 max_connections=10
+- **远程命令开关**: `REMOTE_COMMANDS_ENABLED` 默认 true；设为 false 时 Cortex 不初始化 `CommandService`，不加载/刷新/执行 `COMMAND_API_BASE_URL` 远程命令，本地自定义命令不受影响
 - **自消息过滤**: Windows UIA 读取所有消息（含自己发送的），SentMessageStore 通过精确/前缀/包含/相似度 4 层匹配过滤自发消息，TTL 120s
 - **输入校验**: 正则长度 MAX_REGEX_LEN=200（common/models.py 共享），cron 表达式限 256 字符，AppleScript 参数化防注入（`on run argv`）
 - **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
@@ -212,7 +213,7 @@ Server → Client:
 - **No test suite**: 项目当前没有配置 pytest / ruff / mypy 等工具，无自动化测试
 - **Python 3.11+**: `requires-python = ">=3.11"`
 - **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖；富媒体依赖 av/pilk/numpy 是必需依赖，避免 daemon 普通 `uv sync` 后丢失原图 HEVC 转码和语音能力
-- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `LINUX_WECHAT_*`, `LINUX_CHATLOG_*`, `DEBUG`）
+- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `REMOTE_COMMANDS_ENABLED`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `LINUX_WECHAT_*`, `LINUX_CHATLOG_*`, `DEBUG`）
 
 ## Platform Notes
 

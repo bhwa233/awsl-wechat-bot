@@ -56,6 +56,9 @@ class CortexRuntime(MessageListener):
             return None
 
     def _init_command_service(self):
+        if not config.REMOTE_COMMANDS_ENABLED:
+            logger.info("远程命令服务已禁用")
+            return None
         try:
             service = CommandService()
             if service.load_commands():

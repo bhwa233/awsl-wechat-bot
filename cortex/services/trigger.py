@@ -51,6 +51,8 @@ class TriggerMatcher:
             f"{keyword_lower} refresh",
             f"{keyword_lower} 刷新命令",
         }:
+            if not self.command_service:
+                return None
             return TriggerTask(
                 trigger_type=TriggerType.COMMAND_REFRESH,
                 group_name=group_name,

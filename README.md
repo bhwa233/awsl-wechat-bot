@@ -149,6 +149,10 @@ OPENAI_API_KEY=your-api-key-here
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
 
+# 远程命令（默认启用；设为 false 后不加载/执行远程命令）
+REMOTE_COMMANDS_ENABLED=true
+COMMAND_API_BASE_URL=https://your-api-domain.com/api
+
 # 服务端口
 HTTP_API_PORT=8000
 HTTP_API_TOKEN=your-secret-token  # 留空不启用认证
@@ -184,8 +188,8 @@ uv run run_daemon.py       # Daemon (:8001)
 |---------|------|------|
 | 关键词+问题 | `awsl 今天天气怎么样？` | 触发 AI 回复 |
 | @机器人 | `@机器人 帮我写首诗` | 触发 AI 回复 |
-| 刷新命令 | `awsl refresh` / `awsl 刷新命令` | 刷新远程命令列表 |
-| 动态命令 | `<命令名> <参数>` | 执行远程命令 |
+| 刷新命令 | `awsl refresh` / `awsl 刷新命令` | 刷新远程命令列表（`REMOTE_COMMANDS_ENABLED=false` 时禁用） |
+| 动态命令 | `<命令名> <参数>` | 执行远程命令（`REMOTE_COMMANDS_ENABLED=false` 时禁用） |
 
 <details>
 <summary>API 文档</summary>
