@@ -21,7 +21,7 @@ class Config(BaseSettings):
 
     # 命令 API 地址
     REMOTE_COMMANDS_ENABLED: bool = True
-    COMMAND_API_BASE_URL: str = "https://your-api-domain.com/api"
+    COMMAND_API_BASE_URL: str = ""
 
     # 检查消息间隔(秒)
     CHECK_INTERVAL: int = 1

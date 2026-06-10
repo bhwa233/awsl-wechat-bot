@@ -59,6 +59,9 @@ class CortexRuntime(MessageListener):
         if not config.REMOTE_COMMANDS_ENABLED:
             logger.info("远程命令服务已禁用")
             return None
+        if not config.COMMAND_API_BASE_URL.strip():
+            logger.info("未配置远程命令 API 地址,跳过远程命令服务")
+            return None
         try:
             service = CommandService()
             if service.load_commands():
