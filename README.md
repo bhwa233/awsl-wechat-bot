@@ -216,8 +216,12 @@ GET  /api/chatlog/v1/media
 
 # v2 (原生库在线读 SQLCipher v4，Windows/Linux)
 GET  /api/chatlog/v2/health
+POST /api/chatlog/v2/decrypt       # no-op，v2 原生库直接读密文
 GET  /api/chatlog/v2/groups
+GET  /api/chatlog/v2/contacts
+GET  /api/chatlog/v2/members
 GET  /api/chatlog/v2/messages
+POST /api/chatlog/v2/messages/batch
 GET  /api/chatlog/v2/group-display-name
 GET  /api/chatlog/v2/media
 
@@ -232,6 +236,8 @@ GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
 # 文件 (49) 直接走 msg/file/<YYYY-MM>/<title> 明文, 带 Content-Disposition (UTF-8) 下载
 # 返回原始 bytes + X-Media-Md5/Format + Cache-Control immutable + ETag
 ```
+
+Chatlog v2 的 DB 读取接口会先确认微信进程仍在运行；微信未运行时返回 `503`，避免直接读取未在线的数据库。`/health` 可在微信未运行时继续返回服务状态，`/decrypt` 是 v2 no-op，不读取数据库。
 
 > 消息响应包含 `server_id: int` 与 `server_id_str: str` 双字段，前者保留 JSON 数字合同，后者用于 JS 客户端避免 Number 精度丢失。
 
@@ -289,7 +295,7 @@ GET  /logs?lines=100      # 日志
 {"type": "error", "detail": "..."}
 ```
 
-认证：WS 首条消息 `{"type": "auth", "token": "xxx"}`（10s 超时断开），REST `Authorization: Bearer <HTTP_API_TOKEN>`
+认证：WS 首条消息 `{"type": "auth", "token": "xxx"}`（10s 超时断开），REST `Authorization: Bearer <HTTP_API_TOKEN>`；`/api/chatlog/*/media` 兼容 `?token=<HTTP_API_TOKEN>`
 
 </details>
 

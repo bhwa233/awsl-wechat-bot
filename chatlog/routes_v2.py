@@ -18,7 +18,7 @@ from chatlog.models import (
 )
 from chatlog.platform import get_chatlog_platform
 from chatlog.service_v2 import ChatlogServiceV2
-from common.auth import verify_token
+from common.auth import verify_token, verify_token_or_query
 from common.config import config
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ _WECHAT_RUNNING_TTL = 3.0
 
 
 def create_v2_router() -> APIRouter:
-    router = APIRouter()
     chatlog = ChatlogServiceV2()
     running_cache_lock = threading.Lock()
     running_cache: list = [0.0, True]  # [过期时间, 结果]
@@ -59,7 +58,18 @@ def create_v2_router() -> APIRouter:
         if not _wechat_running_cached(platform):
             raise HTTPException(status_code=503, detail="微信进程未运行, 暂不可读取数据库")
 
-    @router.post("/decrypt", dependencies=[Depends(verify_token)])
+    def _ensure_ready_after_auth(_authenticated: bool = Depends(verify_token)) -> None:
+        _ensure_ready()
+
+    def _ensure_ready_after_media_auth(_authenticated: bool = Depends(verify_token_or_query)) -> None:
+        _ensure_ready()
+
+    router = APIRouter()
+    auth_router = APIRouter(dependencies=[Depends(verify_token)])
+    db_router = APIRouter(dependencies=[Depends(_ensure_ready_after_auth)])
+    media_router = APIRouter(dependencies=[Depends(_ensure_ready_after_media_auth)])
+
+    @auth_router.post("/decrypt")
     def decrypt_database():
         return {
             "success": True,
@@ -67,13 +77,11 @@ def create_v2_router() -> APIRouter:
             "count": 0,
         }
 
-    @router.get(
+    @db_router.get(
         "/groups",
         response_model=list[ChatlogGroupResponse],
-        dependencies=[Depends(verify_token)],
     )
     def list_groups(limit: int = Query(0, ge=0, le=10000, description="限制返回数量, 0 表示不限制")):
-        _ensure_ready()
         try:
             groups = chatlog.list_groups(
                 config.WECHAT_DB_INPUT_PATH,
@@ -100,13 +108,11 @@ def create_v2_router() -> APIRouter:
             logger.error(f"[ChatlogV2] 列出群聊失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
-    @router.get(
+    @db_router.get(
         "/contacts",
         response_model=list[ChatlogContactResponse],
-        dependencies=[Depends(verify_token)],
     )
     def list_contacts(usernames: str = Query(..., description="逗号分隔的 username 列表(联系人或群成员 wxid), 最多 200 个")):
-        _ensure_ready()
         ids = [u.strip() for u in usernames.split(",") if u.strip()]
         if not ids:
             raise HTTPException(status_code=400, detail="usernames 不能为空")
@@ -137,13 +143,11 @@ def create_v2_router() -> APIRouter:
             logger.error(f"[ChatlogV2] 查询联系人失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
-    @router.get(
+    @db_router.get(
         "/members",
         response_model=list[ChatlogGroupMemberResponse],
-        dependencies=[Depends(verify_token)],
     )
     def list_group_members(group: str = Query(..., description="群聊ID (xxx@chatroom)")):
-        _ensure_ready()
         if not group.endswith("@chatroom"):
             raise HTTPException(status_code=400, detail="group 必须是群聊ID (xxx@chatroom)")
         try:
@@ -173,10 +177,9 @@ def create_v2_router() -> APIRouter:
             logger.error(f"[ChatlogV2] 查询群成员失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
-    @router.get(
+    @db_router.get(
         "/messages",
         response_model=list[ChatlogMessageResponse],
-        dependencies=[Depends(verify_token)],
     )
     def query_messages(
         group: str = Query(..., description="群聊ID 或个人微信ID"),
@@ -186,7 +189,6 @@ def create_v2_router() -> APIRouter:
         offset: int = Query(0, ge=0, le=100000, description="跳过前 N 条消息"),
         desc: bool = Query(False, description="是否倒序(最新消息优先)"),
     ):
-        _ensure_ready()
         start_time = end_time = None
         try:
             if start:
@@ -236,14 +238,12 @@ def create_v2_router() -> APIRouter:
             logger.error(f"[ChatlogV2] 查询消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
 
-    @router.post(
+    @db_router.post(
         "/messages/batch",
         response_model=ChatlogBatchMessagesResponse,
-        dependencies=[Depends(verify_token)],
     )
     def query_messages_batch(req: ChatlogBatchMessagesRequest):
         """批量增量查询: 按每群 since_seq(闭区间)拉新消息, 整批合并为单条 SQL, 供低延迟轮询."""
-        _ensure_ready()
         try:
             results = chatlog.get_messages_since(
                 config.WECHAT_DB_INPUT_PATH,
@@ -286,11 +286,10 @@ def create_v2_router() -> APIRouter:
         # 当前平台不支持原生库, /media 端点不注册 (其他端点仍然可用并各自 501)
         _media_binding = None
     if _media_binding is not None:
-        register_media_route(router, _media_binding)
+        register_media_route(media_router, _media_binding)
 
-    @router.get("/group-display-name", dependencies=[Depends(verify_token)])
+    @db_router.get("/group-display-name")
     def get_group_display_name(group: str = Query(..., description="群聊ID")):
-        _ensure_ready()
         try:
             display_name = chatlog.get_group_display_name(
                 config.WECHAT_DB_INPUT_PATH,
@@ -327,5 +326,10 @@ def create_v2_router() -> APIRouter:
         if detail:
             resp["detail"] = detail
         return resp
+
+    router.include_router(auth_router)
+    router.include_router(db_router)
+    if _media_binding is not None:
+        router.include_router(media_router)
 
     return router

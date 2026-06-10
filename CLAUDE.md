@@ -165,9 +165,11 @@ Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws
 
 Chatlog (:7998):
 - v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/contacts`, `GET /api/chatlog/v1/members`, `GET /api/chatlog/v1/messages`, `GET /api/chatlog/v1/group-display-name`, `GET /api/chatlog/v1/media`
-- v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/contacts`, `GET /api/chatlog/v2/members`, `GET /api/chatlog/v2/messages`, `GET /api/chatlog/v2/group-display-name`, `GET /api/chatlog/v2/media`（v2 也有 `/decrypt` 但是 no-op，原生库直接读密文）
+- v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `POST /api/chatlog/v2/decrypt` (no-op), `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/contacts`, `GET /api/chatlog/v2/members`, `GET /api/chatlog/v2/messages`, `POST /api/chatlog/v2/messages/batch`, `GET /api/chatlog/v2/group-display-name`, `GET /api/chatlog/v2/media`
+- v2 DB 读取守卫: 除 `/health` 与 no-op `/decrypt` 外，v2 读取接口先完成认证，再检查微信进程；微信未运行时返回 `503`，避免读取未在线数据库。`/media` 单独兼容 `?token=` 后也执行同一 ready 检查
 - 联系人/群成员端点 `GET /contacts?usernames=`: 按 wxid 批量查（逗号分隔，最多 200）返回昵称/备注/头像。`GET /members?group=<xxx@chatroom>`: 列出群完整成员名单，解析 `chat_room.ext_buffer` protobuf 得全部成员 wxid + 群内昵称(display_name)，再批量补 contact 表的昵称/头像，群主排首位并标 `is_owner`
 - 消息端点 `GET /messages`: 返回 `ChatlogMessageResponse` 列表，群聊消息含 `at_users`（被 @ 人 wxid 列表，读消息表 `source` 列 base64→zstd→XML 解 `<atuserlist>`；自闭合/CDATA 空/裸 wxid/逗号分隔多个均兼容，非群聊或无 @ 为空）
+- 批量消息端点 `POST /messages/batch` (v2): 请求体 `{items:[{group,since_seq}], limit}`，按每群 `sort_seq >= since_seq` 升序返回 `{results:{group:[...]}}`，用于低延迟增量轮询
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
 - 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 依赖 av/pilk（必需依赖，普通 `uv sync` 安装）；sticker/file 不依赖密钥。image `hd=1` 通过 message_resource md5 查本机 `.dat`，按无后缀原图 / `_h` / `_W` / 非缩略图 / `_t` 顺序尝试，wxgf/HEVC 经 av 转 JPEG；转发聊天记录 type=19 的内嵌图片当前不按普通 msg_type=3 暴露。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
 - 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
@@ -178,7 +180,7 @@ Cortex (:7999):
 
 Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
 
-认证: REST `Authorization: Bearer <HTTP_API_TOKEN>`，WS 首条消息认证 `{"type": "auth", "token": "xxx"}`(hmac.compare_digest)
+认证: REST `Authorization: Bearer <HTTP_API_TOKEN>`；`/api/chatlog/*/media` 兼容 `?token=<HTTP_API_TOKEN>`；WS 首条消息认证 `{"type": "auth", "token": "xxx"}`(hmac.compare_digest)
 
 ## WS Protocol
 
