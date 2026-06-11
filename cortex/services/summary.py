@@ -21,109 +21,265 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
             background: #f5f5f5;
-            padding: 40px;
+            padding: 32px;
             min-height: 100vh;
+            color: #232323;
         }
-        .container {
-            max-width: 900px;
+        .sheet {
+            width: 836px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-            overflow: hidden;
+            background:
+                linear-gradient(rgba(38, 30, 18, 0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(38, 30, 18, 0.025) 1px, transparent 1px),
+                #f4eddf;
+            background-size: 18px 18px;
+            border: 2px solid #1d1d1f;
+            box-shadow: 8px 8px 0 #1d1d1f;
+            padding: 28px;
         }
         .header {
-            background: #1a1a2e;
-            color: white;
-            padding: 36px 48px;
+            margin-bottom: 20px;
         }
-        .header h1 { font-size: 32px; font-weight: 600; margin-bottom: 14px; }
-        .header .meta { font-size: 20px; opacity: 0.8; }
-        .header .meta span { margin-right: 32px; }
-        .content { padding: 20px 24px; color: #333; line-height: 1.8; font-size: 22px; }
-        .content h1 { display: none; }
-        .content h2 {
-            color: #1a1a2e;
-            font-size: 26px;
-            font-weight: 600;
-            margin: 0;
-            padding: 16px 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #eee;
+        .title-card,
+        .report-panel,
+        .quote-bar {
+            background: rgba(255, 251, 239, 0.82);
+            border: 2px solid #1d1d1f;
+            box-shadow: 4px 4px 0 rgba(29, 29, 31, 0.18);
         }
-        .content h3 {
-            color: #1a1a2e;
-            font-size: 24px;
-            font-weight: 600;
-            margin: 0;
-            padding: 14px 20px;
-            background: #f0f0f0;
-            border-bottom: 1px solid #e0e0e0;
+        .title-card {
+            padding: 24px 28px 20px;
+            position: relative;
         }
-        .content .section-card {
-            background: white;
-            border: 1px solid #e0e0e0;
-            border-radius: 12px;
-            margin: 12px 0;
-            overflow: hidden;
+        .title-card::after {
+            content: "";
+            position: absolute;
+            right: 22px;
+            top: 22px;
+            width: 72px;
+            height: 72px;
+            border: 3px solid #c54539;
+            border-radius: 50%;
+            opacity: 0.16;
+            transform: rotate(-12deg);
         }
-        .content .section-card > p,
-        .content .section-card > ul,
-        .content .section-card > ol {
-            padding: 16px 20px 16px 48px;
-            margin: 0;
+        .label {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #b43d35;
+            font-size: 15px;
+            font-weight: 800;
+            margin-bottom: 14px;
         }
-        .content .topic-card {
-            background: #fafafa;
-            border: 1px solid #e8e8e8;
-            border-radius: 6px;
-            margin: 16px 20px;
-            overflow: hidden;
+        .label::before {
+            content: "";
+            width: 28px;
+            height: 5px;
+            background: #c54539;
+            display: inline-block;
         }
-        .content .topic-card ul {
-            margin: 0;
-            padding: 14px 20px;
-            list-style: none;
+        .title-card h1 {
+            font-size: 38px;
+            line-height: 1.12;
+            font-weight: 850;
+            letter-spacing: 0;
+            margin-bottom: 12px;
         }
-        .content .topic-card li {
-            margin: 10px 0;
-            padding-left: 0;
-        }
-        .content p { margin: 16px 0; text-align: justify; }
-        .content ul, .content ol { margin: 16px 0 16px 32px; }
-        .content li { margin: 10px 0; }
-        .content strong { color: #1a1a2e; font-weight: 600; }
-        .content hr { display: none; }
-        .footer {
-            background: #fafafa;
-            padding: 20px 48px;
-            text-align: right;
-            color: #999;
+        .subtitle {
             font-size: 16px;
-            border-top: 1px solid #eee;
+            line-height: 1.55;
+            color: #5f574c;
+            max-width: 620px;
+        }
+        .title-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 2px solid rgba(29, 29, 31, 0.16);
+        }
+        .meta-chip {
+            display: inline-flex;
+            align-items: center;
+            min-height: 30px;
+            padding: 5px 10px;
+            background: #fff4d7;
+            border: 1px solid #1d1d1f;
+            color: #322d26;
+            font-size: 14px;
+            font-weight: 750;
+        }
+        .meta-chip.strong {
+            background: #1d1d1f;
+            color: #f7f0df;
+        }
+        .meta-chip.warn {
+            color: #a33831;
+        }
+        .content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+            align-items: start;
+        }
+        .report-panel { overflow: hidden; }
+        .report-panel,
+        .quote-bar {
+            grid-column: 1;
+        }
+        .panel-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 16px;
+            background: #f6e9c8;
+            border-bottom: 2px solid #1d1d1f;
+            font-size: 21px;
+            line-height: 1.25;
+            font-weight: 850;
+        }
+        .panel-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            background: #c54539;
+            color: #fff3dc;
+            border: 1px solid #1d1d1f;
+            transform: rotate(-3deg);
+            font-size: 12px;
+            line-height: 1;
+            font-weight: 850;
+        }
+        .panel-body {
+            padding: 18px;
+            background: rgba(255, 252, 242, 0.78);
+        }
+        .panel-body p {
+            font-size: 19px;
+            line-height: 1.75;
+            text-align: justify;
+        }
+        .panel-body > ul {
+            padding-left: 22px;
+            font-size: 18px;
+            line-height: 1.65;
+        }
+        .panel-body > ul li { margin: 8px 0; }
+        .topic-card {
+            position: relative;
+            padding: 14px 16px 14px 22px;
+            margin-bottom: 16px;
+            background: rgba(255, 251, 239, 0.86);
+            border-left: 7px solid #3d8f81;
+            border-top: 1px solid rgba(29, 29, 31, 0.18);
+            border-right: 1px solid rgba(29, 29, 31, 0.18);
+            border-bottom: 1px solid rgba(29, 29, 31, 0.18);
+        }
+        .topic-card:nth-child(2n) { border-left-color: #c54539; }
+        .topic-card:nth-child(3n) { border-left-color: #bd8c2c; }
+        .topic-card h3 {
+            font-size: 20px;
+            line-height: 1.35;
+            margin-bottom: 10px;
+            font-weight: 850;
+        }
+        .topic-card ul { list-style: none; }
+        .topic-card li {
+            display: grid;
+            grid-template-columns: 76px 1fr;
+            gap: 12px;
+            margin: 8px 0;
+            font-size: 17px;
+            line-height: 1.55;
+        }
+        .topic-card strong {
+            color: #756143;
+            white-space: nowrap;
+            font-weight: 850;
+        }
+        .section-ranking .panel-body > ul { list-style: none; padding-left: 0; }
+        .section-ranking .panel-body > ul li {
+            border-bottom: 1px dashed rgba(29, 29, 31, 0.24);
+            padding: 10px 0;
+            font-size: 18px;
+            line-height: 1.55;
+        }
+        .section-ranking .panel-body > ul li:last-child { border-bottom: 0; }
+        .section-ranking strong { color: #1d1d1f; }
+        .quote-bar {
+            grid-column: 1 / -1;
+            display: grid;
+            grid-template-columns: 112px 1fr;
+            gap: 18px;
+            align-items: center;
+            padding: 16px 20px;
+            background: #fff4d7;
+        }
+        .quote-label {
+            justify-self: start;
+            padding: 8px 16px;
+            background: #c54539;
+            color: #fff3dc;
+            border: 2px solid #1d1d1f;
+            font-weight: 850;
+            transform: rotate(-2deg);
+        }
+        .quote-text {
+            font-size: 19px;
+            line-height: 1.55;
+            font-weight: 750;
+        }
+        .footer {
+            margin-top: 22px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(29, 29, 31, 0.22);
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            color: #7d7569;
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
+    <div class="sheet">
         <div class="header">
-            <h1>$title</h1>
-            <div class="meta">
-                <span>$date</span>
-                <span>$msg_count 条消息</span>
+            <div class="title-card">
+                <div class="label">群聊总结简报</div>
+                <h1>$title</h1>
+                <div class="subtitle">Chatlog 文本整理，按群友可读性重新排版；仅作娱乐总结，不做现实事实背书。</div>
+                <div class="title-meta">
+                    <span class="meta-chip strong">$date</span>
+                    <span class="meta-chip warn">$msg_count 条有效消息</span>
+                    <span class="meta-chip">$gen_time 生成</span>
+                    <span class="meta-chip">Chatlog 群聊记录</span>
+                </div>
             </div>
         </div>
         <div class="content">
             $content
+            <div class="quote-bar">
+                <div class="quote-label">一句话</div>
+                <div class="quote-text">热闹归热闹，最后还是要落到可执行的结论。</div>
+            </div>
         </div>
         <div class="footer">
-            $gen_time
+            <span>数据范围：Chatlog 群聊记录</span>
+            <span>$gen_time · 御坂 20001 号制图</span>
         </div>
     </div>
 </body>
 </html>"""
+
+
+def _summary_inline(value: object, fallback: str = "") -> str:
+    text = str(value or "")
+    text = re.sub(r"[\r\n\u2028\u2029]+", " ", text)
+    text = re.sub(r"[ \t\f\v]+", " ", text).strip()
+    return text or fallback
 
 
 def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, tuple[int, int]]]:
@@ -140,10 +296,11 @@ def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, t
         if msg.get("is_self"):
             continue
         time_str = msg.get("time", "")[11:19]
-        sender = msg.get("sender_name") or "未知"
+        sender = _summary_inline(msg.get("sender_name"), "未知")
         msg_type = msg.get("msg_type", 1)
         content = msg.get("content", "")
         display = _type_labels.get(msg_type, content) if msg_type != 1 else content
+        display = _summary_inline(display)
         lines.append(f"[{time_str}] {sender}: {display}")
 
         count, chars = sender_stats.get(sender, (0, 0))
@@ -165,6 +322,7 @@ def generate_ranking(sender_stats: dict[str, tuple[int, int]], top_n: int = 10) 
     lines = ["## 发言排行榜", ""]
     for i, (sender, (count, chars)) in enumerate(sorted_senders):
         icon = rank_icons[i] if i < len(rank_icons) else f"#{i + 1}"
+        sender = _summary_inline(sender, "未知")
         lines.append(f"- {icon} **{sender}** - {count} 条消息 / {chars} 字")
 
     lines.append("")
@@ -184,6 +342,7 @@ def generate_ranking_text(sender_stats: dict[str, tuple[int, int]], top_n: int =
     lines = ["发言排行榜:"]
     for i, (sender, (count, chars)) in enumerate(sorted_senders):
         icon = rank_icons[i] if i < len(rank_icons) else f"#{i + 1}"
+        sender = _summary_inline(sender, "未知")
         lines.append(f"{icon} {sender} - {count} 条 / {chars} 字")
 
     lines.append(f"总计: {sum(c for c, _ in sender_stats.values())} 条 / {total_chars} 字")
@@ -223,6 +382,7 @@ def _strip_markdown(text: str) -> str:
 
 def build_summary_text(overview: str, ranking: str, group_name: str) -> str:
     """组合发送用的文本消息:概览 + 排行榜"""
+    group_name = _summary_inline(group_name)
     header = f"【{group_name}】群聊总结" if group_name else "群聊总结"
     overview_text = _strip_markdown(overview) if overview else ""
     if not overview_text:
@@ -314,61 +474,88 @@ def _escape_and_bold(text: str) -> str:
     return re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
 
 
+def _section_meta(title: str) -> tuple[str, str]:
+    if "概览" in title:
+        return "overview", "CASE"
+    if "话题" in title:
+        return "topics", "CASE"
+    if "重要" in title:
+        return "important", "EVID"
+    if "排行" in title:
+        return "ranking", "EVID"
+    return "general", "NOTE"
+
+
 def markdown_to_html(md_text: str) -> str:
     """将 Markdown 转换为 HTML,使用卡片形式"""
     lines = md_text.split('\n')
     html_lines = []
     in_list = False
-    in_card = False
+    in_section = False
+    in_topic = False
+
+    def close_list() -> None:
+        nonlocal in_list
+        if in_list:
+            html_lines.append('</ul>')
+            in_list = False
+
+    def close_topic() -> None:
+        nonlocal in_topic
+        if in_topic:
+            close_list()
+            html_lines.append('</article>')
+            in_topic = False
+
+    def close_section() -> None:
+        nonlocal in_section
+        if in_section:
+            close_topic()
+            close_list()
+            html_lines.append('</div></section>')
+            in_section = False
+
+    def ensure_section() -> None:
+        nonlocal in_section
+        if not in_section:
+            html_lines.append('<section class="report-panel section-general"><div class="panel-title"><span class="panel-tag">NOTE</span>记录</div><div class="panel-body">')
+            in_section = True
 
     for line in lines:
         stripped = line.strip()
 
         if stripped.startswith('### '):
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            if in_card:
-                html_lines.append('</div>')
-            html_lines.append('<div class="section-card">')
-            html_lines.append(f'<h3>{_escape_and_bold(stripped[4:])}</h3>')
-            in_card = True
+            ensure_section()
+            close_topic()
+            html_lines.append(f'<article class="topic-card"><h3>{_escape_and_bold(stripped[4:])}</h3>')
+            in_topic = True
         elif stripped.startswith('## '):
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            if in_card:
-                html_lines.append('</div>')
-            html_lines.append('<div class="section-card">')
-            html_lines.append(f'<h2>{_escape_and_bold(stripped[3:])}</h2>')
-            in_card = True
+            close_section()
+            title = stripped[3:]
+            section_class, tag = _section_meta(title)
+            html_lines.append(
+                f'<section class="report-panel section-{section_class}">'
+                f'<div class="panel-title"><span class="panel-tag">{tag}</span>{_escape_and_bold(title)}</div>'
+                '<div class="panel-body">'
+            )
+            in_section = True
         elif stripped.startswith('# '):
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
-            if in_card:
-                html_lines.append('</div>')
-                in_card = False
+            close_section()
             html_lines.append(f'<h1>{_escape_and_bold(stripped[2:])}</h1>')
         elif stripped.startswith('- '):
+            ensure_section()
             if not in_list:
                 html_lines.append('<ul>')
                 in_list = True
             html_lines.append(f'<li>{_escape_and_bold(stripped[2:])}</li>')
         elif not stripped:
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
+            close_list()
         else:
-            if in_list:
-                html_lines.append('</ul>')
-                in_list = False
+            ensure_section()
+            close_list()
             html_lines.append(f'<p>{_escape_and_bold(stripped)}</p>')
 
-    if in_list:
-        html_lines.append('</ul>')
-    if in_card:
-        html_lines.append('</div>')
+    close_section()
 
     return '\n'.join(html_lines)
 
