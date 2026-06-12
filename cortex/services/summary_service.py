@@ -285,7 +285,7 @@ class SummaryService:
             f"topic_summary_{safe_group_id}_{safe_topic}_{datetime.now():%Y-%m-%d_%H%M}.png",
         )
 
-        title = f"【{display_name}】主题总结: {topic}"
+        title = f"主题总结: {topic}"
         if not render_to_image(
             summary,
             message_date_str,
