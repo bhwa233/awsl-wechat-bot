@@ -223,7 +223,9 @@ class SummaryService:
                     start=start_time,
                     end=end_time,
                     limit=2000,
+                    desc=True,
                 )
+                msg_dicts.reverse()
                 logger.info(f"[Summary] 获取到 {len(msg_dicts)} 条消息")
 
                 if not msg_dicts:

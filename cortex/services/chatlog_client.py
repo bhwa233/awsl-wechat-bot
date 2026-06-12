@@ -42,12 +42,15 @@ class ChatlogClient:
         start: datetime | str | None = None,
         end: datetime | str | None = None,
         limit: int = 100,
+        desc: bool = False,
     ) -> list[dict]:
         params: dict = {"group": group, "limit": limit}
         if start:
             params["start"] = start.strftime("%Y-%m-%d %H:%M:%S") if isinstance(start, datetime) else start
         if end:
             params["end"] = end.strftime("%Y-%m-%d %H:%M:%S") if isinstance(end, datetime) else end
+        if desc:
+            params["desc"] = "true"
         resp = self._client.get("/api/chatlog/messages", params=params)
         resp.raise_for_status()
         return resp.json()
