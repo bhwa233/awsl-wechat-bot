@@ -43,8 +43,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin-bottom: 20px;
         }
         .title-card,
-        .report-panel,
-        .quote-bar {
+        .report-panel {
             background: rgba(255, 251, 239, 0.82);
             border: 2px solid #1d1d1f;
             box-shadow: 4px 4px 0 rgba(29, 29, 31, 0.18);
@@ -127,10 +126,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             align-items: start;
         }
         .report-panel { overflow: hidden; }
-        .report-panel,
-        .quote-bar {
-            grid-column: 1;
-        }
+        .report-panel { grid-column: 1; }
         .panel-title {
             display: flex;
             align-items: center;
@@ -209,29 +205,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .section-ranking .panel-body > ul li:last-child { border-bottom: 0; }
         .section-ranking strong { color: #1d1d1f; }
-        .quote-bar {
-            grid-column: 1 / -1;
-            display: grid;
-            grid-template-columns: 112px 1fr;
-            gap: 18px;
-            align-items: center;
-            padding: 16px 20px;
-            background: #fff4d7;
-        }
-        .quote-label {
-            justify-self: start;
-            padding: 8px 16px;
-            background: #c54539;
-            color: #fff3dc;
-            border: 2px solid #1d1d1f;
-            font-weight: 850;
-            transform: rotate(-2deg);
-        }
-        .quote-text {
-            font-size: 19px;
-            line-height: 1.55;
-            font-weight: 750;
-        }
     </style>
 </head>
 <body>
@@ -250,10 +223,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
         <div class="content">
             $content
-            <div class="quote-bar">
-                <div class="quote-label">一句话</div>
-                <div class="quote-text">热闹归热闹，最后还是要落到可执行的结论。</div>
-            </div>
         </div>
     </div>
 </body>

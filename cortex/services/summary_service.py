@@ -49,6 +49,17 @@ class SummaryResult:
     details: dict | None = None
 
 
+def _format_message_time_range(messages: list[dict], fallback: str) -> str:
+    if not messages:
+        return fallback
+    try:
+        start = datetime.fromisoformat(str(messages[0]["time"]))
+        end = datetime.fromisoformat(str(messages[-1]["time"]))
+    except (KeyError, TypeError, ValueError):
+        return fallback
+    return f"{start.strftime('%Y-%m-%d %H:%M')} ~ {end.strftime('%Y-%m-%d %H:%M')}"
+
+
 class SummaryService:
     """群聊总结服务 - 单例,串行执行"""
 
@@ -234,6 +245,7 @@ class SummaryService:
                     skip_count += 1
                     continue
 
+                message_date_str = _format_message_time_range(msg_dicts, date_str)
                 messages_text, valid_count, sender_stats = format_messages_for_llm(msg_dicts)
                 group_result["msg_count"] = valid_count
                 if valid_count == 0:
@@ -250,7 +262,7 @@ class SummaryService:
                     summary = summarize_with_llm(
                         messages_text=messages_text,
                         group_name=display_name,
-                        date_str=date_str,
+                        date_str=message_date_str,
                         api_url=app_config.OPENAI_BASE_URL,
                         api_key=app_config.OPENAI_API_KEY,
                         model=app_config.OPENAI_MODEL,
@@ -281,7 +293,7 @@ class SummaryService:
                 safe_group_id = re.sub(r'[^\w@.]', '_', group.group_id)
                 output_image = os.path.join(output_dir, f"summary_{safe_group_id}_{file_date_str}.png")
 
-                if not render_to_image(summary, date_str, valid_count, gen_time, output_image, display_name):
+                if not render_to_image(summary, message_date_str, valid_count, gen_time, output_image, display_name):
                     group_result["message"] = "图片渲染失败"
                     results["groups"][group.group_id] = group_result
                     fail_count += 1
