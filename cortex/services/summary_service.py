@@ -25,6 +25,7 @@ from cortex.services.summary import (
     generate_ranking_text,
     render_to_image,
     summarize_with_llm,
+    summarize_topic_with_llm,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,6 +180,136 @@ class SummaryService:
         if not result.success:
             logger.warning(f"{log_prefix} 群聊总结启动失败: {result.message}")
         return result
+
+    def start_topic_summary_for_group_name(
+        self,
+        group_name: str,
+        topic: str,
+        *,
+        log_prefix: str = "[Summary]",
+    ) -> SummaryResult:
+        normalized = group_name.strip()
+        topic = topic.strip()
+        if not normalized:
+            return SummaryResult(success=False, message="群名为空")
+        if not topic:
+            return SummaryResult(success=False, message="主题为空")
+        if not self._llm_client:
+            return SummaryResult(success=False, message="未配置 OPENAI_API_KEY")
+
+        try:
+            decrypt_resp = self._chatlog.decrypt()
+            logger.info(f"{log_prefix} 解密完成: {decrypt_resp}")
+        except Exception as e:
+            logger.error(f"{log_prefix} 解密失败: {e}")
+            return SummaryResult(success=False, message=f"数据库解密失败: {e}")
+
+        def group_names(group: dict) -> set[str]:
+            names = {
+                str(group.get("username") or "").strip(),
+                str(group.get("display_name") or "").strip(),
+                str(group.get("nick_name") or "").strip(),
+            }
+            return {name for name in names if name}
+
+        matched = next((group for group in self._chatlog.list_groups() if normalized in group_names(group)), None)
+        if not matched:
+            return SummaryResult(success=False, message=f"chatlog 未找到群聊: {group_name}")
+
+        group_id = str(matched.get("username") or "").strip()
+        if not group_id:
+            return SummaryResult(success=False, message=f"chatlog 群聊缺少 username: {group_name}")
+
+        if not self._running_lock.acquire(blocking=False):
+            return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
+        self._is_running = True
+
+        def run_and_release():
+            try:
+                result = self._execute_topic_summary(group_id, group_name, topic)
+                if result.success:
+                    logger.info(f"{log_prefix} 主题总结完成: {result.message}")
+                    return
+                logger.warning(f"{log_prefix} 主题总结失败: {result.message}")
+            except Exception as e:
+                logger.exception("[Summary] 主题总结执行失败")
+            finally:
+                self._is_running = False
+                self._running_lock.release()
+
+        worker = threading.Thread(target=run_and_release, daemon=True, name="topic-summary-worker")
+        self._worker_thread = worker
+        worker.start()
+        return SummaryResult(success=True, message="主题总结任务已启动")
+
+    def _execute_topic_summary(self, group_id: str, group_name: str, topic: str) -> SummaryResult:
+        display_name = group_name
+        try:
+            display_name = self._chatlog.get_group_display_name(group_id) or group_name
+        except Exception as e:
+            logger.warning(f"[Summary] 获取群显示名失败 {group_id}: {e}")
+
+        msg_dicts = self._chatlog.get_messages(
+            group=group_id,
+            limit=1000,
+            desc=True,
+        )
+        msg_dicts.reverse()
+        logger.info(f"[Summary] 获取到 {len(msg_dicts)} 条主题总结候选消息: {display_name} topic={topic}")
+
+        if not msg_dicts:
+            return SummaryResult(success=False, message="没有消息记录")
+
+        message_date_str = _format_message_time_range(msg_dicts, "")
+        messages_text, valid_count, _ = format_messages_for_llm(msg_dicts)
+        if valid_count == 0:
+            return SummaryResult(success=False, message="没有有效消息")
+
+        summary = summarize_topic_with_llm(
+            messages_text=messages_text,
+            group_name=display_name,
+            topic=topic,
+            date_str=message_date_str,
+            model=app_config.OPENAI_MODEL,
+            client=self._llm_client,
+        )
+        if not summary or len(summary.strip()) < 20:
+            return SummaryResult(success=False, message="LLM 返回内容无效")
+
+        gen_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        output_dir = tempfile.gettempdir()
+        safe_group_id = re.sub(r'[^\w@.]', '_', group_id)
+        safe_topic = re.sub(r'[^\w@.-]', '_', topic)[:48] or "topic"
+        output_image = os.path.join(
+            output_dir,
+            f"topic_summary_{safe_group_id}_{safe_topic}_{datetime.now():%Y-%m-%d_%H%M}.png",
+        )
+
+        title = f"【{display_name}】主题总结: {topic}"
+        if not render_to_image(
+            summary,
+            message_date_str,
+            valid_count,
+            gen_time,
+            output_image,
+            display_name,
+            title_override=title,
+        ):
+            return SummaryResult(success=False, message="图片渲染失败")
+        if not os.path.exists(output_image):
+            return SummaryResult(success=False, message="图片文件不存在")
+
+        with open(output_image, "rb") as f:
+            image_b64 = base64.b64encode(f.read()).decode("utf-8")
+        with contextlib.suppress(OSError):
+            os.remove(output_image)
+
+        self._gateway.send_message(OutgoingMessage(
+            group_name=group_name,
+            message_type=MessageType.IMAGE,
+            message=image_b64,
+        ))
+        return SummaryResult(success=True, message="成功", details={"msg_count": valid_count})
 
     def _execute(self, config: SummaryConfig, *, decrypt_first: bool = True) -> SummaryResult:
         results: dict = {"decrypt": None, "groups": {}}

@@ -518,8 +518,11 @@ class CustomCommandService:
             message=content,
         )
 
-    def _execute_summary(self, group_name: str) -> OutgoingMessage | None:
-        result = self._summary_service.start_summary_for_group_name(group_name, log_prefix="[CustomCommand]")
+    def _execute_summary(self, group_name: str, topic: str = "") -> OutgoingMessage | None:
+        if topic.strip():
+            result = self._summary_service.start_topic_summary_for_group_name(group_name, topic, log_prefix="[CustomCommand]")
+        else:
+            result = self._summary_service.start_summary_for_group_name(group_name, log_prefix="[CustomCommand]")
         if result.success:
             return None
 
@@ -539,7 +542,7 @@ class CustomCommandService:
             if command.key.lower() != key_lower:
                 continue
             if command.action_type == CustomCommandActionType.SUMMARY:
-                return self._execute_summary(group_name)
+                return self._execute_summary(group_name, params)
             return OutgoingMessage(
                 group_name=group_name,
                 message_type=command.action_type.to_message_type(),

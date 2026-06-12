@@ -422,6 +422,72 @@ def summarize_with_llm(
     return data["choices"][0]["message"]["content"].strip()
 
 
+def summarize_topic_with_llm(
+    messages_text: str,
+    group_name: str,
+    topic: str,
+    date_str: str,
+    model: str = "gpt-4o-mini",
+    client: httpx.Client | None = None,
+) -> str:
+    """使用 LLM 按主题生成聊天记录总结"""
+    system_prompt = """你是一个群聊记录主题整理助手.请只根据提供的聊天记录,总结与用户主题相关的内容.
+
+输出要求:
+- 只写和主题直接相关或明显相关的讨论,忽略无关闲聊
+- 不要编造聊天记录中没有出现的信息
+- 不要输出医疗、法律、投资等领域的额外专业建议,只能整理群聊里实际出现过的说法
+- 如果相关内容不足,明确写最近记录里没有找到足够相关讨论
+- 使用中文 Markdown 输出
+
+格式:
+
+## 概览
+用 1-2 句话说明最近记录中是否有相关讨论,以及主要结论.
+
+## 相关讨论
+按时间顺序列出相关讨论.每个讨论包含:
+- **时间**: 讨论出现的大致时间
+- **参与者**: 主要发言人
+- **内容**: 具体说了什么,只写与主题相关的部分
+
+## 可用结论
+用要点列出可以从聊天记录中得到的结论.如无则写"无"."""
+
+    user_prompt = f"""请从以下群聊记录中提取并总结指定主题:
+
+群聊: {group_name}
+时间范围: {date_str}
+主题: {topic}
+
+聊天记录:
+---
+{messages_text}
+---
+
+请只生成与主题相关的 Markdown 总结."""
+
+    if client is None:
+        raise ValueError("主题总结需要已初始化的 LLM HTTP 客户端")
+
+    response = client.post(
+        "/chat/completions",
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "max_tokens": 1600,
+            "temperature": 0.2,
+        },
+        timeout=60,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["choices"][0]["message"]["content"].strip()
+
+
 def _escape_and_bold(text: str) -> str:
     """先转义 HTML,再恢复 **bold** 为 <strong>"""
     escaped = html.escape(text)
@@ -521,6 +587,7 @@ def render_to_image(
     gen_time: str,
     output_path: str,
     group_name: str = "",
+    title_override: str | None = None,
 ) -> bool:
     """使用 html2image 将总结渲染为图片,自动裁剪空白"""
     try:
@@ -544,7 +611,7 @@ def render_to_image(
 
     template = Template(HTML_TEMPLATE)
     safe_group = html.escape(group_name) if group_name else ""
-    title = f"【{safe_group}】群聊总结" if safe_group else "群聊总结"
+    title = html.escape(title_override) if title_override else (f"【{safe_group}】群聊总结" if safe_group else "群聊总结")
     full_html = template.safe_substitute(
         title=title,
         date=date_str,
