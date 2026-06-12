@@ -251,7 +251,7 @@ class SummaryService:
 
         msg_dicts = self._chatlog.get_messages(
             group=group_id,
-            limit=1000,
+            limit=2000,
             desc=True,
         )
         msg_dicts.reverse()
