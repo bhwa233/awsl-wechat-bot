@@ -232,16 +232,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             line-height: 1.55;
             font-weight: 750;
         }
-        .footer {
-            margin-top: 22px;
-            padding-top: 14px;
-            border-top: 1px solid rgba(29, 29, 31, 0.22);
-            display: flex;
-            justify-content: space-between;
-            gap: 14px;
-            color: #7d7569;
-            font-size: 13px;
-        }
     </style>
 </head>
 <body>
@@ -250,12 +240,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <div class="title-card">
                 <div class="label">群聊总结简报</div>
                 <h1>$title</h1>
-                <div class="subtitle">Chatlog 文本整理，按群友可读性重新排版；仅作娱乐总结，不做现实事实背书。</div>
+                <div class="subtitle">按群友可读性整理当日重点话题，仅作娱乐总结。</div>
                 <div class="title-meta">
                     <span class="meta-chip strong">$date</span>
                     <span class="meta-chip warn">$msg_count 条有效消息</span>
                     <span class="meta-chip">$gen_time 生成</span>
-                    <span class="meta-chip">Chatlog 群聊记录</span>
                 </div>
             </div>
         </div>
@@ -265,10 +254,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 <div class="quote-label">一句话</div>
                 <div class="quote-text">热闹归热闹，最后还是要落到可执行的结论。</div>
             </div>
-        </div>
-        <div class="footer">
-            <span>数据范围：Chatlog 群聊记录</span>
-            <span>$gen_time · 御坂 20001 号制图</span>
         </div>
     </div>
 </body>
