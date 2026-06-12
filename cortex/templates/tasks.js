@@ -43,9 +43,13 @@ function buildGroupOptionHtml(selectedValue) {
 }
 
 function buildGatewayGroupOptionHtml(selectedValue) {
-    return allGroups.map(g => {
-        const sel = g.name === selectedValue ? ' selected' : '';
-        return `<option value="${escapeHtml(g.name)}"${sel}>${escapeHtml(g.name)}</option>`;
+    const names = allGroups.map(groupDisplayName).filter(Boolean);
+    const legacy = selectedValue && !names.includes(selectedValue)
+        ? `<option value="${escapeHtml(selectedValue)}" selected>${escapeHtml(selectedValue)}</option>`
+        : '';
+    return legacy + names.map(name => {
+        const sel = name === selectedValue ? ' selected' : '';
+        return `<option value="${escapeHtml(name)}"${sel}>${escapeHtml(name)}</option>`;
     }).join('');
 }
 
@@ -65,6 +69,13 @@ function addSummaryRow(groupId = '', groupName = '', containerId = 'summaryRows'
         <button type="button" class="remove-row" onclick="this.parentElement.remove()">×</button>
     `;
     container.appendChild(row);
+}
+
+function refreshSummaryTargetOptions(containerId = 'summaryRows') {
+    document.querySelectorAll(`#${containerId} .summary-target`).forEach(select => {
+        const selected = select.value;
+        select.innerHTML = `<option value="">发送到...</option>${buildGatewayGroupOptionHtml(selected)}`;
+    });
 }
 
 function syncSummaryRowName(sourceSelect) {
@@ -112,11 +123,22 @@ function resetTaskUpload() {
     if (taskMessageComposer) taskMessageComposer.resetUpload();
 }
 
-function updateTargetGroupsCheckboxes() {
+function updateTargetGroupsCheckboxes(selectedValues = null) {
     const container = $('targetGroupsCheckboxes');
     if (!container) return;
+    const selected = new Set(selectedValues || Array.from(document.querySelectorAll('input[name="targetGroups"]:checked')).map(cb => cb.value));
+    const groups = allGroups.map(groupDisplayName).filter(Boolean);
+    if (!groups.length) {
+        container.innerHTML = '<div class="help-text">未加载到群组，请稍后重试或检查 Gateway 连接</div>';
+        return;
+    }
     container.innerHTML = allGroups.map(g =>
-        `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(g.name)}" name="targetGroups">${escapeHtml(g.name)}</label>`
+        {
+            const name = groupDisplayName(g);
+            if (!name) return '';
+            const checked = selected.has(name) ? ' checked' : '';
+            return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(name)}" name="targetGroups"${checked}>${escapeHtml(name)}</label>`;
+        }
     ).join('');
 }
 
@@ -308,3 +330,12 @@ taskMessageComposer = new MessageComposer({
         if (type === 'summary') loadSummaryGroupOptions();
     },
 });
+
+if (typeof registerGroupsLoadedHandler === 'function') {
+    registerGroupsLoadedHandler(() => {
+        if ($('taskFormPanel')?.style.display !== 'none') {
+            updateTargetGroupsCheckboxes();
+            refreshSummaryTargetOptions();
+        }
+    });
+}

@@ -277,8 +277,8 @@ body {
 }
 .form-panel h3 { font-size: 15px; margin-bottom: 14px; }
 .form-group { margin-bottom: 12px; }
-.form-group label { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
-.form-group input, .form-group select, .form-group textarea {
+.form-group label:not(.checkbox-item) { display: block; font-size: 12px; font-weight: 600; color: var(--text2); margin-bottom: 4px; }
+.form-group input:not([type="checkbox"]):not([type="radio"]), .form-group select, .form-group textarea {
     width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
     font-size: 13px; background: var(--input-bg); color: var(--text);
 }
@@ -289,6 +289,12 @@ body {
 .help-text code { background: var(--stat-bg); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
 .checkbox-group { display: flex; flex-wrap: wrap; gap: 8px; }
 .checkbox-item { display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer; }
+.checkbox-item input[type="checkbox"] {
+    width: auto;
+    padding: 0;
+    margin: 0;
+    flex: 0 0 auto;
+}
 
 .summary-row {
     display: flex; gap: 8px; align-items: center; margin-bottom: 6px;

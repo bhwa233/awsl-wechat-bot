@@ -8,11 +8,22 @@ function resetCustomCommandUpload() {
     if (customCommandMessageComposer) customCommandMessageComposer.resetUpload();
 }
 
-function updateCustomCommandTargetGroupsCheckboxes() {
+function updateCustomCommandTargetGroupsCheckboxes(selectedValues = null) {
     const container = $('customCommandTargetGroupsCheckboxes');
     if (!container) return;
+    const selected = new Set(selectedValues || Array.from(document.querySelectorAll('input[name="customCommandTargetGroups"]:checked')).map(cb => cb.value));
+    const groups = allGroups.map(groupDisplayName).filter(Boolean);
+    if (!groups.length) {
+        container.innerHTML = '<div class="help-text">未加载到群组，请稍后重试或检查 Gateway 连接</div>';
+        return;
+    }
     container.innerHTML = allGroups.map(g =>
-        `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(g.name)}" name="customCommandTargetGroups">${escapeHtml(g.name)}</label>`
+        {
+            const name = groupDisplayName(g);
+            if (!name) return '';
+            const checked = selected.has(name) ? ' checked' : '';
+            return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(name)}" name="customCommandTargetGroups"${checked}>${escapeHtml(name)}</label>`;
+        }
     ).join('');
 }
 
@@ -116,3 +127,9 @@ customCommandMessageComposer = new MessageComposer({
     infoId: 'customCommandFileInfo',
     isActive: () => $('custom-commands-panel')?.classList.contains('active') && $('customCommandFormPanel')?.style.display !== 'none',
 });
+
+if (typeof registerGroupsLoadedHandler === 'function') {
+    registerGroupsLoadedHandler(() => {
+        if ($('customCommandFormPanel')?.style.display !== 'none') updateCustomCommandTargetGroupsCheckboxes();
+    });
+}

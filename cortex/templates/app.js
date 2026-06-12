@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 
 let authEnabled = false;
 let allGroups = [];
+const groupsLoadedHandlers = [];
 
 function getToken() { return localStorage.getItem('awsl_api_token') || ''; }
 
@@ -84,10 +85,23 @@ async function loadGroups() {
         document.querySelector('.status-dot').style.background = 'var(--red)';
         return;
     }
-    allGroups = r.data;
+    allGroups = Array.isArray(r.data) ? r.data : (r.data?.groups || []);
     $('statusText').textContent = `运行中 · ${allGroups.length} 个群聊`;
     document.querySelector('.status-dot').style.background = '';
     if (typeof onGroupsLoaded === 'function') onGroupsLoaded();
+    for (const handler of groupsLoadedHandlers) {
+        try { handler(allGroups); } catch {}
+    }
+}
+
+function registerGroupsLoadedHandler(handler) {
+    if (typeof handler !== 'function') return;
+    groupsLoadedHandlers.push(handler);
+    if (allGroups.length) handler(allGroups);
+}
+
+function groupDisplayName(group) {
+    return group?.name || group?.group_name || group?.display_name || group?.nick_name || group?.username || '';
 }
 
 async function loadServerInfo() {
