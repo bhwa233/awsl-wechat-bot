@@ -27,15 +27,19 @@ function updateCustomCommandTargetGroupsCheckboxes(selectedValues = null) {
     ).join('');
 }
 
-const customCommandCrud = new CrudManager({
-    apiPath: '/api/custom-commands', listId: 'customCommandsList',
-    formPanelId: 'customCommandFormPanel', formId: 'customCommandForm',
-    formTitleId: 'customCommandFormTitle', emptyText: '暂无自定义命令',
-    createTitle: '新建自定义命令', editTitle: '编辑自定义命令',
-    createMsg: '自定义命令已创建', updateMsg: '自定义命令已更新', deleteMsg: '自定义命令已删除',
-    deleteConfirm: '确定要删除这个自定义命令吗？',
+const customCommandCrud = {
+    apiPath: '/api/custom-commands',
+    items: [],
+    editingId: null,
 
-    renderItem: cmd => {
+    init() {
+        $('customCommandForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            await this.save();
+        });
+    },
+
+    renderItem(cmd) {
         let contentHtml;
         let contentLabel = '回复内容';
         let useRaw = false;
@@ -55,15 +59,52 @@ const customCommandCrud = new CrudManager({
         }
         const contentItem = useRaw ? infoItemRaw(contentLabel, contentHtml) : infoItem(contentLabel, contentHtml);
         const targets = infoItem('目标群组', cmd.target_groups?.length ? cmd.target_groups.join(', ') : '所有群组');
-        return `<div class="crud-item">${itemHeader(cmd.key, cmd.enabled)}<div class="info-grid">${infoItem('描述', cmd.description || '-')}${infoItem('类型', actionType)}${contentItem}${targets}</div>${itemActions('customCommandCrud', cmd.id, cmd.enabled)}</div>`;
+        const editing = this.editingId === cmd.id;
+        const editMount = editing ? `<div class="custom-command-edit-mount" id="customCommandEditMount-${cmd.id}"></div>` : '';
+        return `<div class="crud-item${editing ? ' editing' : ''}" data-command-id="${cmd.id}">${itemHeader(cmd.key, cmd.enabled)}<div class="info-grid">${infoItem('描述', cmd.description || '-')}${infoItem('类型', actionType)}${contentItem}${targets}</div>${itemActions('customCommandCrud', cmd.id, cmd.enabled)}${editMount}</div>`;
+    },
+
+    render() {
+        this.parkForm();
+        const el = $('customCommandsList');
+        if (!this.items.length) {
+            el.innerHTML = '<div class="empty-hint">暂无自定义命令</div>';
+        } else {
+            el.innerHTML = this.items.map(item => this.renderItem(item)).join('');
+        }
+        if (this.editingId) this.mountEditForm(this.editingId);
+    },
+
+    parkForm() {
+        const host = $('customCommandFormHost');
+        const panel = $('customCommandFormPanel');
+        if (host && panel && panel.parentElement !== host) host.appendChild(panel);
+    },
+
+    mountEditForm(id) {
+        const mount = $(`customCommandEditMount-${id}`);
+        const panel = $('customCommandFormPanel');
+        if (mount && panel) mount.appendChild(panel);
+    },
+
+    async load() {
+        const r = await api('GET', this.apiPath);
+        if (!r.ok) {
+            toast(r.data?.detail || r.error || '加载自定义命令失败', 'error');
+            return;
+        }
+        this.items = Array.isArray(r.data) ? r.data : [];
+        this.render();
     },
 
     async fetchItem(id) {
-        const r = await api('GET', `/api/custom-commands/${id}`);
-        return r.ok ? r.data : null;
+        const r = await api('GET', `${this.apiPath}/${id}`);
+        if (r.ok) return r.data;
+        toast(r.data?.detail || r.error || '读取自定义命令失败', 'error');
+        return null;
     },
 
-    getFormData: () => {
+    getFormData() {
         const actionType = customCommandMessageComposer.getType();
         const data = {
             key: $('customCommandKey').value.trim(),
@@ -86,7 +127,7 @@ const customCommandCrud = new CrudManager({
         return data;
     },
 
-    populateForm: cmd => {
+    populateForm(cmd) {
         $('customCommandKey').value = cmd.key;
         $('customCommandDescription').value = cmd.description || '';
         $('customCommandEnabled').value = cmd.enabled.toString();
@@ -94,27 +135,103 @@ const customCommandCrud = new CrudManager({
         $('customCommandMessageType').value = actionType;
         $('customCommandMessage').value = actionType === 'text' ? cmd.message : '';
         resetCustomCommandUpload();
-        updateCustomCommandTargetGroupsCheckboxes();
         if (actionType === 'image' && cmd.message) {
             customCommandMessageComposer.setAttachment(cmd.message, '', 'data:image/png;base64,' + cmd.message);
         }
         if (actionType === 'file' && cmd.message) {
             customCommandMessageComposer.setAttachment(cmd.message, cmd.filename || '');
         }
-        document.querySelectorAll('input[name="customCommandTargetGroups"]').forEach(cb => {
-            cb.checked = cmd.target_groups?.includes(cb.value);
-        });
+        updateCustomCommandTargetGroupsCheckboxes(cmd.target_groups || []);
         toggleCustomCommandMessageType({ resetUpload: false });
     },
 
-    resetForm: () => {
+    resetForm() {
+        $('customCommandForm').reset();
         resetCustomCommandUpload();
         $('customCommandMessageType').value = 'text';
         $('customCommandEnabled').value = 'true';
-        updateCustomCommandTargetGroupsCheckboxes();
+        updateCustomCommandTargetGroupsCheckboxes([]);
         toggleCustomCommandMessageType();
     },
-});
+
+    showForm() {
+        this.editingId = null;
+        this.render();
+        $('customCommandFormTitle').textContent = '新建自定义命令';
+        $('customCommandFormBtn').textContent = '创建命令';
+        this.resetForm();
+        this.parkForm();
+        $('customCommandFormPanel').style.display = '';
+        $('customCommandKey').focus();
+    },
+
+    hideForm(opts = {}) {
+        this.editingId = null;
+        $('customCommandFormPanel').style.display = 'none';
+        this.parkForm();
+        this.resetForm();
+        if (opts.render !== false) this.render();
+    },
+
+    async edit(id) {
+        const item = await this.fetchItem(id);
+        if (!item) return;
+        this.editingId = id;
+        this.render();
+        $('customCommandFormTitle').textContent = `编辑自定义命令：${item.key}`;
+        $('customCommandFormBtn').textContent = '保存修改';
+        this.populateForm(item);
+        this.mountEditForm(id);
+        $('customCommandFormPanel').style.display = '';
+        $('customCommandFormPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    },
+
+    async save() {
+        const btn = $('customCommandFormBtn');
+        const origText = btn.textContent;
+        const editingId = this.editingId;
+        btn.disabled = true;
+        btn.textContent = '处理中...';
+        try {
+            const data = this.getFormData();
+            if (!data) return;
+            const r = await api(editingId ? 'PUT' : 'POST', editingId ? `${this.apiPath}/${editingId}` : this.apiPath, { body: data });
+            if (!r.ok) {
+                toast(r.data?.detail || r.error || '操作失败', 'error');
+                return;
+            }
+            toast(editingId ? '自定义命令已更新' : '自定义命令已创建', 'success');
+            this.hideForm({ render: false });
+            await this.load();
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    },
+
+    async remove(id) {
+        if (!confirm('确定要删除这个自定义命令吗？')) return;
+        const r = await api('DELETE', `${this.apiPath}/${id}`);
+        if (r.ok) {
+            toast('自定义命令已删除', 'success');
+            if (this.editingId === id) this.hideForm({ render: false });
+            await this.load();
+        } else {
+            toast(r.data?.detail || r.error || '删除失败', 'error');
+        }
+    },
+
+    async toggle(id, current) {
+        const r = await api('PUT', `${this.apiPath}/${id}`, { body: { enabled: !current } });
+        if (r.ok) {
+            await this.load();
+        } else {
+            toast(r.data?.detail || r.error || '状态更新失败', 'error');
+        }
+    },
+};
+
+customCommandCrud.init();
 
 customCommandMessageComposer = new MessageComposer({
     typeId: 'customCommandMessageType',

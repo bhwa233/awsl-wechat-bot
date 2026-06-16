@@ -7,6 +7,7 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#22c55e">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="AWSL Bot">
@@ -14,7 +15,7 @@
     <script>
         (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=202606162015">
+    <link rel="stylesheet" href="/static/style.css?v=202606170385">
 </head>
 <body>
     <div class="app">
@@ -157,78 +158,82 @@
                     <span class="panel-title">定时任务</span>
                     <span class="panel-sub" id="timezoneInfo"></span>
                 </div>
-                <button class="btn btn-green btn-sm" onclick="taskCrud.showForm(); updateTargetGroupsCheckboxes();">新建任务</button>
+                <button class="btn btn-green btn-sm" onclick="taskCrud.showForm()">新建任务</button>
+            </div>
+            <div id="taskFormHost" class="task-form-host">
+                <div id="taskFormPanel" class="form-panel" style="display:none">
+                    <h3 id="taskFormTitle">新建定时任务</h3>
+                    <form id="taskForm">
+                        <input type="hidden" id="taskId">
+                        <div class="form-group"><label>任务名称</label><input type="text" id="taskName" required></div>
+                        <div class="form-group">
+                            <label>Cron 表达式</label>
+                            <input type="text" id="cronExpression" placeholder="* * * * *" required>
+                            <div class="help-text">分 时 日 月 周 · 例: <code>0 9 * * *</code> = 每天9点 · <code>*/30 * * * *</code> = 每30分钟</div>
+                        </div>
+                        <input type="hidden" id="taskType" value="send">
+                        <div class="form-group"><label>状态</label><select id="taskEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
+                        <div class="form-group" id="taskMessageTypeGroup"><label>消息类型</label><select id="taskMessageType"><option value="text">文本</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
+                        <div class="form-group" id="taskTextGroup"><label>消息内容</label><textarea id="taskMessage" rows="3"></textarea></div>
+                        <div class="form-group" id="taskAttachmentGroup" style="display:none">
+                            <label>附件</label>
+                            <label class="file-dropzone" id="taskFileDropzone">
+                                <input type="file" id="taskFileSelect" hidden>
+                                <img id="taskFilePreview" alt="" hidden>
+                                <span id="taskFileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
+                            </label>
+                        </div>
+                        <div class="form-group" id="taskSummaryGroup" style="display:none">
+                            <label>总结配置</label>
+                            <div id="summaryRows"></div>
+                            <button type="button" class="btn btn-ghost btn-sm" onclick="addSummaryRow()">+ 添加群聊</button>
+                        </div>
+                        <div class="form-group" id="taskTargetGroupsGroup"><label>目标群组（空=全部）</label><div id="targetGroupsCheckboxes" class="checkbox-group"></div></div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-green" id="taskFormBtn">创建任务</button>
+                            <button type="button" class="btn btn-ghost" onclick="taskCrud.hideForm()">取消</button>
+                        </div>
+                    </form>
+                </div>
             </div>
             <div id="tasksList"></div>
-            <div id="taskFormPanel" class="form-panel" style="display:none">
-                <h3 id="taskFormTitle">新建定时任务</h3>
-                <form id="taskForm">
-                    <input type="hidden" id="taskId">
-                    <div class="form-group"><label>任务名称</label><input type="text" id="taskName" required></div>
-                    <div class="form-group">
-                        <label>Cron 表达式</label>
-                        <input type="text" id="cronExpression" placeholder="* * * * *" required>
-                        <div class="help-text">分 时 日 月 周 · 例: <code>0 9 * * *</code> = 每天9点 · <code>*/30 * * * *</code> = 每30分钟</div>
-                    </div>
-                    <input type="hidden" id="taskType" value="send">
-                    <div class="form-group"><label>状态</label><select id="taskEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
-                    <div class="form-group" id="taskMessageTypeGroup"><label>消息类型</label><select id="taskMessageType"><option value="text">文本</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
-                    <div class="form-group" id="taskTextGroup"><label>消息内容</label><textarea id="taskMessage" rows="3"></textarea></div>
-                    <div class="form-group" id="taskAttachmentGroup" style="display:none">
-                        <label>附件</label>
-                        <label class="file-dropzone" id="taskFileDropzone">
-                            <input type="file" id="taskFileSelect" hidden>
-                            <img id="taskFilePreview" alt="" hidden>
-                            <span id="taskFileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
-                        </label>
-                    </div>
-                    <div class="form-group" id="taskSummaryGroup" style="display:none">
-                        <label>总结配置</label>
-                        <div id="summaryRows"></div>
-                        <button type="button" class="btn btn-ghost btn-sm" onclick="addSummaryRow()">+ 添加群聊</button>
-                    </div>
-                    <div class="form-group" id="taskTargetGroupsGroup"><label>目标群组（空=全部）</label><div id="targetGroupsCheckboxes" class="checkbox-group"></div></div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-green" id="taskFormBtn">创建任务</button>
-                        <button type="button" class="btn btn-ghost" onclick="taskCrud.hideForm()">取消</button>
-                    </div>
-                </form>
-            </div>
         </div>
 
         <!-- ==================== 自定义命令 Tab ==================== -->
         <div class="panel" id="custom-commands-panel">
             <div class="panel-header">
                 <span class="panel-title">自定义命令</span>
-                <button class="btn btn-green btn-sm" onclick="customCommandCrud.showForm(); updateCustomCommandTargetGroupsCheckboxes();">新建命令</button>
+                <button class="btn btn-green btn-sm" onclick="customCommandCrud.showForm()">新建命令</button>
+            </div>
+            <div id="customCommandFormHost" class="custom-command-form-host">
+                <div id="customCommandFormPanel" class="form-panel" style="display:none">
+                    <h3 id="customCommandFormTitle">新建自定义命令</h3>
+                    <form id="customCommandForm">
+                        <input type="hidden" id="customCommandId">
+                        <div class="form-row">
+                            <div class="form-group"><label>命令 Key</label><input type="text" id="customCommandKey" placeholder="menu" required></div>
+                            <div class="form-group"><label>状态</label><select id="customCommandEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
+                        </div>
+                        <div class="form-group"><label>描述</label><input type="text" id="customCommandDescription" placeholder="menu - 查看菜单"></div>
+                        <div class="form-group"><label>消息类型</label><select id="customCommandMessageType"><option value="text">文本</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
+                        <div class="form-group" id="customCommandTextGroup"><label>回复内容</label><textarea id="customCommandMessage" rows="3"></textarea></div>
+                        <div class="form-group" id="customCommandAttachmentGroup" style="display:none">
+                            <label>附件</label>
+                            <label class="file-dropzone" id="customCommandFileDropzone">
+                                <input type="file" id="customCommandFileSelect" hidden>
+                                <img id="customCommandFilePreview" alt="" hidden>
+                                <span id="customCommandFileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
+                            </label>
+                        </div>
+                        <div class="form-group"><label>目标群组（空=全部）</label><div id="customCommandTargetGroupsCheckboxes" class="checkbox-group"></div></div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn btn-green" id="customCommandFormBtn">创建命令</button>
+                            <button type="button" class="btn btn-ghost" onclick="customCommandCrud.hideForm()">取消</button>
+                        </div>
+                    </form>
+                </div>
             </div>
             <div id="customCommandsList"></div>
-            <div id="customCommandFormPanel" class="form-panel" style="display:none">
-                <h3 id="customCommandFormTitle">新建自定义命令</h3>
-                <form id="customCommandForm">
-                    <input type="hidden" id="customCommandId">
-                    <div class="form-row">
-                        <div class="form-group"><label>命令 Key</label><input type="text" id="customCommandKey" placeholder="menu" required></div>
-                        <div class="form-group"><label>状态</label><select id="customCommandEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
-                    </div>
-                    <div class="form-group"><label>描述</label><input type="text" id="customCommandDescription" placeholder="menu - 查看菜单"></div>
-                    <div class="form-group"><label>消息类型</label><select id="customCommandMessageType"><option value="text">文本</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
-                    <div class="form-group" id="customCommandTextGroup"><label>回复内容</label><textarea id="customCommandMessage" rows="3"></textarea></div>
-                    <div class="form-group" id="customCommandAttachmentGroup" style="display:none">
-                        <label>附件</label>
-                        <label class="file-dropzone" id="customCommandFileDropzone">
-                            <input type="file" id="customCommandFileSelect" hidden>
-                            <img id="customCommandFilePreview" alt="" hidden>
-                            <span id="customCommandFileInfo">点击选择 / 拖拽 / Ctrl+V 粘贴</span>
-                        </label>
-                    </div>
-                    <div class="form-group"><label>目标群组（空=全部）</label><div id="customCommandTargetGroupsCheckboxes" class="checkbox-group"></div></div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-green" id="customCommandFormBtn">创建命令</button>
-                        <button type="button" class="btn btn-ghost" onclick="customCommandCrud.hideForm()">取消</button>
-                    </div>
-                </form>
-            </div>
         </div>
 
         <!-- ==================== Webhook Tab ==================== -->
@@ -271,11 +276,11 @@
     <div class="toast" id="toast"></div>
 
     <script src="/static/app.js?v=202606162015"></script>
-    <script src="/static/message_composer.js?v=202606162015"></script>
-    <script src="/static/chat.js?v=202606162015"></script>
-    <script src="/static/console.js?v=202606162015"></script>
-    <script src="/static/tasks.js?v=202606162015"></script>
-    <script src="/static/custom_commands.js?v=202606162015"></script>
+    <script src="/static/message_composer.js?v=202606170255"></script>
+    <script src="/static/chat.js?v=202606170355"></script>
+    <script src="/static/console.js?v=202606170350"></script>
+    <script src="/static/tasks.js?v=202606170255"></script>
+    <script src="/static/custom_commands.js?v=202606170245"></script>
     <script src="/static/webhooks.js?v=202606162015"></script>
 </body>
 </html>

@@ -12,16 +12,35 @@ function formatComposerFileSize(bytes) {
     return (idx === 0 ? value : value.toFixed(1)) + ' ' + units[idx];
 }
 
+function getComposerBase64Size(value) {
+    if (!value) return 0;
+    const base64 = String(value).split(',').pop().replace(/\s/g, '');
+    if (!base64) return 0;
+    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+    return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
+}
+
+function formatComposerAttachmentInfo(label, bytes, dimensions = '') {
+    const parts = [label || '已选择文件'];
+    const size = formatComposerFileSize(bytes);
+    if (size) parts.push(size);
+    if (dimensions) parts.push(dimensions);
+    return parts.join(' · ');
+}
+
 class MessageComposer {
     constructor(cfg) {
         this.cfg = cfg;
         this.state = { message: '', filename: '' };
+        this.infoToken = 0;
         this.typeEl = $(cfg.typeId);
+        this.typeControlEl = null;
         this.textEl = cfg.textInputId ? $(cfg.textInputId) : null;
         this.fileEl = cfg.fileInputId ? $(cfg.fileInputId) : null;
         this.dropzoneEl = cfg.dropzoneId ? $(cfg.dropzoneId) : null;
         this.previewEl = cfg.previewId ? $(cfg.previewId) : null;
         this.infoEl = cfg.infoId ? $(cfg.infoId) : null;
+        this._enhanceTypeControl();
         this._bind();
         this.syncType({ resetUpload: false });
         messageComposerRegistry.push(this);
@@ -47,13 +66,18 @@ class MessageComposer {
         if (this.fileEl) {
             this.fileEl.accept = type === 'image' ? 'image/*' : '';
         }
+        if (this.dropzoneEl) {
+            this.dropzoneEl.dataset.type = type;
+        }
         if (opts.resetUpload !== false && isAttachment) {
             this.resetUpload();
         }
+        this._syncTypeControl();
         if (this.cfg.onTypeChange) this.cfg.onTypeChange(type);
     }
 
     resetUpload() {
+        this.infoToken++;
         this.state = { message: '', filename: '' };
         if (this.fileEl) this.fileEl.value = '';
         if (this.dropzoneEl) this.dropzoneEl.classList.remove('has-file', 'dragover');
@@ -72,6 +96,7 @@ class MessageComposer {
     }
 
     setAttachment(message, filename = '', previewSrc = '') {
+        const token = ++this.infoToken;
         this.state = { message: message || '', filename: filename || '' };
         if (this.dropzoneEl) this.dropzoneEl.classList.toggle('has-file', !!message);
         if (this.previewEl) {
@@ -83,7 +108,12 @@ class MessageComposer {
                 this.previewEl.removeAttribute('src');
             }
         }
-        if (this.infoEl) this.infoEl.textContent = filename || this.cfg.emptyLabel || '点击选择 / 拖拽 / Ctrl+V 粘贴';
+        if (this.infoEl) {
+            const bytes = getComposerBase64Size(message);
+            const label = filename || (previewSrc ? '图片' : '已选择文件');
+            this.infoEl.textContent = formatComposerAttachmentInfo(label, bytes);
+            if (previewSrc) this._updateImageInfo(previewSrc, label, bytes, token);
+        }
     }
 
     loadFile(file) {
@@ -109,7 +139,8 @@ class MessageComposer {
                 }
             }
             if (this.infoEl) {
-                this.infoEl.textContent = `${file.name} (${formatComposerFileSize(file.size)})`;
+                this.infoEl.textContent = formatComposerAttachmentInfo(file.name, file.size);
+                if (file.type.startsWith('image/')) this._updateImageInfo(dataUrl, file.name, file.size, ++this.infoToken);
             }
         };
         reader.readAsDataURL(file);
@@ -167,6 +198,58 @@ class MessageComposer {
         if (!id) return;
         const el = $(id);
         if (el) el.style.display = show ? '' : 'none';
+    }
+
+    _enhanceTypeControl() {
+        if (!this.typeEl || this.typeEl.dataset.enhanced === 'true') return;
+        const options = Array.from(this.typeEl.options).filter(option => option.value);
+        if (!options.length) return;
+
+        const iconMap = { text: 'Aa', image: 'Img', file: 'File', summary: 'Sum' };
+        const control = document.createElement('div');
+        control.className = 'composer-type-control';
+        control.setAttribute('role', 'group');
+        control.setAttribute('aria-label', '消息类型');
+
+        for (const option of options) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'composer-type-option';
+            button.dataset.value = option.value;
+            button.innerHTML = `<span class="composer-type-icon">${iconMap[option.value] || option.textContent.slice(0, 2)}</span><span>${option.textContent}</span>`;
+            button.addEventListener('click', () => {
+                if (this.typeEl.value === option.value) return;
+                this.typeEl.value = option.value;
+                this.typeEl.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            control.appendChild(button);
+        }
+
+        this.typeEl.classList.add('composer-type-source');
+        this.typeEl.dataset.enhanced = 'true';
+        this.typeEl.insertAdjacentElement('afterend', control);
+        this.typeControlEl = control;
+    }
+
+    _syncTypeControl() {
+        if (!this.typeControlEl) return;
+        const type = this.getType();
+        this.typeControlEl.querySelectorAll('.composer-type-option').forEach(button => {
+            const active = button.dataset.value === type;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+    }
+
+    _updateImageInfo(src, label, bytes, token) {
+        if (!this.infoEl) return;
+        const img = new Image();
+        img.onload = () => {
+            if (this.infoToken !== token) return;
+            const dimensions = img.naturalWidth && img.naturalHeight ? `${img.naturalWidth}×${img.naturalHeight}` : '';
+            this.infoEl.textContent = formatComposerAttachmentInfo(label, bytes, dimensions);
+        };
+        img.src = src;
     }
 }
 

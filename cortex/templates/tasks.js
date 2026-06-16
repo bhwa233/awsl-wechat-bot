@@ -1,4 +1,5 @@
 let taskMessageComposer = null;
+let taskTargetGroupSelection = [];
 
 function loadTaskServerInfo() {
     api('GET', '/api/health').then(r => {
@@ -8,7 +9,9 @@ function loadTaskServerInfo() {
         if (!el) return;
         if (info.timezone && info.server_time) {
             const t = new Date(info.server_time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-            el.textContent = `服务器时区: ${info.timezone} (UTC${info.timezone_offset}) · 当前时间: ${t}`;
+            const offset = info.timezone_offset ? `UTC${info.timezone_offset}` : '';
+            const timezone = info.timezone.includes('?') ? offset : `${info.timezone}${offset ? ` (${offset})` : ''}`;
+            el.textContent = `服务器时区: ${timezone} · 当前时间: ${t}`;
         }
     });
 }
@@ -126,7 +129,14 @@ function resetTaskUpload() {
 function updateTargetGroupsCheckboxes(selectedValues = null) {
     const container = $('targetGroupsCheckboxes');
     if (!container) return;
-    const selected = new Set(selectedValues || Array.from(document.querySelectorAll('input[name="targetGroups"]:checked')).map(cb => cb.value));
+    const renderedInputs = Array.from(container.querySelectorAll('input[name="targetGroups"]'));
+    const checkedValues = renderedInputs.map(cb => cb.checked ? cb.value : null).filter(Boolean);
+    if (selectedValues !== null) {
+        taskTargetGroupSelection = Array.from(selectedValues || []);
+    } else if (renderedInputs.length) {
+        taskTargetGroupSelection = checkedValues;
+    }
+    const selected = new Set(taskTargetGroupSelection);
     const groups = allGroups.map(groupDisplayName).filter(Boolean);
     if (!groups.length) {
         container.innerHTML = '<div class="help-text">未加载到群组，请稍后重试或检查 Gateway 连接</div>';
@@ -228,14 +238,19 @@ class CrudManager {
     }
 }
 
-const taskCrud = new CrudManager({
-    apiPath: '/api/tasks', listId: 'tasksList', formPanelId: 'taskFormPanel', formId: 'taskForm',
-    formTitleId: 'taskFormTitle', emptyText: '暂无定时任务',
-    createTitle: '新建定时任务', editTitle: '编辑定时任务',
-    createMsg: '任务已创建', updateMsg: '任务已更新', deleteMsg: '任务已删除',
-    deleteConfirm: '确定要删除这个任务吗？',
+const taskCrud = {
+    apiPath: '/api/tasks',
+    items: [],
+    editingId: null,
 
-    renderItem: task => {
+    init() {
+        $('taskForm').addEventListener('submit', async e => {
+            e.preventDefault();
+            await this.save();
+        });
+    },
+
+    renderItem(task) {
         let typeDisplay = task.task_type === 'summary' ? '群聊总结' : '发送消息';
         let contentHtml, contentLabel = '消息内容';
         let useRaw = false;
@@ -255,15 +270,52 @@ const taskCrud = new CrudManager({
         }
         const contentItem = useRaw ? infoItemRaw(contentLabel, contentHtml) : infoItem(contentLabel, contentHtml);
         const targets = task.task_type === 'send' ? infoItem('目标群组', task.target_groups?.length ? task.target_groups.join(', ') : '所有群组') : '';
-        return `<div class="crud-item">${itemHeader(task.name, task.enabled)}<div class="info-grid">${infoItem('Cron', task.cron_expression)}${infoItem('类型', typeDisplay)}${infoItem('最后运行', task.last_run || '从未')}${contentItem}${targets}</div>${itemActions('taskCrud', task.id, task.enabled)}</div>`;
+        const editing = this.editingId === task.id;
+        const editMount = editing ? `<div class="task-edit-mount" id="taskEditMount-${task.id}"></div>` : '';
+        return `<div class="crud-item${editing ? ' editing' : ''}" data-task-id="${task.id}">${itemHeader(task.name, task.enabled)}<div class="info-grid">${infoItem('Cron', task.cron_expression)}${infoItem('类型', typeDisplay)}${infoItem('最后运行', task.last_run || '从未')}${contentItem}${targets}</div>${itemActions('taskCrud', task.id, task.enabled)}${editMount}</div>`;
+    },
+
+    render() {
+        this.parkForm();
+        const el = $('tasksList');
+        if (!this.items.length) {
+            el.innerHTML = '<div class="empty-hint">暂无定时任务</div>';
+        } else {
+            el.innerHTML = this.items.map(item => this.renderItem(item)).join('');
+        }
+        if (this.editingId) this.mountEditForm(this.editingId);
+    },
+
+    parkForm() {
+        const host = $('taskFormHost');
+        const panel = $('taskFormPanel');
+        if (host && panel && panel.parentElement !== host) host.appendChild(panel);
+    },
+
+    mountEditForm(id) {
+        const mount = $(`taskEditMount-${id}`);
+        const panel = $('taskFormPanel');
+        if (mount && panel) mount.appendChild(panel);
+    },
+
+    async load() {
+        const r = await api('GET', this.apiPath);
+        if (!r.ok) {
+            toast(r.data?.detail || r.error || '加载定时任务失败', 'error');
+            return;
+        }
+        this.items = Array.isArray(r.data) ? r.data : [];
+        this.render();
     },
 
     async fetchItem(id) {
         const r = await api('GET', `/api/tasks/${id}`);
-        return r.ok ? r.data : null;
+        if (r.ok) return r.data;
+        toast(r.data?.detail || r.error || '读取定时任务失败', 'error');
+        return null;
     },
 
-    getFormData: () => {
+    getFormData() {
         const composerType = taskMessageComposer.getType();
         const taskType = composerType === 'summary' ? 'summary' : 'send';
         const data = {
@@ -286,7 +338,7 @@ const taskCrud = new CrudManager({
         return data;
     },
 
-    populateForm: task => {
+    populateForm(task) {
         $('taskName').value = task.name;
         $('cronExpression').value = task.cron_expression;
         $('taskEnabled').value = task.enabled.toString();
@@ -301,17 +353,97 @@ const taskCrud = new CrudManager({
         if (task.task_type === 'send' && task.message_type === 'file' && task.message) {
             taskMessageComposer.setAttachment(task.message, task.filename || '');
         }
-        document.querySelectorAll('input[name="targetGroups"]').forEach(cb => { cb.checked = task.target_groups?.includes(cb.value); });
+        updateTargetGroupsCheckboxes(task.task_type === 'send' ? (task.target_groups || []) : []);
         toggleTaskFormMode({ resetUpload: false });
     },
 
-    resetForm: () => {
+    resetForm() {
+        $('taskForm').reset();
         resetTaskUpload();
         $('taskType').value = 'send'; $('taskMessageType').value = 'text'; $('summaryRows').innerHTML = '';
+        $('taskEnabled').value = 'true';
+        updateTargetGroupsCheckboxes([]);
         toggleTaskFormMode();
-        updateTargetGroupsCheckboxes();
     },
-});
+
+    showForm() {
+        this.editingId = null;
+        this.render();
+        $('taskFormTitle').textContent = '新建定时任务';
+        $('taskFormBtn').textContent = '创建任务';
+        this.resetForm();
+        this.parkForm();
+        $('taskFormPanel').style.display = '';
+        $('taskName').focus();
+    },
+
+    hideForm(opts = {}) {
+        this.editingId = null;
+        $('taskFormPanel').style.display = 'none';
+        this.parkForm();
+        this.resetForm();
+        if (opts.render !== false) this.render();
+    },
+
+    async edit(id) {
+        const item = await this.fetchItem(id);
+        if (!item) return;
+        this.editingId = id;
+        this.render();
+        $('taskFormTitle').textContent = `编辑定时任务：${item.name}`;
+        $('taskFormBtn').textContent = '保存修改';
+        this.populateForm(item);
+        this.mountEditForm(id);
+        $('taskFormPanel').style.display = '';
+        $('taskFormPanel').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    },
+
+    async save() {
+        const btn = $('taskFormBtn');
+        const origText = btn.textContent;
+        const editingId = this.editingId;
+        btn.disabled = true;
+        btn.textContent = '处理中...';
+        try {
+            const data = this.getFormData();
+            if (!data) return;
+            const r = await api(editingId ? 'PUT' : 'POST', editingId ? `${this.apiPath}/${editingId}` : this.apiPath, { body: data });
+            if (!r.ok) {
+                toast(r.data?.detail || r.error || '操作失败', 'error');
+                return;
+            }
+            toast(editingId ? '任务已更新' : '任务已创建', 'success');
+            this.hideForm({ render: false });
+            await this.load();
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    },
+
+    async remove(id) {
+        if (!confirm('确定要删除这个任务吗？')) return;
+        const r = await api('DELETE', `${this.apiPath}/${id}`);
+        if (r.ok) {
+            toast('任务已删除', 'success');
+            if (this.editingId === id) this.hideForm({ render: false });
+            await this.load();
+        } else {
+            toast(r.data?.detail || r.error || '删除失败', 'error');
+        }
+    },
+
+    async toggle(id, current) {
+        const r = await api('PUT', `${this.apiPath}/${id}`, { body: { enabled: !current } });
+        if (r.ok) {
+            await this.load();
+        } else {
+            toast(r.data?.detail || r.error || '状态更新失败', 'error');
+        }
+    },
+};
+
+taskCrud.init();
 
 taskMessageComposer = new MessageComposer({
     typeId: 'taskMessageType',

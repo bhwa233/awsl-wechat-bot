@@ -181,7 +181,10 @@ window.consoleTab = (() => {
         if (msgs.length > 100) msgs.pop();
         msgs.reverse();
         renderChatlogMessages(msgs, options);
-        ensureChatlogSenderContacts(msgs).then(() => {
+        Promise.allSettled([
+            ensureChatlogSenderContacts(msgs),
+            ensureChatlogMembers(group.username),
+        ]).then(() => {
             if (gen !== historyLoadGen) return;
             renderChatlogMessages(msgs, { ...options, preserveScroll: true });
         });

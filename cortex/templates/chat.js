@@ -12,6 +12,8 @@ let loadGen = 0;
 const CHATLOG_CONTACT_BATCH_SIZE = 200;
 const chatlogContactCache = new Map();
 const chatlogContactPending = new Map();
+const chatlogMemberCache = new Map();
+const chatlogMemberPending = new Map();
 
 function onGroupsLoaded() {
     populateSendWindowSelect();
@@ -22,6 +24,8 @@ function onTokenSaved() {
     chatlogBackend = null;
     chatlogContactCache.clear();
     chatlogContactPending.clear();
+    chatlogMemberCache.clear();
+    chatlogMemberPending.clear();
     detectChatlogBackend();
 }
 
@@ -92,12 +96,103 @@ function chatlogContactAvatar(contact) {
     return contact?.avatar || contact?.big_avatar || '';
 }
 
+function memberDisplayName(member) {
+    return member?.display_name || member?.remark || member?.nick_name || member?.alias || member?.username || '';
+}
+
+async function ensureChatlogMembers(groupId) {
+    if (!groupId) return [];
+    if (chatlogMemberCache.has(groupId)) return chatlogMemberCache.get(groupId) || [];
+    const pending = chatlogMemberPending.get(groupId);
+    if (pending) return pending;
+    const req = api('GET', `/api/chatlog/members?group=${encodeURIComponent(groupId)}`).then(r => {
+        const members = r.ok && Array.isArray(r.data) ? r.data : [];
+        chatlogMemberCache.set(groupId, members);
+        return members;
+    }).finally(() => chatlogMemberPending.delete(groupId));
+    chatlogMemberPending.set(groupId, req);
+    return req;
+}
+
+async function ensureChatlogMentionMembers(groupId, messages) {
+    if (!(messages || []).some(m => Array.isArray(m.at_users) && m.at_users.length)) return;
+    await ensureChatlogMembers(groupId);
+}
+
+function getChatlogMember(groupId, username) {
+    const members = chatlogMemberCache.get(groupId) || [];
+    return members.find(member => member.username === username) || null;
+}
+
+function getMentionLabelCandidates(member) {
+    const names = [
+        member?.display_name,
+        member?.remark,
+        member?.nick_name,
+        member?.alias,
+    ].map(item => String(item || '').trim()).filter(Boolean);
+    return [...new Set(names)].sort((a, b) => b.length - a.length);
+}
+
+function showMentionMember(groupId, username) {
+    const contact = getChatlogSenderContact(username);
+    const member = getChatlogMember(groupId, username) || (contact ? { ...contact, display_name: '', is_owner: false } : null);
+    const title = memberDisplayName(member) || username;
+    const avatar = member?.avatar || member?.big_avatar || '';
+    const fallback = avatarInitial(title);
+    const rows = [
+        ['群昵称', member?.display_name || '未设置'],
+        ['微信昵称', member?.nick_name || '未获取'],
+        ['备注', member?.remark || '未设置'],
+        ['别名', member?.alias || '未设置'],
+        ['群主', member?.is_owner ? '是' : '否'],
+        ['wxid', member?.username || username],
+        ['头像', member?.avatar ? { label: '查看头像', url: member.avatar } : '无'],
+        ['原图头像', member?.big_avatar ? { label: '查看原图', url: member.big_avatar } : '无'],
+    ];
+    const body = rows
+        .map(([label, value]) => {
+            const valueHtml = value && typeof value === 'object'
+                ? `<a href="${escapeHtml(value.url)}" target="_blank" rel="noopener">${escapeHtml(value.label)}</a>`
+                : escapeHtml(value);
+            return `<div class="mention-member-row"><span>${escapeHtml(label)}</span><strong>${valueHtml}</strong></div>`;
+        })
+        .join('');
+    let modal = document.getElementById('mentionMemberModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'mentionMemberModal';
+        modal.className = 'modal-overlay';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') modal.style.display = 'none'; });
+        document.body.appendChild(modal);
+    }
+    const avatarHtml = avatar
+        ? `<img class="mention-member-avatar-img" src="${escapeHtml(avatar)}" alt="${escapeHtml(title)}" onerror="this.parentElement.classList.add('avatar-error')"><span class="mention-member-avatar-fallback">${escapeHtml(fallback)}</span>`
+        : `<span class="mention-member-avatar-fallback">${escapeHtml(fallback)}</span>`;
+    modal.innerHTML = `<div class="modal-content mention-member-modal">
+        <div class="mention-member-hero">
+            <div class="mention-member-avatar">${avatarHtml}</div>
+            <div class="mention-member-title">
+                <div class="mention-member-name">${escapeHtml(title)}</div>
+                <div class="mention-member-id">${escapeHtml(username)}</div>
+            </div>
+            <button onclick="document.getElementById('mentionMemberModal').style.display='none'" class="modal-close mention-member-close">✕</button>
+        </div>
+        <div class="modal-body mention-member-body">${body}</div>
+    </div>`;
+    modal.style.display = 'flex';
+}
+
 function renderMessageAvatar(message, displayName) {
     const contact = getChatlogSenderContact(message.sender);
     const avatar = chatlogContactAvatar(contact);
     const fallback = `<span class="msg-avatar msg-avatar-fallback">${escapeHtml(avatarInitial(displayName))}</span>`;
-    if (!avatar) return fallback;
-    return `<span class="msg-avatar-wrap"><img class="msg-avatar msg-avatar-img" loading="lazy" src="${escapeHtml(avatar)}" alt="${escapeHtml(displayName)}" onerror="this.parentElement.classList.add('avatar-error')">${fallback}</span>`;
+    const inner = avatar
+        ? `<span class="msg-avatar-wrap"><img class="msg-avatar msg-avatar-img" loading="lazy" src="${escapeHtml(avatar)}" alt="${escapeHtml(displayName)}" onerror="this.parentElement.classList.add('avatar-error')">${fallback}</span>`
+        : fallback;
+    if (!message?.talker || !message?.sender) return inner;
+    return `<button type="button" class="msg-avatar-button" onclick="showMentionMember('${escapeHtml(message.talker)}','${escapeHtml(message.sender)}')">${inner}</button>`;
 }
 
 function onTabSwitch(name) {
@@ -233,7 +328,10 @@ async function loadMessages(chatlogId) {
     msgs.reverse();
     renderMessages(msgs);
     renderPagination(msgs.length, hasMore);
-    ensureChatlogSenderContacts(msgs).then(() => {
+    Promise.allSettled([
+        ensureChatlogSenderContacts(msgs),
+        ensureChatlogMembers(chatlogId),
+    ]).then(() => {
         if (gen !== loadGen) return;
         renderMessages(msgs);
     });
@@ -279,6 +377,43 @@ function replaceWechatEmoji(text) {
 
 function renderTextWithEmoji(content) {
     return replaceWechatEmoji(escapeHtml(content));
+}
+
+function renderTextWithMentions(content, message) {
+    const users = Array.isArray(message?.at_users) ? message.at_users : [];
+    if (!users.length || !message?.talker) return renderTextWithEmoji(content);
+    const memberItems = users.map(username => {
+        const member = getChatlogMember(message.talker, username);
+        return { username, labels: getMentionLabelCandidates(member) };
+    }).filter(item => item.labels.length);
+    if (!memberItems.length) return renderTextWithEmoji(content);
+
+    const text = replaceWechatEmoji(content || '');
+    let html = '';
+    let i = 0;
+    while (i < text.length) {
+        let matched = null;
+        if (text[i] === '@') {
+            for (const item of memberItems) {
+                for (const label of item.labels) {
+                    if (text.slice(i + 1, i + 1 + label.length) === label) {
+                        matched = { ...item, label };
+                        break;
+                    }
+                }
+                if (matched) break;
+            }
+        }
+        if (matched) {
+            const raw = '@' + matched.label;
+            html += `<button type="button" class="mention-link" onclick="showMentionMember('${escapeHtml(message.talker)}','${escapeHtml(matched.username)}')">${escapeHtml(raw)}</button>`;
+            i += raw.length;
+            continue;
+        }
+        html += escapeHtml(text[i]);
+        i++;
+    }
+    return html;
 }
 
 function formatMsgContent(m) {
@@ -457,7 +592,7 @@ function formatMsgContent(m) {
         return `<div class="msg-text msg-media">${escapeHtml(title)}</div>`;
     }
 
-    return `<div class="msg-text">${renderTextWithEmoji(content)}</div>`;
+    return `<div class="msg-text">${renderTextWithMentions(content, m)}</div>`;
 }
 
 function mediaPlaceholder(text) {
