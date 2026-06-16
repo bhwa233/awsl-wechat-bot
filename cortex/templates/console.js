@@ -16,6 +16,10 @@ window.consoleTab = (() => {
     let composer = null;
     let historyLoadGen = 0;
 
+    function showChatPane(show) {
+        $('console-panel')?.classList.toggle('console-chat-open', show);
+    }
+
     function setStatus(text, error = false) {
         const el = $('consoleStatus');
         if (!el) return;
@@ -249,6 +253,7 @@ window.consoleTab = (() => {
         selectedName = name || selectedName;
         $('consoleChatTitle').textContent = selectedName || '聊天区域';
         clearChatArea();
+        showChatPane(true);
         setStatus('正在切换聊天');
         try {
             const r = await consoleApi('/api/console/open-chat', { path });
@@ -338,6 +343,7 @@ window.consoleTab = (() => {
             $('consoleMsgInput').addEventListener('keydown', e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
             });
+            $('consoleBackBtn')?.addEventListener('click', () => showChatPane(false));
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') poll();
             });
