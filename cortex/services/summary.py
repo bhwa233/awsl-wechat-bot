@@ -205,6 +205,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .section-ranking .panel-body > ul li:last-child { border-bottom: 0; }
         .section-ranking strong { color: #1d1d1f; }
+        .emoji-img {
+            display: inline-block;
+            width: 1.18em;
+            height: 1.18em;
+            margin: 0 0.02em;
+            vertical-align: -0.2em;
+        }
     </style>
 </head>
 <body>
@@ -227,6 +234,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </div>
 </body>
 </html>"""
+
+
+EMOJI_IMAGE_MAP = {
+    "🪼": "https://cdn.jsdelivr.net/npm/openmoji@15.1.0/color/svg/1FABC.svg",
+}
+
+
+def _replace_emoji_images(escaped_text: str) -> str:
+    for emoji, url in EMOJI_IMAGE_MAP.items():
+        escaped_text = escaped_text.replace(
+            emoji,
+            f'<img class="emoji-img" alt="{emoji}" src="{url}">',
+        )
+    return escaped_text
 
 
 def _summary_inline(value: object, fallback: str = "") -> str:
@@ -497,6 +518,7 @@ def summarize_topic_with_llm(
 def _escape_and_bold(text: str) -> str:
     """先转义 HTML,再恢复 **bold** 为 <strong>"""
     escaped = html.escape(text)
+    escaped = _replace_emoji_images(escaped)
     return re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
 
 
@@ -618,6 +640,7 @@ def render_to_image(
     template = Template(HTML_TEMPLATE)
     safe_group = html.escape(group_name) if group_name else ""
     title = html.escape(title_override) if title_override else (f"【{safe_group}】群聊总结" if safe_group else "群聊总结")
+    title = _replace_emoji_images(title)
     full_html = template.safe_substitute(
         title=title,
         date=date_str,
