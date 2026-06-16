@@ -236,23 +236,12 @@ def _summary_inline(value: object, fallback: str = "") -> str:
     return text or fallback
 
 
-def _summary_identity_label(index: int) -> str:
-    label = ""
-    index += 1
-    while index:
-        index, rem = divmod(index - 1, 26)
-        label = chr(ord("A") + rem) + label
-    return label
-
-
 def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, tuple[int, int]]]:
     """将消息格式化为 LLM 可读的文本,并统计发送者消息数量和字数"""
     if not messages:
         return "(无消息记录)", 0, {}
 
     lines = []
-    sender_labels: dict[str, str] = {}
-    sender_names: dict[str, str] = {}
     sender_stats: dict[str, tuple[int, int]] = {}
 
     _type_labels = {3: '[图片]', 34: '[语音]', 42: '[名片]', 43: '[视频]', 47: '[动画表情]', 48: '[位置]', 49: '[链接]'}
@@ -261,27 +250,17 @@ def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, t
         if msg.get("is_self"):
             continue
         time_str = msg.get("time", "")[11:19]
-        sender_name = _summary_inline(msg.get("sender_name"))
-        sender_id = _summary_inline(msg.get("sender"), sender_name or "未知")
-        sender = sender_name or sender_id
-        if sender_id != "未知":
-            sender_labels.setdefault(sender_id, _summary_identity_label(len(sender_labels)))
-            sender_names.setdefault(sender_id, sender)
-        sender_label = sender_labels.get(sender_id, "未知")
+        sender = _summary_inline(msg.get("sender_name"), "未知")
         msg_type = msg.get("msg_type", 1)
         content = msg.get("content", "")
         display = _type_labels.get(msg_type, content) if msg_type != 1 else content
         display = _summary_inline(display)
-        lines.append(f"[{time_str}] {sender_label}: {display}")
+        lines.append(f"[{time_str}] {sender}: {display}")
 
         count, chars = sender_stats.get(sender, (0, 0))
         text_len = len(content) if msg_type == 1 else len(display)
         sender_stats[sender] = (count + 1, chars + text_len)
 
-    if sender_names:
-        mapping_lines = ["身份映射:"]
-        mapping_lines.extend(f"- {sender_labels[sender_id]}: {name}" for sender_id, name in sender_names.items())
-        return "\n".join(mapping_lines + ["", "聊天记录:"] + lines), len(lines), sender_stats
     return "\n".join(lines), len(lines), sender_stats
 
 
@@ -404,9 +383,8 @@ def summarize_with_llm(
 
 注意:
 - 使用中文输出
-- 输入开头提供匿名身份映射,聊天记录中冒号前的身份 ID 才是该条消息的真实发言人.
-- 身份 ID 只用于内部识别身份,最终输出不要出现身份 ID,请使用映射中的人名/群昵称.
-- 不要把消息内容里提到的人名当成发言人,也不要把不同身份 ID 的发言合并到同一个人身上.
+- 聊天记录中冒号前的人才是该条消息的发言人.
+- 不要把消息内容里提到的人名当成发言人.
 - 话题按时间顺序排列
 - 合并相似或连续的讨论
 - 内容描述要具体,体现讨论的来龙去脉
@@ -419,7 +397,7 @@ def summarize_with_llm(
 群聊: {group_name}
 日期: {date_str}
 
-聊天记录格式: [时间] 身份ID: 内容
+聊天记录格式: [时间] 发言人: 内容
 
 聊天记录:
 ---
@@ -466,12 +444,10 @@ def summarize_topic_with_llm(
 - 只保留和主题直接相关或明显相关的内容,忽略无关闲聊.
 - 不要编造聊天记录中没有出现的信息.
 - 重要判断要给出依据,可以是时间、发言人、原话摘要或上下文.
-- 输入开头提供匿名身份映射,聊天记录中冒号前的身份 ID 才是该条消息的真实发言人.
-- 身份 ID 只用于内部识别身份,最终输出不要出现身份 ID,请使用映射中的人名/群昵称.
-- 严格区分发言归属: 不要把一个身份 ID 的发言归到另一个身份 ID 身上,也不要把消息内容里提到的人名当成发言人.
+- 严格区分发言归属: 聊天记录中冒号前的人才是该条消息的发言人,不要把消息内容里提到的人名当成发言人.
 - 严格区分"本人发言"和"他人提及/评价".人物画像、人物关系、最近发言类主题中,不能把别人对某人的评价当成这个人的自我表达.
 - 不要推断聊天记录没有明确说明的人物关系、身份、立场或动机.如果只能看到互动或玩笑,就按互动或玩笑描述,不要升级成确定关系.
-- 如果多个同名/相似昵称可能混淆或映射不唯一,必须说明无法确认,不要合并成一个人.
+- 如果多个同名/相似昵称可能混淆,必须说明无法确认,不要合并成一个人.
 - 如果信息不足,直接说明最近记录里没找到足够相关信息.
 - 医疗、法律、投资等高风险内容,只整理聊天里实际出现过的说法,不额外给专业建议.
 
@@ -488,7 +464,7 @@ def summarize_topic_with_llm(
 时间范围: {date_str}
 主题: {topic}
 
-聊天记录格式: [时间] 身份ID: 内容
+聊天记录格式: [时间] 发言人: 内容
 
 聊天记录:
 ---
