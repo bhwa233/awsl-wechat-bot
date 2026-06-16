@@ -268,7 +268,7 @@ const MSG_TYPE = { TEXT: 1, IMAGE: 3, VOICE: 34, NAMECARD: 42, VIDEO: 43, ANIMAT
 let WECHAT_EMOJI = {};
 const WECHAT_EMOJI_RE = /\[([^\[\]]{1,8})\]/g;
 
-const WECHAT_EMOJI_READY = fetch('/static/wechat_emoji.json')
+const WECHAT_EMOJI_READY = fetch('/static/wechat_emoji.json?v=202606162015')
     .then(r => r.ok ? r.json() : {})
     .then(m => { WECHAT_EMOJI = m; })
     .catch(() => {});
