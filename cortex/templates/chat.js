@@ -643,19 +643,112 @@ function renderMediaSticker(m, fallbackText) {
  * 大图查看: 先显示 fallbackSrc (缩略图, 立即可见), 同时拉 hdSrc, 加载完替换;
  * hdSrc 失败 (onerror) 时保留缩略图, 不报错.
  */
+const imageLightboxState = {
+    scale: 1, x: 0, y: 0,
+    dragging: false,
+    startX: 0, startY: 0, originX: 0, originY: 0,
+};
+
+function clampImageLightboxScale(scale) {
+    return Math.min(5, Math.max(0.5, scale));
+}
+
+function updateImageLightboxTransform(lb) {
+    const imgEl = lb.querySelector('img');
+    const scaleText = lb.querySelector('.img-lightbox-scale');
+    imgEl.style.transform = `translate(${imageLightboxState.x}px, ${imageLightboxState.y}px) scale(${imageLightboxState.scale})`;
+    imgEl.style.cursor = imageLightboxState.scale > 1 ? (imageLightboxState.dragging ? 'grabbing' : 'grab') : 'default';
+    if (scaleText) scaleText.textContent = `${Math.round(imageLightboxState.scale * 100)}%`;
+}
+
+function zoomImageLightbox(delta) {
+    const lb = document.getElementById('imgLightbox');
+    if (!lb || lb.style.display === 'none') return;
+    const nextScale = clampImageLightboxScale(imageLightboxState.scale + delta);
+    if (nextScale <= 1) {
+        imageLightboxState.x = 0;
+        imageLightboxState.y = 0;
+    }
+    imageLightboxState.scale = nextScale;
+    updateImageLightboxTransform(lb);
+}
+
+function resetImageLightboxZoom() {
+    const lb = document.getElementById('imgLightbox');
+    if (!lb) return;
+    imageLightboxState.scale = 1;
+    imageLightboxState.x = 0;
+    imageLightboxState.y = 0;
+    imageLightboxState.dragging = false;
+    updateImageLightboxTransform(lb);
+}
+
+function closeImageLightbox() {
+    const lb = document.getElementById('imgLightbox');
+    if (lb) lb.style.display = 'none';
+}
+
 function showImageLightbox(hdSrc, fallbackSrc) {
     let lb = document.getElementById('imgLightbox');
     if (!lb) {
         lb = document.createElement('div');
         lb.id = 'imgLightbox';
         lb.className = 'img-lightbox';
-        lb.onclick = () => { lb.style.display = 'none'; };
-        lb.innerHTML = '<img><div class="img-lightbox-hint">加载中...</div>';
+        lb.addEventListener('click', e => { if (e.target === lb) closeImageLightbox(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeImageLightbox(); });
+        lb.innerHTML = `
+            <div class="img-lightbox-toolbar" onclick="event.stopPropagation()">
+                <button type="button" class="img-lightbox-btn" onclick="zoomImageLightbox(-0.25)" aria-label="缩小" title="缩小">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 5 5"></path><path d="M8 11h6"></path></svg>
+                </button>
+                <span class="img-lightbox-scale">100%</span>
+                <button type="button" class="img-lightbox-btn" onclick="zoomImageLightbox(0.25)" aria-label="放大" title="放大">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16 16 5 5"></path><path d="M8 11h6"></path><path d="M11 8v6"></path></svg>
+                </button>
+                <button type="button" class="img-lightbox-btn" onclick="resetImageLightboxZoom()" aria-label="重置缩放" title="重置缩放">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"></path><path d="M16 3h3a2 2 0 0 1 2 2v3"></path><path d="M21 16v3a2 2 0 0 1-2 2h-3"></path><path d="M8 21H5a2 2 0 0 1-2-2v-3"></path><path d="M9 9h6v6H9z"></path></svg>
+                </button>
+            </div>
+            <button type="button" class="img-lightbox-btn img-lightbox-close" onclick="closeImageLightbox()" aria-label="关闭" title="关闭">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+            </button>
+            <div class="img-lightbox-stage"><img draggable="false"></div>
+            <div class="img-lightbox-hint">加载中...</div>`;
         document.body.appendChild(lb);
+        const img = lb.querySelector('img');
+        img.addEventListener('click', e => {
+            e.stopPropagation();
+        });
+        img.addEventListener('pointerdown', e => {
+            if (imageLightboxState.scale <= 1) return;
+            imageLightboxState.dragging = true;
+            imageLightboxState.startX = e.clientX;
+            imageLightboxState.startY = e.clientY;
+            imageLightboxState.originX = imageLightboxState.x;
+            imageLightboxState.originY = imageLightboxState.y;
+            img.setPointerCapture(e.pointerId);
+            updateImageLightboxTransform(lb);
+        });
+        img.addEventListener('pointermove', e => {
+            if (!imageLightboxState.dragging) return;
+            imageLightboxState.x = imageLightboxState.originX + e.clientX - imageLightboxState.startX;
+            imageLightboxState.y = imageLightboxState.originY + e.clientY - imageLightboxState.startY;
+            updateImageLightboxTransform(lb);
+        });
+        img.addEventListener('pointerup', e => {
+            imageLightboxState.dragging = false;
+            img.releasePointerCapture(e.pointerId);
+            updateImageLightboxTransform(lb);
+        });
+        img.addEventListener('pointercancel', () => {
+            imageLightboxState.dragging = false;
+            updateImageLightboxTransform(lb);
+        });
     }
     const imgEl = lb.querySelector('img');
     const hint = lb.querySelector('.img-lightbox-hint');
     imgEl.src = fallbackSrc || hdSrc;
+    resetImageLightboxZoom();
     lb.style.display = 'flex';
     if (!fallbackSrc || hdSrc === fallbackSrc) {
         hint.textContent = '';
