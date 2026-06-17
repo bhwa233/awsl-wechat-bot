@@ -257,13 +257,30 @@ def _summary_inline(value: object, fallback: str = "") -> str:
     return text or fallback
 
 
-def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, tuple[int, int]]]:
+def _summary_member_label(sender_id: str, sender_name: str, members_by_id: dict[str, dict]) -> str:
+    member = members_by_id.get(sender_id) or {}
+    group_name = _summary_inline(member.get("display_name") or sender_name)
+    nick_name = _summary_inline(member.get("nick_name"))
+    if group_name and nick_name and group_name != nick_name:
+        return f"{group_name} ({nick_name})"
+    return _summary_inline(group_name or nick_name or member.get("alias") or sender_name, "未知")
+
+
+def format_messages_for_llm(
+    messages: list[dict],
+    members: list[dict] | None = None,
+) -> tuple[str, int, dict[str, tuple[int, int, str]]]:
     """将消息格式化为 LLM 可读的文本,并统计发送者消息数量和字数"""
     if not messages:
         return "(无消息记录)", 0, {}
 
     lines = []
-    sender_stats: dict[str, tuple[int, int]] = {}
+    sender_stats: dict[str, tuple[int, int, str]] = {}
+    members_by_id = {
+        str(member.get("username") or ""): member
+        for member in (members or [])
+        if member.get("username")
+    }
 
     _type_labels = {3: '[图片]', 34: '[语音]', 42: '[名片]', 43: '[视频]', 47: '[动画表情]', 48: '[位置]', 49: '[链接]'}
 
@@ -272,55 +289,58 @@ def format_messages_for_llm(messages: list[dict]) -> tuple[str, int, dict[str, t
             continue
         time_str = msg.get("time", "")[11:19]
         sender = _summary_inline(msg.get("sender_name"), "未知")
+        sender_id = _summary_inline(msg.get("sender")) or sender
+        stat_sender = sender_id
+        stat_label = _summary_member_label(sender_id, sender, members_by_id)
         msg_type = msg.get("msg_type", 1)
         content = msg.get("content", "")
         display = _type_labels.get(msg_type, content) if msg_type != 1 else content
         display = _summary_inline(display)
         lines.append(f"[{time_str}] {sender}: {display}")
 
-        count, chars = sender_stats.get(sender, (0, 0))
+        count, chars, _ = sender_stats.get(stat_sender, (0, 0, stat_label))
         text_len = len(content) if msg_type == 1 else len(display)
-        sender_stats[sender] = (count + 1, chars + text_len)
+        sender_stats[stat_sender] = (count + 1, chars + text_len, stat_label)
 
     return "\n".join(lines), len(lines), sender_stats
 
 
-def generate_ranking(sender_stats: dict[str, tuple[int, int]], top_n: int = 10) -> str:
+def generate_ranking(sender_stats: dict[str, tuple[int, int, str]], top_n: int = 10) -> str:
     """生成消息排行榜 Markdown"""
     if not sender_stats:
         return ""
 
     sorted_senders = sorted(sender_stats.items(), key=lambda x: x[1][0], reverse=True)[:top_n]
     rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    total_chars = sum(chars for _, chars in sender_stats.values())
+    total_chars = sum(chars for _, chars, _ in sender_stats.values())
 
     lines = ["## 发言排行榜", ""]
-    for i, (sender, (count, chars)) in enumerate(sorted_senders):
+    for i, (_sender_id, (count, chars, sender)) in enumerate(sorted_senders):
         icon = rank_icons[i] if i < len(rank_icons) else f"#{i + 1}"
         sender = _summary_inline(sender, "未知")
         lines.append(f"- {icon} **{sender}** - {count} 条消息 / {chars} 字")
 
     lines.append("")
-    lines.append(f"**总计**: {sum(c for c, _ in sender_stats.values())} 条消息 / {total_chars} 字")
+    lines.append(f"**总计**: {sum(c for c, _, _ in sender_stats.values())} 条消息 / {total_chars} 字")
     return "\n".join(lines)
 
 
-def generate_ranking_text(sender_stats: dict[str, tuple[int, int]], top_n: int = 10) -> str:
+def generate_ranking_text(sender_stats: dict[str, tuple[int, int, str]], top_n: int = 10) -> str:
     """生成消息排行榜纯文本"""
     if not sender_stats:
         return ""
 
     sorted_senders = sorted(sender_stats.items(), key=lambda x: x[1][0], reverse=True)[:top_n]
     rank_icons = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    total_chars = sum(chars for _, chars in sender_stats.values())
+    total_chars = sum(chars for _, chars, _ in sender_stats.values())
 
     lines = ["发言排行榜:"]
-    for i, (sender, (count, chars)) in enumerate(sorted_senders):
+    for i, (_sender_id, (count, chars, sender)) in enumerate(sorted_senders):
         icon = rank_icons[i] if i < len(rank_icons) else f"#{i + 1}"
         sender = _summary_inline(sender, "未知")
         lines.append(f"{icon} {sender} - {count} 条 / {chars} 字")
 
-    lines.append(f"总计: {sum(c for c, _ in sender_stats.values())} 条 / {total_chars} 字")
+    lines.append(f"总计: {sum(c for c, _, _ in sender_stats.values())} 条 / {total_chars} 字")
     return "\n".join(lines)
 
 

@@ -377,7 +377,13 @@ class SummaryService:
                     continue
 
                 message_date_str = _format_message_time_range(msg_dicts, date_str)
-                messages_text, valid_count, sender_stats = format_messages_for_llm(msg_dicts)
+                members = []
+                try:
+                    members = self._chatlog.get_room_members(group.group_id)
+                except Exception as e:
+                    logger.warning(f"[Summary] 获取群成员失败 {group.group_id}: {e}")
+
+                messages_text, valid_count, sender_stats = format_messages_for_llm(msg_dicts, members)
                 group_result["msg_count"] = valid_count
                 if valid_count == 0:
                     group_result["message"] = "没有有效消息"
