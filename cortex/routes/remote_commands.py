@@ -32,4 +32,12 @@ def create_routes(command_service: CommandService | None):
     def reload_policy():
         return _service().reload_policy()
 
+    @router.post("/api/remote-commands/refresh", response_model=RemoteCommandPolicyResponse, dependencies=[Depends(verify_token)])
+    def refresh_commands():
+        service = _service()
+        if not service.load_commands():
+            raise HTTPException(status_code=502, detail="远程命令列表刷新失败")
+        logger.info("[HTTP API] 刷新远程命令列表")
+        return service.get_policy()
+
     return router

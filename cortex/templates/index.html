@@ -15,7 +15,7 @@
     <script>
         (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=202606220002">
+    <link rel="stylesheet" href="/static/style.css?v=202606220004">
 </head>
 <body>
     <div class="app">
@@ -207,12 +207,10 @@
                         <div class="item-title">远程命令</div>
                         <div class="help-text">白名单为空时允许全部远程命令；豁免群不受白名单限制。</div>
                     </div>
-                    <div class="item-actions">
-                        <span class="badge on" id="remoteCommandPolicyBadge">默认允许</span>
-                        <button type="button" class="btn btn-ghost btn-sm" id="remoteCommandEditBtn" onclick="remoteCommandPolicy.showEdit()">编辑</button>
-                    </div>
+                    <span class="badge on" id="remoteCommandPolicyBadge">默认允许</span>
                 </div>
                 <div id="remoteCommandPolicyView" class="remote-policy-view">
+                    <div class="remote-policy-stats" id="remoteCommandStats"></div>
                     <div class="info-grid">
                         <div class="info-item">
                             <div class="info-label">命令白名单</div>
@@ -223,21 +221,31 @@
                             <div class="info-value" id="remoteCommandBypassView">无</div>
                         </div>
                     </div>
+                    <div class="form-actions remote-policy-actions">
+                        <button type="button" class="btn btn-ghost" id="remoteCommandEditBtn" onclick="remoteCommandPolicy.showEdit()">编辑策略</button>
+                        <button type="button" class="btn btn-ghost" onclick="remoteCommandPolicy.load()">刷新状态</button>
+                        <button type="button" class="btn btn-ghost" id="remoteCommandRefreshBtn" onclick="remoteCommandPolicy.refreshCommands()">刷新命令列表</button>
+                    </div>
                 </div>
                 <div id="remoteCommandPolicyEdit" style="display:none">
-                    <div class="form-group">
-                        <label>命令白名单</label>
-                        <div id="remoteCommandAllowlist" class="checkbox-group"></div>
-                        <div class="help-text">自动读取远程命令列表，不勾选表示不限制。</div>
-                    </div>
-                    <div class="form-group">
-                        <label>豁免群组</label>
-                        <div id="remoteCommandBypassGroups" class="checkbox-group"></div>
+                    <div class="remote-policy-edit-grid">
+                        <div class="form-group">
+                            <div class="field-head">
+                                <label>命令白名单</label>
+                                <button type="button" class="btn btn-ghost btn-xs" onclick="remoteCommandPolicy.clearAllowlist()">清空</button>
+                            </div>
+                            <input type="text" id="remoteCommandSearch" class="remote-command-search" placeholder="筛选远程命令..." oninput="remoteCommandPolicy.renderAllowlist()">
+                            <div id="remoteCommandAllowlist" class="checkbox-group"></div>
+                            <div class="help-text">自动读取远程命令列表，不勾选表示不限制。</div>
+                        </div>
+                        <div class="form-group">
+                            <label>豁免群组</label>
+                            <div id="remoteCommandBypassGroups" class="checkbox-group"></div>
+                        </div>
                     </div>
                     <div class="form-actions">
                         <button type="button" class="btn btn-green" id="remoteCommandSaveBtn" onclick="remoteCommandPolicy.save()">保存策略</button>
                         <button type="button" class="btn btn-ghost" onclick="remoteCommandPolicy.hideEdit()">取消</button>
-                        <button type="button" class="btn btn-ghost" onclick="remoteCommandPolicy.load()">重新加载</button>
                     </div>
                 </div>
             </div>
@@ -320,7 +328,7 @@
     <script src="/static/chat.js?v=202606220001"></script>
     <script src="/static/console.js?v=202606170350"></script>
     <script src="/static/tasks.js?v=202606170255"></script>
-    <script src="/static/custom_commands.js?v=202606220002"></script>
+    <script src="/static/custom_commands.js?v=202606220004"></script>
     <script src="/static/webhooks.js?v=202606162015"></script>
 </body>
 </html>

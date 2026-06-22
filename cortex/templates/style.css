@@ -624,7 +624,27 @@ input[type="checkbox"] {
     background: var(--card); border: 1px solid var(--border); border-radius: 9px;
     padding: 14px; margin-bottom: 14px; box-shadow: var(--card-shadow);
 }
+.remote-policy-stats {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.policy-stat {
+    display: inline-flex; align-items: center; min-height: 24px;
+    padding: 3px 8px; border-radius: 7px;
+    background: color-mix(in srgb, var(--stat-bg) 74%, var(--input-bg));
+    border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+    color: var(--text2); font-size: 11px;
+}
 .remote-policy-view .info-grid { margin-bottom: 0; }
+.remote-policy-actions { justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
+.remote-policy-edit-grid {
+    display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(240px, 0.85fr);
+    gap: 12px; align-items: start;
+}
+.field-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px;
+}
+.field-head label { margin-bottom: 0 !important; }
+.remote-command-search { margin-bottom: 8px; }
 .policy-chip {
     display: inline-flex; align-items: center; max-width: 100%;
     margin: 2px 5px 2px 0; padding: 2px 7px; border-radius: 999px;
@@ -762,6 +782,7 @@ input[type="checkbox"] {
 .btn-ghost { background: var(--stat-bg); color: var(--text); border-color: var(--border); box-shadow: none; }
 .btn-ghost:hover { border-color: color-mix(in srgb, var(--border) 45%, var(--text2)); }
 .btn-sm { min-height: 30px; padding: 5px 10px; font-size: 11px; }
+.btn-xs { min-height: 24px; padding: 3px 8px; font-size: 11px; border-radius: 6px; }
 
 .empty-hint { text-align: center; padding: 24px; color: var(--text2); font-size: 13px; }
 .loading-hint { text-align: center; padding: 24px; color: var(--text2); font-size: 13px; }
@@ -889,6 +910,8 @@ input[type="checkbox"] {
     .console-layout { grid-template-columns: 220px minmax(0, 1fr); height: calc(100vh - 140px); }
     .form-row { grid-template-columns: 1fr; }
     .info-grid { grid-template-columns: 1fr 1fr; }
+    .remote-policy-edit-grid { grid-template-columns: 1fr; }
+    .remote-policy-actions { justify-content: flex-start; }
 }
 @media (max-width: 640px) {
     body { overflow: hidden; }

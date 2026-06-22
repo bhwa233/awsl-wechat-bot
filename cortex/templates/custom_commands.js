@@ -1,34 +1,39 @@
 let customCommandMessageComposer = null;
 
-function updateRemoteCommandAllowlist(commands = [], selectedValues = []) {
+function updateRemoteCommandAllowlist(commands = [], selectedValues = [], query = '') {
     const container = $('remoteCommandAllowlist');
     if (!container) return;
     const selected = new Set((selectedValues || []).map(value => String(value).toLowerCase()));
     const seen = new Set();
+    const available = new Set();
     const items = [];
+    const q = String(query || '').trim().toLowerCase();
     for (const command of commands || []) {
         const key = String(command?.key || '').trim();
         if (!key) continue;
+        available.add(key.toLowerCase());
+        const description = String(command?.description || '').trim();
+        if (q && !key.toLowerCase().includes(q) && !description.toLowerCase().includes(q)) continue;
         seen.add(key.toLowerCase());
         items.push({
             key,
-            description: String(command?.description || '').trim(),
+            description,
             checked: selected.has(key.toLowerCase()),
         });
     }
     for (const key of selectedValues || []) {
         const normalized = String(key).toLowerCase();
-        if (!normalized || seen.has(normalized)) continue;
+        if (!normalized || seen.has(normalized) || available.has(normalized)) continue;
         items.push({ key, description: '当前远程列表未返回', checked: true });
     }
     if (!items.length) {
-        container.innerHTML = '<div class="help-text">未加载到远程命令</div>';
+        container.innerHTML = `<div class="help-text">${q ? '没有匹配的远程命令' : '未加载到远程命令'}</div>`;
         return;
     }
     container.innerHTML = items.map(item => {
         const checked = item.checked ? ' checked' : '';
         const description = item.description ? `<span class="checkbox-sub">${escapeHtml(item.description)}</span>` : '';
-        return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(item.key)}" name="remoteCommandAllowlist"${checked}><span>${escapeHtml(item.key)}${description}</span></label>`;
+        return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(item.key)}" name="remoteCommandAllowlist"${checked} onchange="remoteCommandPolicy.toggleAllowlist(this.value,this.checked)"><span>${escapeHtml(item.key)}${description}</span></label>`;
     }).join('');
 }
 
@@ -59,6 +64,7 @@ const remoteCommandPolicy = {
     loaded: false,
     editing: false,
     allowlist: [],
+    draftAllowlist: [],
     availableCommands: [],
     bypassGroups: [],
 
@@ -71,8 +77,13 @@ const remoteCommandPolicy = {
         this.bypassGroups = bypassGroups;
         $('remoteCommandAllowlistView').innerHTML = remotePolicyText(allowlist, '全部远程命令');
         $('remoteCommandBypassView').innerHTML = remotePolicyText(bypassGroups, '无');
+        $('remoteCommandStats').innerHTML = [
+            `<span class="policy-stat">远程命令 ${availableCommands.length}</span>`,
+            `<span class="policy-stat">白名单 ${allowlist.length || '全部'}</span>`,
+            `<span class="policy-stat">豁免群 ${bypassGroups.length}</span>`,
+        ].join('');
         if (this.editing) {
-            updateRemoteCommandAllowlist(availableCommands, allowlist);
+            this.renderAllowlist();
             updateRemoteCommandBypassGroups(bypassGroups);
         }
         const unrestricted = !allowlist.length;
@@ -91,23 +102,29 @@ const remoteCommandPolicy = {
             $('remoteCommandPolicyBadge').classList.add('off');
             $('remoteCommandSaveBtn').disabled = true;
             $('remoteCommandEditBtn').disabled = true;
+            $('remoteCommandRefreshBtn').disabled = true;
             $('remoteCommandAllowlistView').textContent = '远程命令服务未启用';
             $('remoteCommandBypassView').textContent = '无';
+            $('remoteCommandStats').innerHTML = '<span class="policy-stat">远程命令未启用</span>';
             this.hideEdit();
             return;
         }
         this.loaded = true;
         $('remoteCommandSaveBtn').disabled = false;
         $('remoteCommandEditBtn').disabled = false;
+        $('remoteCommandRefreshBtn').disabled = false;
+        this.hideEdit();
         this.render(r.data || {});
     },
 
     showEdit() {
         if (!this.loaded) return;
         this.editing = true;
+        this.draftAllowlist = [...this.allowlist];
+        $('remoteCommandSearch').value = '';
         $('remoteCommandPolicyView').style.display = 'none';
         $('remoteCommandPolicyEdit').style.display = '';
-        updateRemoteCommandAllowlist(this.availableCommands, this.allowlist);
+        this.renderAllowlist();
         updateRemoteCommandBypassGroups(this.bypassGroups);
     },
 
@@ -117,11 +134,47 @@ const remoteCommandPolicy = {
         $('remoteCommandPolicyView').style.display = '';
     },
 
+    renderAllowlist() {
+        updateRemoteCommandAllowlist(this.availableCommands, this.draftAllowlist, $('remoteCommandSearch')?.value || '');
+    },
+
+    toggleAllowlist(key, checked) {
+        const normalized = String(key).toLowerCase();
+        const next = this.draftAllowlist.filter(item => String(item).toLowerCase() !== normalized);
+        if (checked) next.push(key);
+        this.draftAllowlist = next;
+    },
+
+    clearAllowlist() {
+        this.draftAllowlist = [];
+        this.renderAllowlist();
+    },
+
     getPayload() {
         return {
-            allowlist: Array.from(document.querySelectorAll('input[name="remoteCommandAllowlist"]:checked')).map(cb => cb.value),
+            allowlist: this.draftAllowlist,
             bypass_groups: Array.from(document.querySelectorAll('input[name="remoteCommandBypassGroups"]:checked')).map(cb => cb.value),
         };
+    },
+
+    async refreshCommands() {
+        const btn = $('remoteCommandRefreshBtn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '刷新中...';
+        try {
+            const r = await api('POST', '/api/remote-commands/refresh');
+            if (!r.ok) {
+                toast(r.data?.detail || r.error || '远程命令列表刷新失败', 'error');
+                return;
+            }
+            this.hideEdit();
+            this.render(r.data || {});
+            toast('远程命令列表已刷新', 'success');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
     },
 
     async save() {
@@ -393,8 +446,10 @@ customCommandMessageComposer = new MessageComposer({
 
 if (typeof registerGroupsLoadedHandler === 'function') {
     registerGroupsLoadedHandler(() => {
-        updateRemoteCommandAllowlist(remoteCommandPolicy.availableCommands, remoteCommandPolicy.allowlist);
-        updateRemoteCommandBypassGroups(remoteCommandPolicy.bypassGroups);
+        if (remoteCommandPolicy.editing) {
+            remoteCommandPolicy.renderAllowlist();
+            updateRemoteCommandBypassGroups(remoteCommandPolicy.bypassGroups);
+        }
         if ($('customCommandFormPanel')?.style.display !== 'none') updateCustomCommandTargetGroupsCheckboxes();
     });
 }
