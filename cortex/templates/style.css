@@ -920,6 +920,7 @@ input[type="checkbox"] {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        padding: calc(12px + env(safe-area-inset-top, 0px)) 12px calc(12px + env(safe-area-inset-bottom, 0px));
     }
     .header { flex-shrink: 0; }
     .tabs {
@@ -1034,7 +1035,9 @@ input[type="checkbox"] {
     }
 }
 @media (max-width: 480px) {
-    .app { padding: 8px; }
+    .app {
+        padding: calc(8px + env(safe-area-inset-top, 0px)) 8px calc(8px + env(safe-area-inset-bottom, 0px));
+    }
     .auth-row { flex-wrap: wrap; }
     .auth-row input { flex-basis: 100%; }
     .msg-bubble { max-width: 85%; }
