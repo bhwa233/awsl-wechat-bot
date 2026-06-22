@@ -624,6 +624,17 @@ input[type="checkbox"] {
     background: var(--card); border: 1px solid var(--border); border-radius: 9px;
     padding: 14px; margin-bottom: 14px; box-shadow: var(--card-shadow);
 }
+.remote-policy-view .info-grid { margin-bottom: 0; }
+.policy-chip {
+    display: inline-flex; align-items: center; max-width: 100%;
+    margin: 2px 5px 2px 0; padding: 2px 7px; border-radius: 999px;
+    background: var(--stat-bg); border: 1px solid var(--border);
+    font-size: 11px; line-height: 1.4; vertical-align: middle;
+}
+.checkbox-sub {
+    display: block; margin-top: 2px; color: var(--text2); font-size: 11px;
+    line-height: 1.35; word-break: break-word;
+}
 .command-list-header { margin-top: 4px; }
 .crud-item {
     background: var(--card); border: 1px solid var(--border); border-radius: 9px;

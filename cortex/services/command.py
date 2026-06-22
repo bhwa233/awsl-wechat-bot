@@ -20,9 +20,15 @@ class RemoteCommandPolicyUpdate(BaseModel):
     bypass_groups: list[str] | str | None = None
 
 
+class RemoteCommandInfo(BaseModel):
+    key: str
+    description: str = ""
+
+
 class RemoteCommandPolicyResponse(BaseModel):
     allowlist: list[str] = Field(default_factory=list)
     bypass_groups: list[str] = Field(default_factory=list)
+    available_commands: list[RemoteCommandInfo] = Field(default_factory=list)
     unrestricted_by_default: bool = True
 
 
@@ -34,6 +40,7 @@ class CommandService:
         self.policy_path = policy_path
         self._policy_lock = threading.Lock()
         self._allowlist: set[str] = set()
+        self._allowlist_items: list[str] = []
         self._bypass_groups: set[str] = set()
         self._client = httpx.Client(
             timeout=httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0),
@@ -85,13 +92,26 @@ class CommandService:
     def _normalized_names(cls, value: list[str] | str | None) -> set[str]:
         return {name.lower() for name in cls._normalize_list(value)}
 
+    def _available_commands(self) -> list[RemoteCommandInfo]:
+        result = []
+        for command in self.commands:
+            key = str(command.get("key", "")).strip()
+            if not key:
+                continue
+            result.append(RemoteCommandInfo(
+                key=key,
+                description=str(command.get("description", "") or ""),
+            ))
+        return result
+
     def get_policy(self) -> RemoteCommandPolicyResponse:
         with self._policy_lock:
-            allowlist = sorted(self._allowlist)
+            allowlist = list(self._allowlist_items)
             bypass_groups = sorted(self._bypass_groups)
         return RemoteCommandPolicyResponse(
             allowlist=allowlist,
             bypass_groups=bypass_groups,
+            available_commands=self._available_commands(),
             unrestricted_by_default=not allowlist,
         )
 
@@ -112,6 +132,7 @@ class CommandService:
             os.replace(temp_path, self.policy_path)
         with self._policy_lock:
             self._allowlist = self._normalized_names(allowlist)
+            self._allowlist_items = allowlist
             self._bypass_groups = set(bypass_groups)
         return self.get_policy()
 
@@ -119,6 +140,7 @@ class CommandService:
         if not self.policy_path or not os.path.exists(self.policy_path):
             with self._policy_lock:
                 self._allowlist = set()
+                self._allowlist_items = []
                 self._bypass_groups = set()
             return self.get_policy()
         try:
@@ -131,7 +153,9 @@ class CommandService:
             logger.warning("远程命令策略文件格式无效,保留当前策略")
             return self.get_policy()
         with self._policy_lock:
-            self._allowlist = self._normalized_names(data.get("allowlist"))
+            allowlist = self._normalize_list(data.get("allowlist"))
+            self._allowlist = self._normalized_names(allowlist)
+            self._allowlist_items = allowlist
             self._bypass_groups = set(self._normalize_list(data.get("bypass_groups")))
         return self.get_policy()
 
