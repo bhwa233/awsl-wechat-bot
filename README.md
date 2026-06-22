@@ -188,8 +188,17 @@ uv run run_daemon.py       # Daemon (:8001)
 |---------|------|------|
 | 关键词+问题 | `awsl 今天天气怎么样？` | 触发 AI 回复 |
 | @机器人 | `@机器人 帮我写首诗` | 触发 AI 回复 |
-| 刷新命令 | `awsl refresh` / `awsl 刷新命令` | 刷新远程命令列表（未配置 `COMMAND_API_BASE_URL` 或 `REMOTE_COMMANDS_ENABLED=false` 时禁用） |
-| 动态命令 | `<命令名> <参数>` | 执行远程命令（未配置 `COMMAND_API_BASE_URL` 或 `REMOTE_COMMANDS_ENABLED=false` 时禁用） |
+| 刷新命令 | `awsl refresh` / `awsl 刷新命令` | 刷新远程命令列表（未配置远程命令或当前群受远程命令白名单限制时禁用） |
+| 动态命令 | `<命令名> <参数>` | 执行远程命令（未配置远程命令时禁用；白名单策略文件不存在或白名单为空时不限制） |
+
+远程命令白名单策略存放在 `~/.awsl-wechat-bot/remote_command_policy.json`，文件不存在或 `allowlist` 为空表示允许全部远程命令：
+
+```json
+{
+  "allowlist": ["weather", "roll"],
+  "bypass_groups": ["管理群", "测试群"]
+}
+```
 
 <details>
 <summary>API 文档</summary>

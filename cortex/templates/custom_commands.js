@@ -1,5 +1,90 @@
 let customCommandMessageComposer = null;
 
+function parseRemoteCommandKeys(value) {
+    return String(value || '')
+        .split(/[\n,，]+/)
+        .map(item => item.trim())
+        .filter(Boolean);
+}
+
+function updateRemoteCommandBypassGroups(selectedValues = null) {
+    const container = $('remoteCommandBypassGroups');
+    if (!container) return;
+    const selected = new Set(selectedValues || Array.from(document.querySelectorAll('input[name="remoteCommandBypassGroups"]:checked')).map(cb => cb.value));
+    const groups = allGroups.map(groupDisplayName).filter(Boolean);
+    if (!groups.length) {
+        container.innerHTML = '<div class="help-text">未加载到群组，请稍后重试或检查 Gateway 连接</div>';
+        return;
+    }
+    container.innerHTML = allGroups.map(g => {
+        const name = groupDisplayName(g);
+        if (!name) return '';
+        const checked = selected.has(name) ? ' checked' : '';
+        return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(name)}" name="remoteCommandBypassGroups"${checked}>${escapeHtml(name)}</label>`;
+    }).join('');
+}
+
+const remoteCommandPolicy = {
+    apiPath: '/api/remote-commands/policy',
+    loaded: false,
+    bypassGroups: [],
+
+    render(policy = {}) {
+        const allowlist = policy.allowlist || [];
+        const bypassGroups = policy.bypass_groups || [];
+        this.bypassGroups = bypassGroups;
+        $('remoteCommandAllowlist').value = allowlist.join('\n');
+        updateRemoteCommandBypassGroups(bypassGroups);
+        const unrestricted = !allowlist.length;
+        const badge = $('remoteCommandPolicyBadge');
+        badge.textContent = unrestricted ? '默认允许' : `白名单 ${allowlist.length}`;
+        badge.classList.toggle('on', unrestricted);
+        badge.classList.toggle('off', !unrestricted);
+    },
+
+    async load() {
+        const r = await api('GET', this.apiPath);
+        if (!r.ok) {
+            this.loaded = false;
+            $('remoteCommandPolicyBadge').textContent = '未启用';
+            $('remoteCommandPolicyBadge').classList.remove('on');
+            $('remoteCommandPolicyBadge').classList.add('off');
+            $('remoteCommandSaveBtn').disabled = true;
+            updateRemoteCommandBypassGroups();
+            return;
+        }
+        this.loaded = true;
+        $('remoteCommandSaveBtn').disabled = false;
+        this.render(r.data || {});
+    },
+
+    getPayload() {
+        return {
+            allowlist: parseRemoteCommandKeys($('remoteCommandAllowlist').value),
+            bypass_groups: Array.from(document.querySelectorAll('input[name="remoteCommandBypassGroups"]:checked')).map(cb => cb.value),
+        };
+    },
+
+    async save() {
+        const btn = $('remoteCommandSaveBtn');
+        const origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = '保存中...';
+        try {
+            const r = await api('PUT', this.apiPath, { body: this.getPayload() });
+            if (!r.ok) {
+                toast(r.data?.detail || r.error || '远程命令策略保存失败', 'error');
+                return;
+            }
+            this.render(r.data || {});
+            toast('远程命令策略已保存', 'success');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    },
+};
+
 function toggleCustomCommandMessageType(opts = {}) {
     if (customCommandMessageComposer) customCommandMessageComposer.syncType(opts);
 }
@@ -232,6 +317,7 @@ const customCommandCrud = {
 };
 
 customCommandCrud.init();
+remoteCommandPolicy.load();
 
 customCommandMessageComposer = new MessageComposer({
     typeId: 'customCommandMessageType',
@@ -247,6 +333,7 @@ customCommandMessageComposer = new MessageComposer({
 
 if (typeof registerGroupsLoadedHandler === 'function') {
     registerGroupsLoadedHandler(() => {
+        updateRemoteCommandBypassGroups(remoteCommandPolicy.bypassGroups);
         if ($('customCommandFormPanel')?.style.display !== 'none') updateCustomCommandTargetGroupsCheckboxes();
     });
 }

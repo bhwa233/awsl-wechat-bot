@@ -15,7 +15,7 @@
     <script>
         (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=202606170392">
+    <link rel="stylesheet" href="/static/style.css?v=202606220001">
 </head>
 <body>
     <div class="app">
@@ -45,7 +45,7 @@
             <button class="tab active" data-tab="chat">聊天</button>
             <button class="tab" data-tab="console">控制台</button>
             <button class="tab" data-tab="tasks">定时任务</button>
-            <button class="tab" data-tab="custom-commands">自定义命令</button>
+            <button class="tab" data-tab="custom-commands">命令</button>
             <button class="tab" data-tab="webhooks">Webhook</button>
         </div>
 
@@ -199,10 +199,32 @@
             <div id="tasksList"></div>
         </div>
 
-        <!-- ==================== 自定义命令 Tab ==================== -->
+        <!-- ==================== 命令 Tab ==================== -->
         <div class="panel" id="custom-commands-panel">
-            <div class="panel-header">
-                <span class="panel-title">自定义命令</span>
+            <div class="remote-command-card">
+                <div class="item-header">
+                    <div>
+                        <div class="item-title">远程命令</div>
+                        <div class="help-text">白名单为空时允许全部远程命令；豁免群不受白名单限制。</div>
+                    </div>
+                    <span class="badge on" id="remoteCommandPolicyBadge">默认允许</span>
+                </div>
+                <div class="form-group">
+                    <label>命令白名单</label>
+                    <textarea id="remoteCommandAllowlist" rows="2" placeholder="weather&#10;roll"></textarea>
+                    <div class="help-text">每行或逗号分隔一个命令 key，留空表示不限制。</div>
+                </div>
+                <div class="form-group">
+                    <label>豁免群组</label>
+                    <div id="remoteCommandBypassGroups" class="checkbox-group"></div>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-green" id="remoteCommandSaveBtn" onclick="remoteCommandPolicy.save()">保存策略</button>
+                    <button type="button" class="btn btn-ghost" onclick="remoteCommandPolicy.load()">重新加载</button>
+                </div>
+            </div>
+            <div class="panel-header command-list-header">
+                <span class="panel-title">本地命令</span>
                 <button class="btn btn-green btn-sm" onclick="customCommandCrud.showForm()">新建命令</button>
             </div>
             <div id="customCommandFormHost" class="custom-command-form-host">
@@ -277,10 +299,10 @@
 
     <script src="/static/app.js?v=202606162015"></script>
     <script src="/static/message_composer.js?v=202606170255"></script>
-    <script src="/static/chat.js?v=202606170393"></script>
+    <script src="/static/chat.js?v=202606220001"></script>
     <script src="/static/console.js?v=202606170350"></script>
     <script src="/static/tasks.js?v=202606170255"></script>
-    <script src="/static/custom_commands.js?v=202606170245"></script>
+    <script src="/static/custom_commands.js?v=202606220001"></script>
     <script src="/static/webhooks.js?v=202606162015"></script>
 </body>
 </html>

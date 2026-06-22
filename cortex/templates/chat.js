@@ -199,7 +199,10 @@ function onTabSwitch(name) {
     if (name === 'chat' && !chatlogBackend) detectChatlogBackend();
     if (name === 'console' && typeof consoleTab !== 'undefined') consoleTab.activate();
     if (name === 'tasks' && typeof taskCrud !== 'undefined') { taskCrud.load(); loadTaskServerInfo(); }
-    if (name === 'custom-commands' && typeof customCommandCrud !== 'undefined') customCommandCrud.load();
+    if (name === 'custom-commands' && typeof customCommandCrud !== 'undefined') {
+        if (typeof remoteCommandPolicy !== 'undefined') remoteCommandPolicy.load();
+        customCommandCrud.load();
+    }
     if (name === 'webhooks' && typeof webhookCrud !== 'undefined') webhookCrud.load();
 }
 

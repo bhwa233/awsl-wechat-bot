@@ -1,8 +1,12 @@
 """远程命令服务 - 从 API 加载和执行动态命令"""
 
+import json
 import logging
+import os
+import threading
 
 import httpx
+from pydantic import BaseModel, Field
 
 from common.config import config
 from common.models import MessageType, OutgoingMessage
@@ -11,15 +15,31 @@ from cortex.models import CommandMatch
 logger = logging.getLogger(__name__)
 
 
+class RemoteCommandPolicyUpdate(BaseModel):
+    allowlist: list[str] | str | None = None
+    bypass_groups: list[str] | str | None = None
+
+
+class RemoteCommandPolicyResponse(BaseModel):
+    allowlist: list[str] = Field(default_factory=list)
+    bypass_groups: list[str] = Field(default_factory=list)
+    unrestricted_by_default: bool = True
+
+
 class CommandService:
-    def __init__(self):
+    def __init__(self, policy_path: str | None = None):
         self.api_base_url = config.COMMAND_API_BASE_URL
         self.commands: list[dict] = []
         self.command_keys: list[str] = []
+        self.policy_path = policy_path
+        self._policy_lock = threading.Lock()
+        self._allowlist: set[str] = set()
+        self._bypass_groups: set[str] = set()
         self._client = httpx.Client(
             timeout=httpx.Timeout(connect=10.0, read=300.0, write=10.0, pool=10.0),
             limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
         )
+        self.reload_policy()
 
     @staticmethod
     def _normalize_content(resp_type: str, content: str) -> str:
@@ -44,10 +64,100 @@ class CommandService:
             logger.error(f"加载命令列表失败: {e}")
             return False
 
-    def match_command(self, text: str) -> CommandMatch | None:
+    @staticmethod
+    def _normalize_list(value: list[str] | str | None) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            if not value.strip():
+                return []
+            try:
+                items = json.loads(value)
+            except json.JSONDecodeError:
+                items = [part.strip() for part in value.replace("\n", ",").split(",")]
+        else:
+            items = value
+        if not isinstance(items, list):
+            return []
+        return [str(item).strip() for item in items if str(item).strip()]
+
+    @classmethod
+    def _normalized_names(cls, value: list[str] | str | None) -> set[str]:
+        return {name.lower() for name in cls._normalize_list(value)}
+
+    def get_policy(self) -> RemoteCommandPolicyResponse:
+        with self._policy_lock:
+            allowlist = sorted(self._allowlist)
+            bypass_groups = sorted(self._bypass_groups)
+        return RemoteCommandPolicyResponse(
+            allowlist=allowlist,
+            bypass_groups=bypass_groups,
+            unrestricted_by_default=not allowlist,
+        )
+
+    def update_policy(self, data: RemoteCommandPolicyUpdate) -> RemoteCommandPolicyResponse:
+        allowlist = self._normalize_list(data.allowlist)
+        bypass_groups = self._normalize_list(data.bypass_groups)
+        if self.policy_path:
+            os.makedirs(os.path.dirname(self.policy_path) or ".", exist_ok=True)
+            temp_path = f"{self.policy_path}.tmp.{os.getpid()}"
+            with open(temp_path, "w", encoding="utf-8") as file:
+                json.dump(
+                    {"allowlist": allowlist, "bypass_groups": bypass_groups},
+                    file,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                file.write("\n")
+            os.replace(temp_path, self.policy_path)
+        with self._policy_lock:
+            self._allowlist = self._normalized_names(allowlist)
+            self._bypass_groups = set(bypass_groups)
+        return self.get_policy()
+
+    def reload_policy(self) -> RemoteCommandPolicyResponse:
+        if not self.policy_path or not os.path.exists(self.policy_path):
+            with self._policy_lock:
+                self._allowlist = set()
+                self._bypass_groups = set()
+            return self.get_policy()
+        try:
+            with open(self.policy_path, encoding="utf-8") as file:
+                data = json.load(file)
+        except (OSError, json.JSONDecodeError) as e:
+            logger.warning("远程命令策略文件读取失败,保留当前策略: %s", e)
+            return self.get_policy()
+        if not isinstance(data, dict):
+            logger.warning("远程命令策略文件格式无效,保留当前策略")
+            return self.get_policy()
+        with self._policy_lock:
+            self._allowlist = self._normalized_names(data.get("allowlist"))
+            self._bypass_groups = set(self._normalize_list(data.get("bypass_groups")))
+        return self.get_policy()
+
+    def _is_unrestricted_group(self, group_name: str) -> bool:
+        with self._policy_lock:
+            if not self._allowlist:
+                return True
+            return group_name in self._bypass_groups
+
+    def _is_command_allowed(self, command_key: str, group_name: str) -> bool:
+        with self._policy_lock:
+            if not self._allowlist:
+                return True
+            if group_name in self._bypass_groups:
+                return True
+            return command_key.strip().lower() in self._allowlist
+
+    def can_refresh_commands(self, group_name: str = "") -> bool:
+        return self._is_unrestricted_group(group_name)
+
+    def match_command(self, text: str, group_name: str = "") -> CommandMatch | None:
         text_lower = text.lower().strip()
         for key in sorted(self.command_keys, key=len, reverse=True):
             if text_lower.startswith(key.lower()):
+                if not self._is_command_allowed(key, group_name):
+                    return None
                 params = text[len(key):].strip()
                 return CommandMatch(key=key, params=params)
         return None
@@ -88,11 +198,17 @@ class CommandService:
             logger.error(f"执行命令 {command_key} 失败: {e}")
             return None
 
-    def get_help_text(self) -> str:
-        if not self.commands:
+    def get_help_text(self, group_name: str = "") -> str:
+        commands = [
+            cmd for cmd in self.commands
+            if self._is_command_allowed(cmd.get("key", ""), group_name)
+        ]
+        if not commands:
+            if self.commands:
+                return "当前群没有可用的远程命令"
             return "命令列表为空,请检查网络连接"
         lines = ["可用命令:"]
-        for cmd in self.commands:
+        for cmd in commands:
             lines.append(f"  {cmd['description']}")
         return "\n".join(lines)
 

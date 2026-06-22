@@ -53,6 +53,8 @@ class TriggerMatcher:
         }:
             if not self.command_service:
                 return None
+            if not self.command_service.can_refresh_commands(group_name):
+                return None
             return TriggerTask(
                 trigger_type=TriggerType.COMMAND_REFRESH,
                 group_name=group_name,
@@ -91,7 +93,7 @@ class TriggerMatcher:
 
         # 远程命令匹配
         if self.command_service:
-            cmd_match = self.command_service.match_command(content)
+            cmd_match = self.command_service.match_command(content, group_name)
             if cmd_match:
                 return TriggerTask(
                     trigger_type=TriggerType.COMMAND,

@@ -5,6 +5,7 @@ import queue
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from common.config import config
 from common.models import MessageType, OutgoingMessage, WSMessageBroadcast
@@ -63,7 +64,8 @@ class CortexRuntime(MessageListener):
             logger.info("未配置远程命令 API 地址,跳过远程命令服务")
             return None
         try:
-            service = CommandService()
+            policy_path = Path.home() / ".awsl-wechat-bot" / "remote_command_policy.json"
+            service = CommandService(str(policy_path))
             if service.load_commands():
                 logger.info(f"命令服务初始化成功,已加载 {len(service.commands)} 个命令")
             else:
