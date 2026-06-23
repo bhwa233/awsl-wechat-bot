@@ -162,6 +162,39 @@
         .reason { font-size: 12px; color: var(--text2); margin-bottom: 14px; }
 
         .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .cleanup-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        .cleanup-item {
+            background: var(--stat-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            min-width: 0;
+        }
+        .cleanup-item dt { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+        .cleanup-item dd { font-size: 13px; font-weight: 650; word-break: break-word; }
+        .cleanup-log {
+            margin-top: 12px;
+            display: grid;
+            gap: 6px;
+        }
+        .cleanup-log-row {
+            background: var(--stat-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 12px;
+            color: var(--text);
+        }
+        .cleanup-log-row small {
+            display: block;
+            color: var(--text2);
+            margin-bottom: 2px;
+        }
         .btn {
             padding: 7px 14px;
             border: none;
@@ -193,6 +226,20 @@
             font-size: 11px;
             white-space: pre-wrap;
             max-height: 250px;
+            overflow-y: auto;
+            display: none;
+            color: var(--text);
+        }
+        .cleanup-out {
+            background: var(--stat-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            margin-top: 12px;
+            font-family: 'Cascadia Code','Fira Code',monospace;
+            font-size: 11px;
+            white-space: pre-wrap;
+            max-height: 220px;
             overflow-y: auto;
             display: none;
             color: var(--text);
@@ -332,6 +379,23 @@
             </div>
             <div class="log-box" id="logBox"></div>
         </div>
+
+        <div class="card">
+            <div class="card-title">微信日志清理</div>
+            <div class="cleanup-grid">
+                <dl class="cleanup-item"><dt>目录</dt><dd id="wechatLogDir">-</dd></dl>
+                <dl class="cleanup-item"><dt>计划</dt><dd id="wechatCleanupSchedule">-</dd></dl>
+                <dl class="cleanup-item"><dt>最近记录</dt><dd id="wechatCleanupLast">-</dd></dl>
+                <dl class="cleanup-item"><dt>下次清理</dt><dd id="wechatCleanupNext">-</dd></dl>
+            </div>
+            <div class="actions">
+                <button class="btn btn-ghost" id="btnCleanupPreview" onclick="previewWechatCleanup()">预览清理</button>
+                <button class="btn btn-red" id="btnCleanupRun" onclick="runWechatCleanup()">立即清理</button>
+                <button class="btn btn-ghost" onclick="refreshWechatCleanupStatus()">刷新</button>
+            </div>
+            <div class="cleanup-out" id="cleanupOut"></div>
+            <div class="cleanup-log" id="cleanupLog"></div>
+        </div>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -386,6 +450,21 @@
             return `${sec}s`;
         }
 
+        function fmtBytes(bytes) {
+            if (!bytes) return '0 B';
+            if (bytes >= 1024 * 1024 * 1024) return `${(bytes/1024/1024/1024).toFixed(2)} GB`;
+            if (bytes >= 1024 * 1024) return `${(bytes/1024/1024).toFixed(2)} MB`;
+            if (bytes >= 1024) return `${(bytes/1024).toFixed(1)} KB`;
+            return `${bytes} B`;
+        }
+
+        function fmtTime(value) {
+            if (!value) return '-';
+            const d = new Date(value);
+            if (Number.isNaN(d.getTime())) return value;
+            return d.toLocaleString();
+        }
+
         async function refreshStatus() {
             try {
                 const d = await api('GET', '/status');
@@ -425,7 +504,99 @@
             } catch (e) { showToast(e.message, 'error'); }
         }
 
-        function refreshAll() { refreshStatus(); refreshLogs(); }
+        function renderCleanupResult(d) {
+            const out = $('cleanupOut');
+            out.style.display = 'block';
+            const lines = [
+                d.message || '',
+                `目录: ${d.log_dir || '-'}`,
+                `候选: ${d.candidate_count || 0} 个 / ${fmtBytes(d.candidate_bytes || 0)}`,
+                `已清理: ${d.deleted_count || 0} 个 / ${fmtBytes(d.deleted_bytes || 0)}`,
+                `保留当天: ${d.kept_count || 0} 个 / ${fmtBytes(d.kept_bytes || 0)}`,
+            ];
+            if (d.files?.length) {
+                lines.push('', '前几个候选文件:');
+                for (const f of d.files.slice(0, 20)) lines.push(`- ${fmtBytes(f.size)} ${f.path}`);
+            }
+            if (d.errors?.length) {
+                lines.push('', '错误:');
+                for (const err of d.errors.slice(0, 10)) lines.push(`- ${err}`);
+            }
+            out.textContent = lines.join('\n');
+        }
+
+        async function refreshWechatCleanupStatus() {
+            try {
+                const d = await api('GET', '/wechat-logs/cleanup/status');
+                $('wechatLogDir').textContent = d.exists ? d.log_dir : `${d.log_dir || '-'}（不存在）`;
+                $('wechatCleanupSchedule').textContent = `每日 ${d.schedule_time}`;
+                $('wechatCleanupLast').textContent = d.recent_logs?.length ? `${fmtTime(d.recent_logs[0].at)} · ${d.recent_logs[0].message}` : '-';
+                $('wechatCleanupNext').textContent = fmtTime(d.next_run_at);
+                $('btnCleanupPreview').disabled = !d.supported || !d.exists;
+                $('btnCleanupRun').disabled = !d.supported || !d.exists;
+                renderCleanupLog(d.recent_logs || []);
+            } catch (e) {
+                $('wechatLogDir').textContent = '读取失败';
+            }
+        }
+
+        function renderCleanupLog(records) {
+            const el = $('cleanupLog');
+            el.textContent = '';
+            if (!records.length) {
+                const row = document.createElement('div');
+                row.className = 'cleanup-log-row';
+                const small = document.createElement('small');
+                small.textContent = '最近清理日志';
+                row.appendChild(small);
+                row.appendChild(document.createTextNode('暂无记录'));
+                el.appendChild(row);
+                return;
+            }
+            for (const r of records.slice(0, 8)) {
+                const source = r.source === 'scheduled' ? '定时' : (r.dry_run ? '预览' : '手动');
+                const bytes = r.dry_run ? r.candidate_bytes : r.deleted_bytes;
+                const count = r.dry_run ? r.candidate_count : r.deleted_count;
+                const error = r.error_count ? ` · 失败 ${r.error_count}` : '';
+                const row = document.createElement('div');
+                row.className = 'cleanup-log-row';
+                const small = document.createElement('small');
+                small.textContent = `${fmtTime(r.at)} · ${source}`;
+                row.appendChild(small);
+                row.appendChild(document.createTextNode(`${r.message} · ${count} 个 / ${fmtBytes(bytes)}${error}`));
+                el.appendChild(row);
+            }
+        }
+
+        async function previewWechatCleanup() {
+            const btn = $('btnCleanupPreview');
+            const orig = btn.textContent;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>预览中...';
+            try {
+                const d = await api('POST', '/wechat-logs/cleanup/run', { json: { dry_run: true } });
+                renderCleanupResult(d);
+                showToast(d.message, 'info');
+            } catch (e) { showToast(e.message, 'error'); }
+            finally { btn.textContent = orig; btn.disabled = false; }
+        }
+
+        async function runWechatCleanup() {
+            if (!confirm('只保留今天的 *.xlog，删除历史微信 xlog 日志。确认立即清理？')) return;
+            const btn = $('btnCleanupRun');
+            const orig = btn.textContent;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span>清理中...';
+            try {
+                const d = await api('POST', '/wechat-logs/cleanup/run', { json: { dry_run: false } });
+                renderCleanupResult(d);
+                showToast(d.message, d.ok ? 'success' : 'error');
+                refreshWechatCleanupStatus();
+            } catch (e) { showToast(e.message, 'error'); }
+            finally { btn.textContent = orig; btn.disabled = false; }
+        }
+
+        function refreshAll() { refreshStatus(); refreshLogs(); refreshWechatCleanupStatus(); }
 
         async function doAction(action) {
             const btn = $(`btn${action[0].toUpperCase()+action.slice(1)}`);

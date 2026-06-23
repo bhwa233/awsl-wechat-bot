@@ -13,6 +13,7 @@ from common.auth import verify_token
 from common.config import config
 from common.logging import setup_uvicorn_logging
 
+from .cleanup import WeChatLogCleanupRequest, WeChatLogCleanupService
 from .manager import BotProcessManager
 
 logger = logging.getLogger("daemon")
@@ -21,6 +22,7 @@ DAEMON_HTML = Path(__file__).parent / "templates" / "index.html"
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 
 manager = BotProcessManager()
+cleanup_service = WeChatLogCleanupService()
 _lifecycle_lock = threading.Lock()
 
 
@@ -33,8 +35,10 @@ def _with_lifecycle_lock(op: str):
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     setup_uvicorn_logging()
+    cleanup_service.start()
     manager.start_bot(reason="daemon startup")
     yield
+    cleanup_service.stop()
     manager.shutdown()
 
 
@@ -184,3 +188,14 @@ def logs(lines: int = Query(default=100, ge=1, le=10000)):
 def clear_logs():
     manager.clear_log()
     return {"ok": True, "message": "日志已清除"}
+
+
+@app.get("/wechat-logs/cleanup/status", dependencies=[Depends(verify_token)])
+def wechat_log_cleanup_status():
+    return cleanup_service.status()
+
+
+@app.post("/wechat-logs/cleanup/run", dependencies=[Depends(verify_token)])
+def run_wechat_log_cleanup(payload: WeChatLogCleanupRequest):
+    source = "preview" if payload.dry_run else "manual"
+    return cleanup_service.cleanup(dry_run=payload.dry_run, source=source)
