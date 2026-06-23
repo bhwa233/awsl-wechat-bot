@@ -103,6 +103,36 @@
             color: var(--text);
         }
 
+        .tabs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+            background: var(--stat-bg);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 16px;
+        }
+        .tab-btn {
+            height: 36px;
+            border: 0;
+            border-radius: 7px;
+            background: transparent;
+            color: var(--text2);
+            font-size: 13px;
+            font-weight: 650;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+        }
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active {
+            background: var(--card);
+            color: var(--text);
+            box-shadow: var(--card-shadow);
+        }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+
         .card {
             background: var(--card);
             border: 1px solid var(--border);
@@ -320,6 +350,7 @@
             body { padding: 10px; }
             .stats { grid-template-columns: 1fr 1fr; }
             .log-box { max-height: 280px; }
+            .tabs { margin-bottom: 10px; }
         }
     </style>
 </head>
@@ -343,59 +374,68 @@
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-title">Bot 状态</div>
-            <div class="status-row">
-                <div class="status-dot" id="dot"></div>
-                <div class="status-label" id="statusText">获取中...</div>
-            </div>
-            <div class="stats">
-                <dl class="stat"><dt>PID</dt><dd id="pid">-</dd></dl>
-                <dl class="stat"><dt>运行时间</dt><dd id="uptime">-</dd></dl>
-                <dl class="stat"><dt>重启次数</dt><dd id="restarts">0</dd></dl>
-                <dl class="stat"><dt>自动重启</dt><dd id="autoRestart">-</dd></dl>
-                <dl class="stat" id="healthStat"><dt>Health</dt><dd id="health">-</dd></dl>
-            </div>
-            <div class="reason" id="reason"></div>
-            <div class="actions">
-                <button class="btn btn-green" id="btnStart" onclick="doAction('start')">启动</button>
-                <button class="btn btn-red" id="btnStop" onclick="doAction('stop')">停止</button>
-                <button class="btn btn-amber" id="btnRestart" onclick="doAction('restart')">重启</button>
-                <button class="btn btn-green" id="btnUpdate" onclick="doUpdate()">更新代码</button>
-                <button class="btn btn-ghost" onclick="refreshAll()">刷新</button>
-            </div>
-            <div class="update-out" id="updateOut"></div>
+        <div class="tabs" role="tablist" aria-label="Daemon 功能">
+            <button class="tab-btn active" id="tabBot" type="button" role="tab" aria-controls="panelBot" aria-selected="true" onclick="switchTab('bot')">Bot 控制</button>
+            <button class="tab-btn" id="tabCleanup" type="button" role="tab" aria-controls="panelCleanup" aria-selected="false" onclick="switchTab('cleanup')">微信日志清理</button>
         </div>
 
-        <div class="card">
-            <div class="log-head">
-                <div class="card-title" style="margin-bottom:0">日志</div>
-                <div class="log-ctrl">
-                    <label><input type="checkbox" id="autoLog" checked> 自动</label>
-                    <input type="number" id="logLines" value="200" min="1" max="10000">
-                    <button class="btn btn-ghost" onclick="refreshLogs()">刷新</button>
-                    <button class="btn btn-ghost" onclick="clearLogs()">清除</button>
+        <section class="tab-panel active" id="panelBot" role="tabpanel" aria-labelledby="tabBot">
+            <div class="card">
+                <div class="card-title">Bot 状态</div>
+                <div class="status-row">
+                    <div class="status-dot" id="dot"></div>
+                    <div class="status-label" id="statusText">获取中...</div>
                 </div>
+                <div class="stats">
+                    <dl class="stat"><dt>PID</dt><dd id="pid">-</dd></dl>
+                    <dl class="stat"><dt>运行时间</dt><dd id="uptime">-</dd></dl>
+                    <dl class="stat"><dt>重启次数</dt><dd id="restarts">0</dd></dl>
+                    <dl class="stat"><dt>自动重启</dt><dd id="autoRestart">-</dd></dl>
+                    <dl class="stat" id="healthStat"><dt>Health</dt><dd id="health">-</dd></dl>
+                </div>
+                <div class="reason" id="reason"></div>
+                <div class="actions">
+                    <button class="btn btn-green" id="btnStart" onclick="doAction('start')">启动</button>
+                    <button class="btn btn-red" id="btnStop" onclick="doAction('stop')">停止</button>
+                    <button class="btn btn-amber" id="btnRestart" onclick="doAction('restart')">重启</button>
+                    <button class="btn btn-green" id="btnUpdate" onclick="doUpdate()">更新代码</button>
+                    <button class="btn btn-ghost" onclick="refreshAll()">刷新</button>
+                </div>
+                <div class="update-out" id="updateOut"></div>
             </div>
-            <div class="log-box" id="logBox"></div>
-        </div>
 
-        <div class="card">
-            <div class="card-title">微信日志清理</div>
-            <div class="cleanup-grid">
-                <dl class="cleanup-item"><dt>目录</dt><dd id="wechatLogDir">-</dd></dl>
-                <dl class="cleanup-item"><dt>计划</dt><dd id="wechatCleanupSchedule">-</dd></dl>
-                <dl class="cleanup-item"><dt>最近记录</dt><dd id="wechatCleanupLast">-</dd></dl>
-                <dl class="cleanup-item"><dt>下次清理</dt><dd id="wechatCleanupNext">-</dd></dl>
+            <div class="card">
+                <div class="log-head">
+                    <div class="card-title" style="margin-bottom:0">日志</div>
+                    <div class="log-ctrl">
+                        <label><input type="checkbox" id="autoLog" checked> 自动</label>
+                        <input type="number" id="logLines" value="200" min="1" max="10000">
+                        <button class="btn btn-ghost" onclick="refreshLogs()">刷新</button>
+                        <button class="btn btn-ghost" onclick="clearLogs()">清除</button>
+                    </div>
+                </div>
+                <div class="log-box" id="logBox"></div>
             </div>
-            <div class="actions">
-                <button class="btn btn-ghost" id="btnCleanupPreview" onclick="previewWechatCleanup()">预览清理</button>
-                <button class="btn btn-red" id="btnCleanupRun" onclick="runWechatCleanup()">立即清理</button>
-                <button class="btn btn-ghost" onclick="refreshWechatCleanupStatus()">刷新</button>
+        </section>
+
+        <section class="tab-panel" id="panelCleanup" role="tabpanel" aria-labelledby="tabCleanup">
+            <div class="card">
+                <div class="card-title">微信日志清理</div>
+                <div class="cleanup-grid">
+                    <dl class="cleanup-item"><dt>目录</dt><dd id="wechatLogDir">-</dd></dl>
+                    <dl class="cleanup-item"><dt>计划</dt><dd id="wechatCleanupSchedule">-</dd></dl>
+                    <dl class="cleanup-item"><dt>最近记录</dt><dd id="wechatCleanupLast">-</dd></dl>
+                    <dl class="cleanup-item"><dt>下次清理</dt><dd id="wechatCleanupNext">-</dd></dl>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-ghost" id="btnCleanupPreview" onclick="previewWechatCleanup()">预览清理</button>
+                    <button class="btn btn-red" id="btnCleanupRun" onclick="runWechatCleanup()">立即清理</button>
+                    <button class="btn btn-ghost" onclick="refreshWechatCleanupStatus()">刷新</button>
+                </div>
+                <div class="cleanup-out" id="cleanupOut"></div>
+                <div class="cleanup-log" id="cleanupLog"></div>
             </div>
-            <div class="cleanup-out" id="cleanupOut"></div>
-            <div class="cleanup-log" id="cleanupLog"></div>
-        </div>
+        </section>
     </div>
 
     <div class="toast" id="toast"></div>
@@ -403,6 +443,19 @@
     <script>
         const $ = id => document.getElementById(id);
         let authEnabled = false;
+
+        function switchTab(tab) {
+            const cleanup = tab === 'cleanup';
+            $('tabBot').classList.toggle('active', !cleanup);
+            $('tabCleanup').classList.toggle('active', cleanup);
+            $('panelBot').classList.toggle('active', !cleanup);
+            $('panelCleanup').classList.toggle('active', cleanup);
+            $('tabBot').setAttribute('aria-selected', String(!cleanup));
+            $('tabCleanup').setAttribute('aria-selected', String(cleanup));
+            localStorage.setItem('daemon_active_tab', cleanup ? 'cleanup' : 'bot');
+            if (cleanup) refreshWechatCleanupStatus();
+            else refreshStatus();
+        }
 
         function getToken() { return localStorage.getItem('daemon_token') || ''; }
 
@@ -654,6 +707,7 @@
             const saved = getToken();
             if (saved) $('tokenInput').value = saved;
             updateAuthUI();
+            switchTab(localStorage.getItem('daemon_active_tab') === 'cleanup' ? 'cleanup' : 'bot');
             refreshAll();
             setInterval(refreshStatus, 5000);
             setInterval(() => { if ($('autoLog').checked) refreshLogs(); }, 3000);
