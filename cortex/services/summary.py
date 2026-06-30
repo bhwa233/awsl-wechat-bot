@@ -157,13 +157,71 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             font-size: 19px;
             line-height: 1.75;
             text-align: justify;
+            margin: 0 0 12px;
         }
-        .panel-body > ul {
+        .panel-body ul,
+        .panel-body ol {
             padding-left: 22px;
             font-size: 18px;
             line-height: 1.65;
+            margin: 8px 0 12px;
         }
-        .panel-body > ul li { margin: 8px 0; }
+        .panel-body li { margin: 8px 0; }
+        .panel-body li p {
+            margin: 4px 0;
+            font-size: inherit;
+            line-height: inherit;
+        }
+        .panel-body blockquote {
+            margin: 12px 0;
+            padding: 10px 14px;
+            border-left: 5px solid #bd8c2c;
+            background: rgba(246, 233, 200, 0.58);
+            color: #4b4136;
+        }
+        .panel-body pre {
+            overflow: hidden;
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 12px 0;
+            padding: 12px;
+            background: #26231f;
+            color: #fff8e8;
+            border: 1px solid #1d1d1f;
+            font-size: 14px;
+            line-height: 1.55;
+        }
+        .panel-body code {
+            padding: 1px 5px;
+            background: rgba(29, 29, 31, 0.08);
+            border-radius: 3px;
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 0.92em;
+        }
+        .panel-body pre code {
+            padding: 0;
+            background: transparent;
+            border-radius: 0;
+            color: inherit;
+            font-size: inherit;
+        }
+        .panel-body table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        .panel-body th,
+        .panel-body td {
+            border: 1px solid rgba(29, 29, 31, 0.24);
+            padding: 8px 10px;
+            vertical-align: top;
+        }
+        .panel-body th {
+            background: #f6e9c8;
+            font-weight: 850;
+        }
         .topic-card {
             position: relative;
             padding: 14px 16px 14px 22px;
@@ -182,8 +240,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             margin-bottom: 10px;
             font-weight: 850;
         }
-        .topic-card ul { list-style: none; }
-        .topic-card li {
+        .topic-card > :last-child,
+        .panel-body > :last-child { margin-bottom: 0; }
+        .topic-card > ul { list-style: none; }
+        .topic-card > ul > li {
             display: grid;
             grid-template-columns: 76px 1fr;
             gap: 12px;
@@ -554,78 +614,96 @@ def _section_meta(title: str) -> tuple[str, str]:
     return "general", "NOTE"
 
 
-def markdown_to_html(md_text: str) -> str:
-    """将 Markdown 转换为 HTML,使用卡片形式"""
-    lines = md_text.split('\n')
-    html_lines = []
-    in_list = False
-    in_section = False
-    in_topic = False
+def _strip_markdown_fence(md_text: str) -> str:
+    text = (md_text or "").strip()
+    match = re.fullmatch(r"```(?:markdown|md)?\s*\n(?P<body>.*?)\n```", text, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group("body").strip()
+    return text
 
-    def close_list() -> None:
-        nonlocal in_list
-        if in_list:
-            html_lines.append('</ul>')
-            in_list = False
 
-    def close_topic() -> None:
-        nonlocal in_topic
-        if in_topic:
-            close_list()
-            html_lines.append('</article>')
-            in_topic = False
+def _render_markdown_fragment(md_text: str) -> str:
+    if not md_text.strip():
+        return ""
+    import markdown as markdown_lib
 
-    def close_section() -> None:
-        nonlocal in_section
-        if in_section:
-            close_topic()
-            close_list()
-            html_lines.append('</div></section>')
-            in_section = False
+    rendered = markdown_lib.markdown(
+        md_text,
+        extensions=["extra", "sane_lists"],
+        output_format="html5",
+    )
+    return _replace_emoji_images(rendered)
 
-    def ensure_section() -> None:
-        nonlocal in_section
-        if not in_section:
-            html_lines.append('<section class="report-panel section-general"><div class="panel-title"><span class="panel-tag">NOTE</span>记录</div><div class="panel-body">')
-            in_section = True
+
+def _split_heading_blocks(lines: list[str], heading_prefix: str) -> list[tuple[str | None, list[str]]]:
+    blocks: list[tuple[str | None, list[str]]] = []
+    title: str | None = None
+    body: list[str] = []
 
     for line in lines:
         stripped = line.strip()
+        if stripped.startswith(heading_prefix):
+            blocks.append((title, body))
+            title = stripped[len(heading_prefix):].strip()
+            body = []
+            continue
+        body.append(line)
 
-        if stripped.startswith('### '):
-            ensure_section()
-            close_topic()
-            html_lines.append(f'<article class="topic-card"><h3>{_escape_and_bold(stripped[4:])}</h3>')
-            in_topic = True
-        elif stripped.startswith('## '):
-            close_section()
-            title = stripped[3:]
-            section_class, tag = _section_meta(title)
-            html_lines.append(
-                f'<section class="report-panel section-{section_class}">'
-                f'<div class="panel-title"><span class="panel-tag">{tag}</span>{_escape_and_bold(title)}</div>'
-                '<div class="panel-body">'
-            )
-            in_section = True
-        elif stripped.startswith('# '):
-            close_section()
-            html_lines.append(f'<h1>{_escape_and_bold(stripped[2:])}</h1>')
-        elif stripped.startswith('- '):
-            ensure_section()
-            if not in_list:
-                html_lines.append('<ul>')
-                in_list = True
-            html_lines.append(f'<li>{_escape_and_bold(stripped[2:])}</li>')
-        elif not stripped:
-            close_list()
+    blocks.append((title, body))
+    return [(block_title, block_body) for block_title, block_body in blocks if block_title or "\n".join(block_body).strip()]
+
+
+def _render_section_body(lines: list[str]) -> str:
+    parts: list[str] = []
+    for title, body in _split_heading_blocks(lines, "### "):
+        body_md = "\n".join(body).strip()
+        if title is None:
+            rendered = _render_markdown_fragment(body_md)
+            if rendered:
+                parts.append(rendered)
+            continue
+
+        topic_body = _render_markdown_fragment(body_md)
+        if topic_body:
+            parts.append(f'<article class="topic-card"><h3>{_escape_and_bold(title)}</h3>{topic_body}</article>')
         else:
-            ensure_section()
-            close_list()
-            html_lines.append(f'<p>{_escape_and_bold(stripped)}</p>')
+            parts.append(f'<article class="topic-card"><h3>{_escape_and_bold(title)}</h3></article>')
 
-    close_section()
+    return "\n".join(parts)
 
-    return '\n'.join(html_lines)
+
+def _render_report_section(title: str, body: list[str]) -> str:
+    section_class, tag = _section_meta(title)
+    body_html = _render_section_body(body)
+    return (
+        f'<section class="report-panel section-{section_class}">'
+        f'<div class="panel-title"><span class="panel-tag">{tag}</span>{_escape_and_bold(title)}</div>'
+        f'<div class="panel-body">{body_html}</div>'
+        '</section>'
+    )
+
+
+def markdown_to_html(md_text: str) -> str:
+    """将 Markdown 转换为 HTML,保留总结卡片结构."""
+    md_text = _strip_markdown_fence(md_text)
+    if not md_text:
+        return ""
+
+    sections: list[str] = []
+    for title, body in _split_heading_blocks(md_text.splitlines(), "## "):
+        if title is None:
+            intro = _render_section_body(body)
+            if intro:
+                sections.append(
+                    '<section class="report-panel section-general">'
+                    '<div class="panel-title"><span class="panel-tag">NOTE</span>记录</div>'
+                    f'<div class="panel-body">{intro}</div>'
+                    '</section>'
+                )
+            continue
+        sections.append(_render_report_section(title, body))
+
+    return "\n".join(sections)
 
 
 def render_to_image(
