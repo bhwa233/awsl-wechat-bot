@@ -20,7 +20,7 @@ _WINDOWS_RESERVED_NAMES = {
     "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 }
 _WINDOWS_INVALID_FILENAME_RE = re.compile(r'[<>:"/\\\\|?*\x00-\x1f]')
-_WINDOWS_DROPFILE_CLEANUP_DELAY = 15.0
+_WINDOWS_DROPFILE_CLEANUP_DELAY = 60.0
 _WINDOWS_DROPFILE_CLEANUP_RETRY_DELAY = 1.0
 _WINDOWS_DROPFILE_CLEANUP_RETRIES = 10
 
@@ -576,15 +576,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 return False
             finally:
                 if temp_path:
-                    time.sleep(1)
-                    for _ in range(3):
-                        try:
-                            os.unlink(temp_path)
-                            break
-                        except PermissionError:
-                            time.sleep(1)
-                        except Exception:
-                            break
+                    self._schedule_temp_path_cleanup(
+                        temp_path,
+                        None,
+                        initial_delay=_WINDOWS_DROPFILE_CLEANUP_DELAY,
+                    )
 
     def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
         """向指定窗口发送文件(base64 编码)"""
