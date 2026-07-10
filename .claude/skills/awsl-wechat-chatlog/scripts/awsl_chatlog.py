@@ -18,7 +18,6 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_TIMEOUT = 15.0
 CONFIG_PATH = Path.home() / ".config" / "awsl-wechat-chatlog" / "config.json"
 
@@ -167,6 +166,7 @@ def command_messages(args: argparse.Namespace) -> None:
             "start": args.start,
             "end": args.end,
             "limit": args.limit,
+            "desc": "true" if args.order == "desc" else "false",
         },
         timeout=args.timeout,
     )
@@ -244,6 +244,9 @@ def build_parser() -> argparse.ArgumentParser:
     messages_parser.add_argument("--start", default=None, help="Start time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
     messages_parser.add_argument("--end", default=None, help="End time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
     messages_parser.add_argument("--limit", type=int, default=100, help="Max messages")
+    order_group = messages_parser.add_mutually_exclusive_group(required=True)
+    order_group.add_argument("--desc", dest="order", action="store_const", const="desc", help="Newest first")
+    order_group.add_argument("--asc", dest="order", action="store_const", const="asc", help="Oldest first")
     messages_parser.set_defaults(func=command_messages)
 
     gn_parser = subparsers.add_parser("group-name", help="Get group display name")

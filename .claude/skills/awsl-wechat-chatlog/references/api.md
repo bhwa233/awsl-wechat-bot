@@ -78,7 +78,9 @@ Query chat messages for a specific group or contact.
 - `group` (string, required): Group ID (`xxx@chatroom`) or personal WeChat ID
 - `start` (string, optional): Start time (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`)
 - `end` (string, optional): End time (same format)
-- `limit` (int, default 100): Max messages
+- `limit` (int, default 100): Max messages.
+- `offset` (int, default 0): Skip N messages after ordering.
+- `desc` (bool, default false): `true` returns newest first; `false` returns oldest first. The skill CLI always sends this parameter explicitly through its required `--desc` or `--asc` flag.
 
 **Response:** Array of:
 ```json

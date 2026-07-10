@@ -27,7 +27,7 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Manage cached connection info with `config show|set|clear`.
 - Decrypt WeChat chat records with `decrypt`, which calls `POST /api/chatlog/decrypt` and uses Chatlog-side `.env` values.
 - List decrypted chatlog groups with `groups`, which calls `GET /api/chatlog/groups`.
-- Query chat records with `messages --group <group_id>`, which calls `GET /api/chatlog/messages`. Use the `username` from `groups` as `--group`.
+- Query chat records with `messages --group <group_id>`, which calls `GET /api/chatlog/messages`. Every `messages` command must explicitly pass exactly one ordering flag: `--desc` for newest first or `--asc` for oldest first. With `--desc`, `--limit 100` returns the latest 100 messages. Use the `username` from `groups` as `--group`.
 - Get group display name with `group-name --group <group_id>`, which calls `GET /api/chatlog/group-display-name`.
 - Health check with `health`, which calls `GET /api/chatlog/health`. Response includes `media` capability flags: `image`, `sticker`, `video_thumb`, `voice`, `file`.
 
@@ -84,9 +84,13 @@ uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" decrypt
 # Find chatlog group IDs
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" groups --limit 20
 
-# Query records for a group ID
+# Query the latest 50 records for a group ID (newest first)
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
-  --group 12345@chatroom --start "2026-04-23" --limit 50
+  --group 12345@chatroom --start "2026-04-23" --limit 50 --desc
+
+# Query the same range oldest first
+uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
+  --group 12345@chatroom --start "2026-04-23" --limit 50 --asc
 
 # Get group display name
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" group-name \
@@ -106,3 +110,5 @@ curl -OJ -H "Authorization: Bearer $HTTP_API_TOKEN" \
 ## Chatlog Service Notes
 
 The Chatlog service is a standalone data layer that reads decrypted WeChat databases. It does NOT perform LLM summarization or message sending — those are handled by the Cortex service. For endpoint details, read `references/api.md`.
+
+The bundled CLI is a Python 3.11+ script with no third-party Python dependencies. It uses only the standard library to call the Chatlog HTTP API; SQL execution remains inside the Chatlog service.

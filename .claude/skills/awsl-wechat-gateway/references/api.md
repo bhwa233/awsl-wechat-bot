@@ -35,31 +35,11 @@ Use `Authorization: Bearer <token>` when a token is available. Omit the header w
 - `file` requires `filename`.
 - Response: `{ "success": true, "message": "消息已加入发送队列" }`
 
-`GET /api/chatlog/groups?limit=0`
-
-- Lists groups from decrypted WeChat DB output.
-- Response fields: `username`, `owner`, `remark`, `nick_name`, `display_name`.
-- Use `username` as `group` for message queries.
-
-`POST /api/chatlog/decrypt`
-
-- Decrypts WeChat DB files on the Gateway machine.
-- Uses Gateway-side config values: `WECHAT_DB_INPUT_PATH`, `WECHAT_DB_KEY`, and `WECHAT_DB_OUTPUT_PATH`.
-- Response: `{ "success": true, "message": "...", "count": 3, "output_path": "..." }`
-
-`GET /api/chatlog/messages`
-
-- Query parameters:
-- `group`: chatroom ID or personal WeChat ID, usually `username` from `/api/chatlog/groups`.
-- `start`: optional `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`.
-- `end`: optional `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`.
-- `limit`: optional max count, default `100`.
-
-- Response fields: `seq`, `time`, `talker`, `sender`, `sender_name`, `msg_type`, `content`, `is_self`.
+Chatlog database APIs are not served by Gateway. Use the `awsl-wechat-chatlog`
+skill and its API reference for groups, messages, decryption, and media access.
 
 ## Error Handling
 
-- `400`: invalid input, missing WeChat DB config, missing decrypted DB output, invalid date.
-- `401/403`: token/auth failure.
-- `404`: chatlog file or group lookup issue.
+- `401`: missing or invalid Bearer token when authentication is enabled.
+- `422`: invalid request payload, such as an unsupported `message_type` or a file message without `filename`.
 - `503`: send queue full.
