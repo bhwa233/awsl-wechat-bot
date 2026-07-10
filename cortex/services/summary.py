@@ -21,250 +21,298 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
-            background: #f5f5f5;
-            padding: 32px;
+            font-family: "Microsoft YaHei", "DengXian", "PingFang SC", sans-serif;
+            background: #d9d6cf;
+            padding: 24px;
             min-height: 100vh;
-            color: #232323;
+            color: #202a27;
         }
-        .sheet {
-            width: 836px;
+        .paper {
+            --ink: #183e35;
+            --ink-soft: #315c51;
+            --coral: #e56547;
+            --sun: #f1c75b;
+            --paper: #f7f3e9;
+            width: 852px;
             margin: 0 auto;
             background:
-                linear-gradient(rgba(38, 30, 18, 0.025) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(38, 30, 18, 0.025) 1px, transparent 1px),
-                #f4eddf;
-            background-size: 18px 18px;
-            border: 2px solid #1d1d1f;
-            box-shadow: 8px 8px 0 #1d1d1f;
-            padding: 28px;
-        }
-        .header {
-            margin-bottom: 20px;
-        }
-        .title-card,
-        .report-panel {
-            background: rgba(255, 251, 239, 0.82);
-            border: 2px solid #1d1d1f;
-            box-shadow: 4px 4px 0 rgba(29, 29, 31, 0.18);
-        }
-        .title-card {
-            padding: 24px 28px 20px;
+                radial-gradient(circle at 18% 12%, rgba(229, 101, 71, 0.055), transparent 25%),
+                linear-gradient(rgba(24, 62, 53, 0.018) 1px, transparent 1px),
+                var(--paper);
+            background-size: auto, 100% 7px, auto;
+            border-top: 9px solid var(--ink);
+            box-shadow: 0 14px 40px rgba(31, 38, 35, 0.18);
+            padding: 0 46px 42px;
+            overflow: hidden;
             position: relative;
         }
-        .title-card::after {
-            content: "";
-            position: absolute;
-            right: 22px;
-            top: 22px;
-            width: 72px;
-            height: 72px;
-            border: 3px solid #c54539;
-            border-radius: 50%;
-            opacity: 0.16;
-            transform: rotate(-12deg);
+        .title-layout {
+            display: block;
+            padding: 0;
         }
-        .label {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            color: #b43d35;
-            font-size: 15px;
-            font-weight: 800;
-            margin-bottom: 14px;
+        h1 {
+            max-width: 100%;
+            color: var(--ink);
+            font-family: "SimSun", "Songti SC", "STSong", serif;
+            font-size: 48px;
+            line-height: 1.16;
+            font-weight: 900;
+            letter-spacing: -0.03em;
         }
-        .label::before {
-            content: "";
-            width: 28px;
-            height: 5px;
-            background: #c54539;
-            display: inline-block;
+        .content { padding-top: 30px; }
+        .report-section {
+            margin-top: 46px;
+            position: relative;
         }
-        .title-card h1 {
-            font-size: 38px;
-            line-height: 1.12;
-            font-weight: 850;
-            letter-spacing: 0;
-            margin-bottom: 12px;
-        }
-        .subtitle {
-            font-size: 16px;
-            line-height: 1.55;
-            color: #5f574c;
-            max-width: 620px;
-        }
-        .title-meta {
+        .report-section:first-child { margin-top: 0; }
+        .section-heading {
             display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-top: 18px;
-            padding-top: 16px;
-            border-top: 2px solid rgba(29, 29, 31, 0.16);
+            align-items: flex-end;
+            gap: 16px;
+            margin-bottom: 24px;
+            padding-bottom: 13px;
+            border-bottom: 2px solid var(--ink);
         }
-        .meta-chip {
-            display: inline-flex;
-            align-items: center;
-            min-height: 30px;
-            padding: 5px 10px;
-            background: #fff4d7;
-            border: 1px solid #1d1d1f;
-            color: #322d26;
-            font-size: 14px;
-            font-weight: 750;
+        .section-heading h2 {
+            color: var(--ink);
+            font-family: "SimSun", "Songti SC", "STSong", serif;
+            font-size: 28px;
+            line-height: 1.2;
+            font-weight: 900;
         }
-        .meta-chip.strong {
-            background: #1d1d1f;
-            color: #f7f0df;
-        }
-        .meta-chip.warn {
-            color: #a33831;
-        }
-        .content {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 20px;
-            align-items: start;
-        }
-        .report-panel { overflow: hidden; }
-        .report-panel { grid-column: 1; }
-        .panel-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 14px 16px;
-            background: #f6e9c8;
-            border-bottom: 2px solid #1d1d1f;
-            font-size: 21px;
-            line-height: 1.25;
-            font-weight: 850;
-        }
-        .panel-tag {
-            display: inline-block;
-            padding: 3px 8px;
-            background: #c54539;
-            color: #fff3dc;
-            border: 1px solid #1d1d1f;
-            transform: rotate(-3deg);
-            font-size: 12px;
-            line-height: 1;
-            font-weight: 850;
-        }
-        .panel-body {
-            padding: 18px;
-            background: rgba(255, 252, 242, 0.78);
-        }
-        .panel-body p {
-            font-size: 19px;
-            line-height: 1.75;
-            text-align: justify;
-            margin: 0 0 12px;
-        }
-        .panel-body ul,
-        .panel-body ol {
-            padding-left: 22px;
+        .section-body p,
+        .section-body li {
             font-size: 18px;
-            line-height: 1.65;
-            margin: 8px 0 12px;
+            line-height: 1.8;
         }
-        .panel-body li { margin: 8px 0; }
-        .panel-body li p {
-            margin: 4px 0;
-            font-size: inherit;
-            line-height: inherit;
+        .section-body p { margin: 0 0 14px; }
+        .section-body ul,
+        .section-body ol {
+            padding-left: 24px;
+            margin: 10px 0 16px;
         }
-        .panel-body blockquote {
-            margin: 12px 0;
-            padding: 10px 14px;
-            border-left: 5px solid #bd8c2c;
-            background: rgba(246, 233, 200, 0.58);
-            color: #4b4136;
+        .section-body li { margin: 8px 0; }
+        .section-body > :last-child { margin-bottom: 0; }
+        .section-body blockquote {
+            margin: 16px 0;
+            padding: 13px 18px;
+            border-left: 4px solid var(--coral);
+            background: rgba(229, 101, 71, 0.08);
+            color: #42504b;
         }
-        .panel-body pre {
+        .section-body pre {
             overflow: hidden;
             white-space: pre-wrap;
             word-break: break-word;
-            margin: 12px 0;
-            padding: 12px;
-            background: #26231f;
-            color: #fff8e8;
-            border: 1px solid #1d1d1f;
+            margin: 16px 0;
+            padding: 16px;
+            background: #203a34;
+            color: #fffaf0;
             font-size: 14px;
-            line-height: 1.55;
+            line-height: 1.6;
         }
-        .panel-body code {
+        .section-body code {
             padding: 1px 5px;
-            background: rgba(29, 29, 31, 0.08);
+            background: rgba(24, 62, 53, 0.08);
             border-radius: 3px;
             font-family: "SFMono-Regular", Consolas, monospace;
             font-size: 0.92em;
         }
-        .panel-body pre code {
+        .section-body pre code {
             padding: 0;
             background: transparent;
             border-radius: 0;
             color: inherit;
             font-size: inherit;
         }
-        .panel-body table {
+        .section-body table {
             width: 100%;
             border-collapse: collapse;
-            margin: 12px 0;
+            margin: 16px 0;
             font-size: 16px;
             line-height: 1.5;
         }
-        .panel-body th,
-        .panel-body td {
-            border: 1px solid rgba(29, 29, 31, 0.24);
-            padding: 8px 10px;
+        .section-body th,
+        .section-body td {
+            border-bottom: 1px solid rgba(24, 62, 53, 0.22);
+            padding: 9px 11px;
             vertical-align: top;
+            text-align: left;
         }
-        .panel-body th {
-            background: #f6e9c8;
+        .section-body th {
+            background: rgba(24, 62, 53, 0.07);
             font-weight: 850;
+        }
+        .topics-list {
+            border-top: 1px solid rgba(24, 62, 53, 0.18);
         }
         .topic-card {
-            position: relative;
-            padding: 14px 16px 14px 22px;
-            margin-bottom: 16px;
-            background: rgba(255, 251, 239, 0.86);
-            border-left: 7px solid #3d8f81;
-            border-top: 1px solid rgba(29, 29, 31, 0.18);
-            border-right: 1px solid rgba(29, 29, 31, 0.18);
-            border-bottom: 1px solid rgba(29, 29, 31, 0.18);
-        }
-        .topic-card:nth-child(2n) { border-left-color: #c54539; }
-        .topic-card:nth-child(3n) { border-left-color: #bd8c2c; }
-        .topic-card h3 {
-            font-size: 20px;
-            line-height: 1.35;
-            margin-bottom: 10px;
-            font-weight: 850;
-        }
-        .topic-card > :last-child,
-        .panel-body > :last-child { margin-bottom: 0; }
-        .topic-card > ul { list-style: none; }
-        .topic-card > ul > li {
             display: grid;
-            grid-template-columns: 76px 1fr;
-            gap: 12px;
-            margin: 8px 0;
+            grid-template-columns: 54px minmax(0, 1fr);
+            gap: 20px;
+            padding: 25px 0 27px;
+            border-bottom: 1px solid rgba(24, 62, 53, 0.18);
+        }
+        .topic-index {
+            width: 44px;
+            height: 44px;
+            display: grid;
+            place-items: center;
+            background: var(--coral);
+            color: #fffaf0;
+            border-radius: 50% 50% 50% 8px;
+            font-family: Georgia, serif;
             font-size: 17px;
-            line-height: 1.55;
+            font-weight: 800;
         }
-        .topic-card strong {
-            color: #756143;
-            white-space: nowrap;
+        .topic-card h3 {
+            color: var(--ink);
+            font-family: "SimSun", "Songti SC", "STSong", serif;
+            font-size: 23px;
+            line-height: 1.4;
+            font-weight: 900;
+        }
+        .topic-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 18px;
+            margin: 11px 0 13px;
+            color: #6e7772;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .topic-meta span {
+            display: inline-flex;
+            gap: 6px;
+        }
+        .topic-meta b {
+            color: var(--ink-soft);
+            font-size: 12px;
             font-weight: 850;
+            letter-spacing: 0.08em;
         }
-        .section-ranking .panel-body > ul { list-style: none; padding-left: 0; }
-        .section-ranking .panel-body > ul li {
-            border-bottom: 1px dashed rgba(29, 29, 31, 0.24);
-            padding: 10px 0;
+        .topic-copy p {
             font-size: 18px;
-            line-height: 1.55;
+            line-height: 1.78;
+            text-align: justify;
         }
-        .section-ranking .panel-body > ul li:last-child { border-bottom: 0; }
-        .section-ranking strong { color: #1d1d1f; }
+        .section-important {
+            display: grid;
+            grid-template-columns: 188px minmax(0, 1fr);
+            gap: 26px;
+            padding: 28px 30px;
+            background: #f0ca68;
+        }
+        .section-important .section-heading {
+            display: block;
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+        .section-important .section-body {
+            padding-left: 26px;
+            border-left: 2px solid rgba(24, 62, 53, 0.32);
+        }
+        .section-important .section-body p,
+        .section-important .section-body li {
+            color: #243a34;
+            font-size: 18px;
+            line-height: 1.75;
+            font-weight: 650;
+        }
+        .ranking-list {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 34px;
+            row-gap: 18px;
+        }
+        .rank-row {
+            display: grid;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 10px;
+            align-items: center;
+        }
+        .rank-position {
+            color: #88908c;
+            font-family: Georgia, serif;
+            font-size: 18px;
+            font-weight: 800;
+            font-style: italic;
+        }
+        .rank-row:nth-child(-n+3) .rank-position { color: var(--coral); }
+        .rank-label {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            align-items: baseline;
+            margin-bottom: 7px;
+        }
+        .rank-label strong {
+            min-width: 0;
+            color: var(--ink);
+            font-size: 16px;
+            font-weight: 850;
+            overflow-wrap: anywhere;
+        }
+        .rank-label span {
+            flex: 0 0 auto;
+            color: #747d78;
+            font-size: 12px;
+        }
+        .rank-bar {
+            height: 6px;
+            overflow: hidden;
+            background: rgba(24, 62, 53, 0.10);
+            border-radius: 4px;
+        }
+        .rank-bar i {
+            display: block;
+            height: 100%;
+            background: var(--ink-soft);
+            border-radius: inherit;
+        }
+        .rank-row:nth-child(-n+3) .rank-bar i { background: var(--coral); }
+        .section-general .section-body { padding: 0 4px; }
+        .masthead {
+            padding: 40px 0 28px;
+            border-bottom: 3px solid var(--ink);
+        }
+        .summary-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 0;
+            margin-top: 18px;
+            color: #6d7671;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .summary-meta span + span::before {
+            content: "·";
+            margin: 0 11px;
+            color: var(--coral);
+            font-weight: 900;
+        }
+        .section-heading {
+            margin-bottom: 20px;
+            padding-bottom: 11px;
+        }
+        .section-heading h2 { font-size: 27px; }
+        .section-overview {
+            display: block;
+            margin: 0;
+            padding: 2px 4px 30px;
+            background: transparent;
+            color: var(--ink);
+            border-bottom: 1px solid rgba(24, 62, 53, 0.18);
+        }
+        .section-overview .section-heading { display: none; }
+        .section-overview .section-body { padding: 0; }
+        .section-overview .section-body::before { content: none; }
+        .section-overview .section-body p {
+            color: var(--ink);
+            font-size: 24px;
+            line-height: 1.72;
+        }
         .emoji-img {
             display: inline-block;
             width: 1.18em;
@@ -275,19 +323,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <div class="sheet">
-        <div class="header">
-            <div class="title-card">
-                <div class="label">群聊总结简报</div>
+    <div class="paper">
+        <header class="masthead">
+            <div class="title-layout">
                 <h1>$title</h1>
-                <div class="subtitle">按群友可读性整理当日重点话题，仅作娱乐总结。</div>
-                <div class="title-meta">
-                    <span class="meta-chip strong">$date</span>
-                    <span class="meta-chip warn">$msg_count 条有效消息</span>
-                    <span class="meta-chip">$gen_time 生成</span>
-                </div>
             </div>
-        </div>
+            <div class="summary-meta">
+                $context_stat
+                <span>$date</span>
+                <span>$msg_count 条消息</span>
+                $topic_stat
+            </div>
+        </header>
         <div class="content">
             $content
         </div>
@@ -621,16 +668,16 @@ def _escape_and_bold(text: str) -> str:
     return re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', escaped)
 
 
-def _section_meta(title: str) -> tuple[str, str]:
-    if "概览" in title:
-        return "overview", "CASE"
+def _section_class(title: str) -> str:
+    if "概览" in title or "一句话结论" in title:
+        return "overview"
     if "话题" in title:
-        return "topics", "CASE"
+        return "topics"
     if "重要" in title:
-        return "important", "EVID"
+        return "important"
     if "排行" in title:
-        return "ranking", "EVID"
-    return "general", "NOTE"
+        return "ranking"
+    return "general"
 
 
 def _strip_markdown_fence(md_text: str) -> str:
@@ -672,7 +719,89 @@ def _split_heading_blocks(lines: list[str], heading_prefix: str) -> list[tuple[s
     return [(block_title, block_body) for block_title, block_body in blocks if block_title or "\n".join(block_body).strip()]
 
 
-def _render_section_body(lines: list[str]) -> str:
+def _render_topic_cards(lines: list[str]) -> str:
+    parts: list[str] = []
+    topics = [(title, body) for title, body in _split_heading_blocks(lines, "### ") if title]
+    if not topics:
+        return _render_markdown_fragment("\n".join(lines).strip())
+
+    field_pattern = re.compile(r"^\s*[-*]\s+\*\*(时间|参与者|内容)\*\*\s*[:\uFF1A]?\s*(.*)$")
+    for index, (title, body) in enumerate(topics, start=1):
+        fields: dict[str, str] = {}
+        remaining: list[str] = []
+        for line in body:
+            match = field_pattern.match(line)
+            if match:
+                fields[match.group(1)] = match.group(2).strip()
+            elif line.strip():
+                remaining.append(line)
+
+        clean_title = re.sub(r"^话题(?:[一二三四五六七八九十百]+|\d+)\s*[:\uFF1A]\s*", "", title).strip() or title
+        meta: list[str] = []
+        if fields.get("时间"):
+            meta.append(f'<span><b>时间</b>{_escape_and_bold(fields["时间"])}</span>')
+        if fields.get("参与者"):
+            meta.append(f'<span><b>参与者</b>{_escape_and_bold(fields["参与者"])}</span>')
+
+        copy_parts: list[str] = []
+        if fields.get("内容"):
+            copy_parts.append(_render_markdown_fragment(fields["内容"]))
+        if remaining:
+            copy_parts.append(_render_markdown_fragment("\n".join(remaining)))
+
+        meta_html = f'<div class="topic-meta">{"".join(meta)}</div>' if meta else ""
+        copy_html = f'<div class="topic-copy">{"".join(copy_parts)}</div>' if copy_parts else ""
+        parts.append(
+            '<article class="topic-card">'
+            f'<div class="topic-index">{index:02d}</div>'
+            '<div class="topic-main">'
+            f'<h3>{_escape_and_bold(clean_title)}</h3>'
+            f'{meta_html}{copy_html}'
+            '</div>'
+            '</article>'
+        )
+
+    return f'<div class="topics-list">{"".join(parts)}</div>'
+
+
+def _render_ranking(lines: list[str]) -> str:
+    row_pattern = re.compile(
+        r"^\s*-\s*.+?\s+\*\*(?P<name>.+?)\*\*\s*(?:-|—|\u2013)\s*"
+        r"(?P<count>\d+)\s*条(?:消息)?\s*/\s*(?P<chars>\d+)\s*字\s*$"
+    )
+    rows: list[tuple[str, int, int]] = []
+
+    for line in lines:
+        match = row_pattern.match(line)
+        if match:
+            rows.append((match.group("name"), int(match.group("count")), int(match.group("chars"))))
+
+    if not rows:
+        return _render_markdown_fragment("\n".join(lines).strip())
+
+    max_count = max(count for _, count, _ in rows)
+    rendered_rows: list[str] = []
+    for index, (name, count, _chars) in enumerate(rows, start=1):
+        width = max(7, round(count / max_count * 100))
+        rendered_rows.append(
+            '<div class="rank-row">'
+            f'<div class="rank-position">{index:02d}</div>'
+            '<div class="rank-main">'
+            f'<div class="rank-label"><strong>{_escape_and_bold(name)}</strong><span>{count} 条</span></div>'
+            f'<div class="rank-bar"><i style="width:{width}%"></i></div>'
+            '</div>'
+            '</div>'
+        )
+
+    return f'<div class="ranking-list">{"".join(rendered_rows)}</div>'
+
+
+def _render_section_body(lines: list[str], section_class: str) -> str:
+    if section_class == "topics":
+        return _render_topic_cards(lines)
+    if section_class == "ranking":
+        return _render_ranking(lines)
+
     parts: list[str] = []
     for title, body in _split_heading_blocks(lines, "### "):
         body_md = "\n".join(body).strip()
@@ -692,12 +821,19 @@ def _render_section_body(lines: list[str]) -> str:
 
 
 def _render_report_section(title: str, body: list[str]) -> str:
-    section_class, tag = _section_meta(title)
-    body_html = _render_section_body(body)
+    section_class = _section_class(title)
+    if section_class == "important":
+        plain_body = _strip_markdown("\n".join(body)).strip().rstrip("。.")
+        if plain_body in {"无", "暂无", "没有", "无重要信息", "暂无重要信息"}:
+            return ""
+    body_html = _render_section_body(body, section_class)
+    heading_html = ""
+    if section_class != "overview":
+        heading_html = f'<div class="section-heading"><h2>{_escape_and_bold(title)}</h2></div>'
     return (
-        f'<section class="report-panel section-{section_class}">'
-        f'<div class="panel-title"><span class="panel-tag">{tag}</span>{_escape_and_bold(title)}</div>'
-        f'<div class="panel-body">{body_html}</div>'
+        f'<section class="report-section section-{section_class}">'
+        f'{heading_html}'
+        f'<div class="section-body">{body_html}</div>'
         '</section>'
     )
 
@@ -711,16 +847,17 @@ def markdown_to_html(md_text: str) -> str:
     sections: list[str] = []
     for title, body in _split_heading_blocks(md_text.splitlines(), "## "):
         if title is None:
-            intro = _render_section_body(body)
+            intro = _render_section_body(body, "general")
             if intro:
                 sections.append(
-                    '<section class="report-panel section-general">'
-                    '<div class="panel-title"><span class="panel-tag">NOTE</span>记录</div>'
-                    f'<div class="panel-body">{intro}</div>'
+                    '<section class="report-section section-overview">'
+                    f'<div class="section-body">{intro}</div>'
                     '</section>'
                 )
             continue
-        sections.append(_render_report_section(title, body))
+        section = _render_report_section(title, body)
+        if section:
+            sections.append(section)
 
     return "\n".join(sections)
 
@@ -756,13 +893,17 @@ def render_to_image(
 
     template = Template(HTML_TEMPLATE)
     safe_group = html.escape(group_name) if group_name else ""
-    title = html.escape(title_override) if title_override else (f"【{safe_group}】群聊总结" if safe_group else "群聊总结")
+    title = html.escape(title_override) if title_override else (safe_group or "今日群聊")
     title = _replace_emoji_images(title)
+    topic_count = len(re.findall(r"^###\s+", summary, flags=re.MULTILINE))
+    context_stat = f'<span>{safe_group}</span>' if title_override and safe_group else ""
+    topic_stat = f'<span>{topic_count} 个话题</span>' if topic_count else ""
     full_html = template.safe_substitute(
         title=title,
-        date=date_str,
+        context_stat=context_stat,
+        date=html.escape(date_str),
         msg_count=msg_count,
-        gen_time=gen_time,
+        topic_stat=topic_stat,
         content=html_content,
     )
 
@@ -821,11 +962,11 @@ def render_to_image(
 
         bottom = height
         center_x = width // 2
-        bg_color = (245, 245, 245)
+        bg_color = pixels[0, 0][:3]
 
         for y in range(height - 1, 100, -1):
             r, g, b = pixels[center_x, y][:3]
-            if not (r == bg_color[0] and g == bg_color[1] and b == bg_color[2]):
+            if any(abs(channel - background) > 3 for channel, background in zip((r, g, b), bg_color, strict=True)):
                 bottom = y + 40
                 break
 
