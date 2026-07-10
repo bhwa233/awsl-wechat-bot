@@ -57,7 +57,7 @@ class CommandService:
     def load_commands(self) -> bool:
         try:
             resp = self._client.get(
-                f"{self.api_base_url}/command/hp",
+                f"{self.api_base_url}/command/list",
                 headers={"accept": "application/json"},
                 timeout=30.0,
             )
