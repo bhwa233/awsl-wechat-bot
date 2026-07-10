@@ -22,26 +22,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: "Microsoft YaHei", "DengXian", "PingFang SC", sans-serif;
-            background: #d9d6cf;
+            background: #ededed;
             padding: 24px;
             min-height: 100vh;
-            color: #202a27;
+            color: #191919;
         }
         .paper {
-            --ink: #183e35;
-            --ink-soft: #315c51;
-            --coral: #e56547;
-            --sun: #f1c75b;
-            --paper: #f7f3e9;
+            --ink: #191919;
+            --ink-soft: #576b65;
+            --wechat-green: #07c160;
+            --line: #e5e5e5;
+            --paper: #ffffff;
             width: 852px;
             margin: 0 auto;
-            background:
-                radial-gradient(circle at 18% 12%, rgba(229, 101, 71, 0.055), transparent 25%),
-                linear-gradient(rgba(24, 62, 53, 0.018) 1px, transparent 1px),
-                var(--paper);
-            background-size: auto, 100% 7px, auto;
-            border-top: 9px solid var(--ink);
-            box-shadow: 0 14px 40px rgba(31, 38, 35, 0.18);
+            background: var(--paper);
+            border-top: 6px solid var(--wechat-green);
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12);
             padding: 0 46px 42px;
             overflow: hidden;
             position: relative;
@@ -53,37 +49,51 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         h1 {
             max-width: 100%;
             color: var(--ink);
-            font-family: "SimSun", "Songti SC", "STSong", serif;
-            font-size: 48px;
-            line-height: 1.16;
-            font-weight: 900;
-            letter-spacing: -0.03em;
+            font-family: "Microsoft YaHei", "DengXian", "PingFang SC", sans-serif;
+            font-size: 44px;
+            line-height: 1.25;
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
         .content { padding-top: 30px; }
         .report-section {
-            margin-top: 46px;
+            margin-top: 42px;
             position: relative;
         }
         .report-section:first-child { margin-top: 0; }
         .section-heading {
             display: flex;
-            align-items: flex-end;
-            gap: 16px;
-            margin-bottom: 24px;
-            padding-bottom: 13px;
-            border-bottom: 2px solid var(--ink);
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding: 0;
+            border: 0;
+        }
+        .section-heading::before {
+            content: "";
+            width: 18px;
+            height: 4px;
+            flex: 0 0 auto;
+            background: var(--wechat-green);
+        }
+        .section-heading::after {
+            content: "";
+            height: 1px;
+            flex: 1;
+            margin-left: 2px;
+            background: var(--line);
         }
         .section-heading h2 {
             color: var(--ink);
-            font-family: "SimSun", "Songti SC", "STSong", serif;
-            font-size: 28px;
-            line-height: 1.2;
-            font-weight: 900;
+            font-family: "Microsoft YaHei", "DengXian", "PingFang SC", sans-serif;
+            font-size: 25px;
+            line-height: 1.35;
+            font-weight: 700;
         }
         .section-body p,
         .section-body li {
-            font-size: 18px;
-            line-height: 1.8;
+            font-size: 19px;
+            line-height: 1.76;
         }
         .section-body p { margin: 0 0 14px; }
         .section-body ul,
@@ -96,9 +106,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         .section-body blockquote {
             margin: 16px 0;
             padding: 13px 18px;
-            border-left: 4px solid var(--coral);
-            background: rgba(229, 101, 71, 0.08);
-            color: #42504b;
+            border-left: 4px solid var(--wechat-green);
+            background: #f7f7f7;
+            color: var(--ink);
         }
         .section-body pre {
             overflow: hidden;
@@ -106,14 +116,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             word-break: break-word;
             margin: 16px 0;
             padding: 16px;
-            background: #203a34;
-            color: #fffaf0;
+            background: #2c2c2c;
+            color: #ffffff;
             font-size: 14px;
             line-height: 1.6;
         }
         .section-body code {
             padding: 1px 5px;
-            background: rgba(24, 62, 53, 0.08);
+            background: rgba(0, 0, 0, 0.06);
             border-radius: 3px;
             font-family: "SFMono-Regular", Consolas, monospace;
             font-size: 0.92em;
@@ -134,91 +144,99 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         .section-body th,
         .section-body td {
-            border-bottom: 1px solid rgba(24, 62, 53, 0.22);
+            border-bottom: 1px solid var(--line);
             padding: 9px 11px;
             vertical-align: top;
             text-align: left;
         }
         .section-body th {
-            background: rgba(24, 62, 53, 0.07);
-            font-weight: 850;
+            background: #f7f7f7;
+            font-weight: 700;
         }
         .topics-list {
-            border-top: 1px solid rgba(24, 62, 53, 0.18);
+            border-top: 0;
         }
         .topic-card {
             display: grid;
-            grid-template-columns: 54px minmax(0, 1fr);
-            gap: 20px;
-            padding: 25px 0 27px;
-            border-bottom: 1px solid rgba(24, 62, 53, 0.18);
+            grid-template-columns: 38px minmax(0, 1fr);
+            gap: 14px;
+            padding: 24px 0 26px;
+            border-bottom: 1px solid var(--line);
         }
+        .topic-card:first-child { padding-top: 2px; }
         .topic-index {
-            width: 44px;
-            height: 44px;
-            display: grid;
-            place-items: center;
-            background: var(--coral);
-            color: #fffaf0;
-            border-radius: 50% 50% 50% 8px;
-            font-family: Georgia, serif;
-            font-size: 17px;
-            font-weight: 800;
+            width: 38px;
+            height: auto;
+            display: block;
+            padding-top: 3px;
+            background: transparent;
+            color: var(--wechat-green);
+            border-radius: 0;
+            font-family: "Microsoft YaHei", sans-serif;
+            font-size: 16px;
+            font-weight: 700;
         }
         .topic-card h3 {
             color: var(--ink);
-            font-family: "SimSun", "Songti SC", "STSong", serif;
-            font-size: 23px;
+            font-family: "Microsoft YaHei", "DengXian", "PingFang SC", sans-serif;
+            font-size: 21px;
             line-height: 1.4;
-            font-weight: 900;
+            font-weight: 700;
         }
         .topic-meta {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px 18px;
-            margin: 11px 0 13px;
-            color: #6e7772;
-            font-size: 14px;
-            line-height: 1.5;
+            gap: 10px 22px;
+            margin: 10px 0 14px;
+            color: #3f3f3f;
+            font-size: 16px;
+            font-weight: 500;
+            line-height: 1.6;
         }
         .topic-meta span {
             display: inline-flex;
-            gap: 6px;
+            align-items: center;
+            gap: 7px;
         }
         .topic-meta b {
-            color: var(--ink-soft);
-            font-size: 12px;
-            font-weight: 850;
-            letter-spacing: 0.08em;
+            color: #078f48;
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
         }
         .topic-copy p {
-            font-size: 18px;
-            line-height: 1.78;
-            text-align: justify;
+            font-size: 19px;
+            line-height: 1.76;
         }
         .section-important {
-            display: grid;
-            grid-template-columns: 188px minmax(0, 1fr);
-            gap: 26px;
-            padding: 28px 30px;
-            background: #f0ca68;
-        }
-        .section-important .section-heading {
             display: block;
-            margin: 0;
             padding: 0;
-            border: 0;
-        }
-        .section-important .section-body {
-            padding-left: 26px;
-            border-left: 2px solid rgba(24, 62, 53, 0.32);
+            background: transparent;
         }
         .section-important .section-body p,
         .section-important .section-body li {
-            color: #243a34;
-            font-size: 18px;
-            line-height: 1.75;
-            font-weight: 650;
+            color: var(--ink);
+            font-size: 19px;
+            line-height: 1.76;
+            font-weight: 500;
+        }
+        .section-important .section-body ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        .section-important .section-body li {
+            position: relative;
+            padding-left: 20px;
+        }
+        .section-important .section-body li::before {
+            content: "";
+            position: absolute;
+            left: 1px;
+            top: 0.72em;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--wechat-green);
         }
         .ranking-list {
             display: grid;
@@ -233,13 +251,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             align-items: center;
         }
         .rank-position {
-            color: #88908c;
+            color: #8c8c8c;
             font-family: Georgia, serif;
             font-size: 18px;
             font-weight: 800;
             font-style: italic;
         }
-        .rank-row:nth-child(-n+3) .rank-position { color: var(--coral); }
+        .rank-row:nth-child(-n+3) .rank-position { color: var(--wechat-green); }
         .rank-label {
             display: flex;
             justify-content: space-between;
@@ -251,66 +269,63 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             min-width: 0;
             color: var(--ink);
             font-size: 16px;
-            font-weight: 850;
+            font-weight: 700;
             overflow-wrap: anywhere;
         }
         .rank-label span {
             flex: 0 0 auto;
-            color: #747d78;
+            color: #737373;
             font-size: 12px;
         }
         .rank-bar {
             height: 6px;
             overflow: hidden;
-            background: rgba(24, 62, 53, 0.10);
+            background: #e5e5e5;
             border-radius: 4px;
         }
         .rank-bar i {
             display: block;
             height: 100%;
-            background: var(--ink-soft);
+            background: #707070;
             border-radius: inherit;
         }
-        .rank-row:nth-child(-n+3) .rank-bar i { background: var(--coral); }
+        .rank-row:nth-child(-n+3) .rank-bar i { background: var(--wechat-green); }
         .section-general .section-body { padding: 0 4px; }
         .masthead {
-            padding: 40px 0 28px;
-            border-bottom: 3px solid var(--ink);
+            padding: 34px 0 24px;
+            border-bottom: 1px solid var(--line);
         }
         .summary-meta {
             display: flex;
             flex-wrap: wrap;
             gap: 8px 0;
-            margin-top: 18px;
-            color: #6d7671;
+            margin-top: 14px;
+            color: #737373;
             font-size: 14px;
             line-height: 1.5;
+            font-weight: 600;
         }
         .summary-meta span + span::before {
             content: "·";
             margin: 0 11px;
-            color: var(--coral);
+            color: var(--wechat-green);
             font-weight: 900;
         }
-        .section-heading {
-            margin-bottom: 20px;
-            padding-bottom: 11px;
-        }
-        .section-heading h2 { font-size: 27px; }
         .section-overview {
             display: block;
             margin: 0;
-            padding: 2px 4px 30px;
+            padding: 2px 0 2px 20px;
             background: transparent;
             color: var(--ink);
-            border-bottom: 1px solid rgba(24, 62, 53, 0.18);
+            border: 0;
+            border-left: 3px solid var(--wechat-green);
         }
         .section-overview .section-heading { display: none; }
         .section-overview .section-body { padding: 0; }
         .section-overview .section-body::before { content: none; }
         .section-overview .section-body p {
             color: var(--ink);
-            font-size: 24px;
+            font-size: 21px;
             line-height: 1.72;
         }
         .emoji-img {
