@@ -102,13 +102,18 @@ def request_json(
     *,
     token: str | None,
     params: dict[str, Any] | None = None,
+    json_body: Any | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> Any:
     headers = {"Accept": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+    data = None
+    if json_body is not None:
+        data = json.dumps(json_body, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json"
 
-    req = urllib.request.Request(build_url(base_url, path, params), headers=headers, method=method)
+    req = urllib.request.Request(build_url(base_url, path, params), data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
@@ -167,6 +172,27 @@ def command_messages(args: argparse.Namespace) -> None:
             "end": args.end,
             "limit": args.limit,
             "desc": "true" if args.order == "desc" else "false",
+        },
+        timeout=args.timeout,
+    )
+    json_dump(data)
+
+
+def command_search_messages(args: argparse.Namespace) -> None:
+    data = request_json(
+        "POST",
+        args.base_url,
+        "/api/chatlog/messages/search",
+        token=args.token,
+        json_body={
+            "group": args.group,
+            "query": args.query,
+            "senders": args.senders,
+            "start": args.start,
+            "end": args.end,
+            "limit": args.limit,
+            "offset": args.offset,
+            "desc": args.order == "desc",
         },
         timeout=args.timeout,
     )
@@ -248,6 +274,19 @@ def build_parser() -> argparse.ArgumentParser:
     order_group.add_argument("--desc", dest="order", action="store_const", const="desc", help="Newest first")
     order_group.add_argument("--asc", dest="order", action="store_const", const="asc", help="Oldest first")
     messages_parser.set_defaults(func=command_messages)
+
+    search_parser = subparsers.add_parser("search-messages", help="Search uncompressed plain-text chat records")
+    search_parser.add_argument("--group", required=True, help="Chatroom ID or personal WeChat ID")
+    search_parser.add_argument("--query", required=True, help="Literal message text to find")
+    search_parser.add_argument("--sender", dest="senders", action="append", default=[], help="Sender wxid; repeat for multiple")
+    search_parser.add_argument("--start", default=None, help="Start time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
+    search_parser.add_argument("--end", default=None, help="End time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
+    search_parser.add_argument("--limit", type=int, default=100, help="Max messages")
+    search_parser.add_argument("--offset", type=int, default=0, help="Skip messages after ordering")
+    search_order = search_parser.add_mutually_exclusive_group(required=True)
+    search_order.add_argument("--desc", dest="order", action="store_const", const="desc", help="Newest first")
+    search_order.add_argument("--asc", dest="order", action="store_const", const="asc", help="Oldest first")
+    search_parser.set_defaults(func=command_search_messages)
 
     gn_parser = subparsers.add_parser("group-name", help="Get group display name")
     gn_parser.add_argument("--group", required=True, help="Group ID")

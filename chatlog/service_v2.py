@@ -44,6 +44,31 @@ class ChatlogServiceV2:
     ) -> dict[str, list[Message]]:
         return WeChatDBReaderV2(encrypted_dir, hex_key).get_messages_since(items, limit=limit)
 
+    def search_messages(
+        self,
+        encrypted_dir: str,
+        hex_key: str,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
+    ) -> list[Message]:
+        return WeChatDBReaderV2(encrypted_dir, hex_key).search_messages(
+            talker=talker,
+            query=query,
+            senders=senders,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            offset=offset,
+            desc=desc,
+        )
+
     def get_group_display_name(
         self,
         encrypted_dir: str,

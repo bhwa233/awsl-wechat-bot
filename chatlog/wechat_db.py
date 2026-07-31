@@ -28,6 +28,7 @@ from datetime import datetime
 from hashlib import pbkdf2_hmac, sha512
 
 from chatlog.platform import get_chatlog_platform
+from chatlog.search import escape_like_query, message_search_expressions
 
 try:
     from Crypto.Cipher import AES
@@ -682,6 +683,52 @@ class WeChatDBReader:
         offset: int = 0,
         desc: bool = False,
     ) -> list[Message]:
+        return self._get_messages(
+            talker=talker,
+            start_time=start_time,
+            end_time=end_time,
+            text_only=text_only,
+            limit=limit,
+            offset=offset,
+            desc=desc,
+        )
+
+    def search_messages(
+        self,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
+    ) -> list[Message]:
+        return self._get_messages(
+            talker=talker,
+            start_time=start_time,
+            end_time=end_time,
+            text_only=True,
+            limit=limit,
+            offset=offset,
+            desc=desc,
+            senders=senders,
+            content_query=query,
+        )
+
+    def _get_messages(
+        self,
+        talker: str,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        text_only: bool = True,
+        limit: int = 0,
+        offset: int = 0,
+        desc: bool = False,
+        senders: list[str] | None = None,
+        content_query: str = "",
+    ) -> list[Message]:
         """获取聊天记录"""
         start_time = start_time or datetime(2000, 1, 1)
         end_time = end_time or datetime.now()
@@ -699,6 +746,7 @@ class WeChatDBReader:
 
         # 获取群昵称映射
         display_names = self._get_chatroom_display_names(talker) if is_chatroom else {}
+        search_sender, search_content = message_search_expressions(is_chatroom)
 
         # 单 db 内 sort_seq 单调,最多需要 offset + limit 条;合并排序后再切片
         per_db_cap = (offset + limit) if limit > 0 else 0
@@ -717,14 +765,24 @@ class WeChatDBReader:
                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                 WHERE m.create_time >= ? AND m.create_time <= ?
             """
-            params: tuple = (start_ts, end_ts)
+            params: list = [start_ts, end_ts]
             if text_only:
                 query += " AND (m.local_type & 0xFFFFFFFF) = ?"
-                params = (*params, MESSAGE_TYPE_TEXT)
+                params.append(MESSAGE_TYPE_TEXT)
+            if senders:
+                placeholders = ",".join("?" for _ in senders)
+                query += f" AND {search_sender} IN ({placeholders})"
+                params.extend(senders)
+            if content_query:
+                query += (
+                    " AND hex(substr(m.message_content, 1, 4)) != '28B52FFD'"
+                    f" AND {search_content} LIKE ? ESCAPE '\\' COLLATE NOCASE"
+                )
+                params.append(f"%{escape_like_query(content_query)}%")
             query += f" ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}"
             if per_db_cap > 0:
                 query += " LIMIT ?"
-                params = (*params, per_db_cap)
+                params.append(per_db_cap)
             cursor.execute(query, params)
 
             for sort_seq, server_id, local_type, user_name, create_time, message_content, status, source in cursor.fetchall():

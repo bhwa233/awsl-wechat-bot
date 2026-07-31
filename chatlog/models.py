@@ -60,6 +60,19 @@ class ChatlogMessageResponse(BaseModel):
         return self
 
 
+class ChatlogMessageSearchRequest(BaseModel):
+    """纯文本消息搜索请求。"""
+
+    group: str
+    query: str = Field(min_length=1, max_length=256)
+    senders: list[str] = Field(default_factory=list, max_length=200)
+    start: str | None = None
+    end: str | None = None
+    limit: int = Field(default=100, ge=1, le=10000)
+    offset: int = Field(default=0, ge=0, le=100000)
+    desc: bool = False
+
+
 class ChatlogBatchItem(BaseModel):
     """批量增量查询的单个群游标"""
     group: str

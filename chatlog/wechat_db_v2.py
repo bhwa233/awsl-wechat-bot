@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from chatlog.platform import get_chatlog_platform
+from chatlog.search import escape_like_query, message_search_expressions
 from chatlog.wechat_db import (
     HAS_ZSTD,
     MESSAGE_TYPE_TEXT,
@@ -73,6 +74,10 @@ def _validate_username(name: str) -> str:
 
 def _talker_to_table_name(talker: str) -> str:
     return f"Msg_{hashlib.md5(talker.encode()).hexdigest()}"
+
+
+def _quote_sql_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
 
 
 def _decode_blob(value: Any) -> bytes | Any:
@@ -390,6 +395,52 @@ class WeChatDBReaderV2:
         offset: int = 0,
         desc: bool = False,
     ) -> list[Message]:
+        return self._get_messages(
+            talker=talker,
+            start_time=start_time,
+            end_time=end_time,
+            text_only=text_only,
+            limit=limit,
+            offset=offset,
+            desc=desc,
+        )
+
+    def search_messages(
+        self,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
+    ) -> list[Message]:
+        return self._get_messages(
+            talker=talker,
+            start_time=start_time,
+            end_time=end_time,
+            text_only=True,
+            limit=limit,
+            offset=offset,
+            desc=desc,
+            senders=senders,
+            content_query=query,
+        )
+
+    def _get_messages(
+        self,
+        talker: str,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        text_only: bool = True,
+        limit: int = 0,
+        offset: int = 0,
+        desc: bool = False,
+        senders: list[str] | None = None,
+        content_query: str = "",
+    ) -> list[Message]:
         _validate_username(talker)
         start_time = start_time or datetime(2000, 1, 1)
         end_time = end_time or datetime.now()
@@ -404,8 +455,22 @@ class WeChatDBReaderV2:
             raise ValueError(f"Invalid table name derived from talker: {talker}")
         is_chatroom = talker.endswith("@chatroom")
         display_names = self._get_chatroom_display_names(talker) if is_chatroom else {}
+        search_sender, search_content = message_search_expressions(is_chatroom)
 
         type_filter = f" AND m.local_type = {MESSAGE_TYPE_TEXT}" if text_only else ""
+        sender_filter = ""
+        if senders:
+            for sender in senders:
+                _validate_username(sender)
+            sender_values = ",".join(_quote_sql_literal(sender) for sender in senders)
+            sender_filter = f" AND {search_sender} IN ({sender_values})"
+        content_filter = ""
+        if content_query:
+            pattern = _quote_sql_literal(f"%{escape_like_query(content_query)}%")
+            content_filter = (
+                " AND hex(substr(m.message_content, 1, 4)) != '28B52FFD'"
+                f" AND {search_content} LIKE {pattern} ESCAPE '\\' COLLATE NOCASE"
+            )
         sql_limit = ""
         if limit > 0:
             sql_limit = f" LIMIT {int(offset + limit)}"
@@ -426,7 +491,7 @@ class WeChatDBReaderV2:
                     f"LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
                     f"WHERE m.sort_seq >= {seq_lo} AND m.sort_seq <= {seq_hi} "
                     f"AND m.create_time >= {start_ts} AND m.create_time <= {end_ts}"
-                    f"{type_filter} "
+                    f"{type_filter}{sender_filter}{content_filter} "
                     f"ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}{sql_limit}"
                 )
                 _, rows = self._query(db_path, sql)

@@ -15,8 +15,10 @@ from chatlog.models import (
     ChatlogGroupMemberResponse,
     ChatlogGroupResponse,
     ChatlogMessageResponse,
+    ChatlogMessageSearchRequest,
 )
 from chatlog.platform import get_chatlog_platform
+from chatlog.search import normalize_query, parse_time_range, validate_usernames
 from chatlog.service_v2 import ChatlogServiceV2
 from common.auth import verify_token, verify_token_or_query
 from common.config import config
@@ -237,6 +239,37 @@ def create_v2_router() -> APIRouter:
         except Exception as e:
             logger.error(f"[ChatlogV2] 查询消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    @db_router.post(
+        "/messages/search",
+        response_model=list[ChatlogMessageResponse],
+    )
+    def search_messages(request: ChatlogMessageSearchRequest):
+        try:
+            query_text = normalize_query(request.query)
+            if not query_text:
+                raise ValueError("query 不能为空")
+            start_time, end_time = parse_time_range(request.start, request.end)
+            messages = chatlog.search_messages(
+                config.WECHAT_DB_INPUT_PATH,
+                config.WECHAT_DB_KEY,
+                request.group,
+                query=query_text,
+                senders=validate_usernames(request.senders, "senders"),
+                start_time=start_time,
+                end_time=end_time,
+                limit=request.limit,
+                offset=request.offset,
+                desc=request.desc,
+            )
+            return [ChatlogMessageResponse(**message.to_dict(), server_id=message.server_id) for message in messages]
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[ChatlogV2] 搜索消息失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="搜索失败, 请查看服务器日志") from e
 
     @db_router.post(
         "/messages/batch",

@@ -220,6 +220,7 @@ GET  /api/chatlog/v1/health
 POST /api/chatlog/v1/decrypt
 GET  /api/chatlog/v1/groups
 GET  /api/chatlog/v1/messages
+POST /api/chatlog/v1/messages/search
 GET  /api/chatlog/v1/group-display-name
 GET  /api/chatlog/v1/media
 
@@ -230,12 +231,17 @@ GET  /api/chatlog/v2/groups
 GET  /api/chatlog/v2/contacts
 GET  /api/chatlog/v2/members
 GET  /api/chatlog/v2/messages
+POST /api/chatlog/v2/messages/search
 POST /api/chatlog/v2/messages/batch
 GET  /api/chatlog/v2/group-display-name
 GET  /api/chatlog/v2/media
 
 # 无版本前缀走 CHATLOG_USE_V2 配置（默认 true→v2）
 GET  /api/chatlog/health 等
+
+# 消息搜索接口
+POST /api/chatlog/messages/search   # {"group":"xxx@chatroom","query":"文本","senders":[],"limit":100,"offset":0,"desc":false}
+# 消息搜索仅在 SQL 中匹配 msg_type=1 的未压缩明文 message_content，不全量解压扫描
 
 # 媒体: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file
 GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
@@ -267,6 +273,7 @@ GET  /api/groups                      # 群组列表（代理 Gateway）
 POST /api/send                        # 发送消息（代理 Gateway）
 GET  /api/chatlog/groups              # 群聊列表（代理 Chatlog）
 GET  /api/chatlog/messages            # 查询消息（代理 Chatlog）
+POST /api/chatlog/messages/search     # 搜索纯文本消息（代理 Chatlog）
 POST /api/chatlog/decrypt             # 解密（代理 Chatlog）
 GET  /api/chatlog/health              # 无版本健康端点 + media 能力（代理 Chatlog）
 GET  /api/chatlog/media               # 富媒体 bytes 透传（代理 Chatlog）

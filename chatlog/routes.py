@@ -13,8 +13,10 @@ from chatlog.models import (
     ChatlogGroupMemberResponse,
     ChatlogGroupResponse,
     ChatlogMessageResponse,
+    ChatlogMessageSearchRequest,
 )
 from chatlog.platform import get_chatlog_platform
+from chatlog.search import normalize_query, parse_time_range, validate_usernames
 from chatlog.service import ChatlogService
 from common.auth import verify_token
 from common.config import config
@@ -206,6 +208,36 @@ def create_routes() -> APIRouter:
         except Exception as e:
             logger.error(f"[Chatlog] 查询消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败, 请查看服务器日志") from e
+
+    @router.post("/messages/search", response_model=list[ChatlogMessageResponse], dependencies=[Depends(verify_token)])
+    def search_messages(request: ChatlogMessageSearchRequest):
+        _ensure_v1_config()
+        if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
+        try:
+            query_text = normalize_query(request.query)
+            if not query_text:
+                raise ValueError("query 不能为空")
+            start_time, end_time = parse_time_range(request.start, request.end)
+            messages = chatlog.search_messages(
+                config.WECHAT_DB_OUTPUT_PATH,
+                request.group,
+                query=query_text,
+                senders=validate_usernames(request.senders, "senders"),
+                start_time=start_time,
+                end_time=end_time,
+                limit=request.limit,
+                offset=request.offset,
+                desc=request.desc,
+            )
+            return [ChatlogMessageResponse(**message.to_dict(), server_id=message.server_id) for message in messages]
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[Chatlog] 搜索消息失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="搜索失败, 请查看服务器日志") from e
 
     try:
         _media_binding = V1MediaBackendBinding(get_chatlog_platform(), config)

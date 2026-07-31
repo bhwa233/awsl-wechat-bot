@@ -66,6 +66,34 @@ class ChatlogClient:
         resp.raise_for_status()
         return resp.json()
 
+    def search_messages(
+        self,
+        group: str,
+        query: str,
+        *,
+        senders: list[str] | None = None,
+        start: datetime | str | None = None,
+        end: datetime | str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
+    ) -> list[dict]:
+        body: dict = {
+            "group": group,
+            "query": query,
+            "senders": senders or [],
+            "limit": limit,
+            "offset": offset,
+            "desc": desc,
+        }
+        if start:
+            body["start"] = start.strftime("%Y-%m-%d %H:%M:%S") if isinstance(start, datetime) else start
+        if end:
+            body["end"] = end.strftime("%Y-%m-%d %H:%M:%S") if isinstance(end, datetime) else end
+        resp = self._client.post("/api/chatlog/messages/search", json=body)
+        resp.raise_for_status()
+        return resp.json()
+
     def get_room_members(self, group: str) -> list[dict]:
         """列出群成员(群内昵称 + 联系人资料), 群主排首位"""
         resp = self._client.get("/api/chatlog/members", params={"group": group})

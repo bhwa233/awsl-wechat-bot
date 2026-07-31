@@ -98,6 +98,39 @@ Query chat messages for a specific group or contact.
 
 ---
 
+### `POST /api/chatlog/messages/search`
+
+Search uncompressed plain-text messages for a specific group or contact. Matching is
+performed in SQL against the visible message body after legacy group-sender prefix
+parsing. Zstd-compressed messages and non-text message types are not scanned.
+
+**JSON request body:**
+```json
+{
+  "group": "12345@chatroom",
+  "query": "发布",
+  "senders": ["wxid_alice", "wxid_bob"],
+  "start": "2026-05-01",
+  "end": "2026-05-04 23:59:59",
+  "limit": 100,
+  "offset": 0,
+  "desc": true
+}
+```
+
+Fields:
+- `group` (string, required): Group ID (`xxx@chatroom`) or personal WeChat ID
+- `query` (string, required): Literal text to find, 1–256 characters; SQL wildcard characters are treated literally
+- `senders` (array of strings, default `[]`): Optional sender wxids, at most 200; an empty array matches all senders
+- `start` / `end` (string, optional): `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`
+- `limit` (int, default 100): Maximum results, 1–10000
+- `offset` (int, default 0): Skip results after ordering, 0–100000
+- `desc` (bool, default false): `true` returns newest first
+
+**Response:** Same array shape as `GET /api/chatlog/messages`.
+
+---
+
 ### `GET /api/chatlog/group-display-name`
 
 Get the display name for a group.

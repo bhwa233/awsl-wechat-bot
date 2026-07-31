@@ -66,6 +66,34 @@ class ChatlogService:
         finally:
             reader.close()
 
+    def search_messages(
+        self,
+        db_path: str,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        desc: bool = False,
+    ) -> list[Message]:
+        reader = WeChatDBReader(db_path)
+        try:
+            return reader.search_messages(
+                talker=talker,
+                query=query,
+                senders=senders,
+                start_time=start_time,
+                end_time=end_time,
+                limit=limit,
+                offset=offset,
+                desc=desc,
+            )
+        finally:
+            reader.close()
+
     def get_contacts(self, db_path: str, usernames: list[str]) -> list[Contact]:
         """批量查询联系人/群成员信息(含头像 URL)"""
         reader = WeChatDBReader(db_path)

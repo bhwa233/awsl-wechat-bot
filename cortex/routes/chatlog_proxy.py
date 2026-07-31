@@ -57,6 +57,11 @@ def create_routes(chatlog_base_url: str, chatlog_token: str) -> tuple[APIRouter,
         resp = await client.get("/api/chatlog/messages", params=dict(request.query_params))
         return _proxy_response(resp)
 
+    @router.post("/api/chatlog/messages/search", dependencies=[Depends(verify_token)])
+    async def proxy_chatlog_message_search(request: Request):
+        resp = await client.post("/api/chatlog/messages/search", json=await request.json())
+        return _proxy_response(resp)
+
     @router.post("/api/chatlog/decrypt", dependencies=[Depends(verify_token)])
     async def proxy_chatlog_decrypt():
         resp = await client.post("/api/chatlog/decrypt", timeout=300)
