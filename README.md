@@ -240,8 +240,8 @@ GET  /api/chatlog/v2/media
 GET  /api/chatlog/health 等
 
 # 消息搜索接口
-POST /api/chatlog/messages/search   # {"group":"xxx@chatroom","query":"文本","senders":[],"limit":100,"offset":0,"desc":false}
-# 消息搜索仅在 SQL 中匹配 msg_type=1 的未压缩明文 message_content，不全量解压扫描
+POST /api/chatlog/messages/search   # {"group":"xxx@chatroom","query":"","senders":["wxid_xxx"],"limit":100,"offset":0,"desc":false}
+# query 或 senders 至少提供一个；关键词仅匹配未压缩明文，仅按发送者时在 SQL 中按人/时间过滤
 
 # 媒体: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file
 GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=

@@ -275,9 +275,9 @@ def build_parser() -> argparse.ArgumentParser:
     order_group.add_argument("--asc", dest="order", action="store_const", const="asc", help="Oldest first")
     messages_parser.set_defaults(func=command_messages)
 
-    search_parser = subparsers.add_parser("search-messages", help="Search uncompressed plain-text chat records")
+    search_parser = subparsers.add_parser("search-messages", help="Search plain-text chat records")
     search_parser.add_argument("--group", required=True, help="Chatroom ID or personal WeChat ID")
-    search_parser.add_argument("--query", required=True, help="Literal message text to find")
+    search_parser.add_argument("--query", default="", help="Literal message text; optional with --sender")
     search_parser.add_argument("--sender", dest="senders", action="append", default=[], help="Sender wxid; repeat for multiple")
     search_parser.add_argument("--start", default=None, help="Start time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
     search_parser.add_argument("--end", default=None, help="End time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
@@ -298,6 +298,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "search-messages" and not args.query.strip() and not args.senders:
+        parser.error("search-messages requires --query or at least one --sender")
     if args.command == "config":
         args.func(args)
         return 0

@@ -28,7 +28,7 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Decrypt WeChat chat records with `decrypt`, which calls `POST /api/chatlog/decrypt` and uses Chatlog-side `.env` values.
 - List decrypted chatlog groups with `groups`, which calls `GET /api/chatlog/groups`.
 - Query chat records with `messages --group <group_id>`, which calls `GET /api/chatlog/messages`. Every `messages` command must explicitly pass exactly one ordering flag: `--desc` for newest first or `--asc` for oldest first. With `--desc`, `--limit 100` returns the latest 100 messages. Use the `username` from `groups` as `--group`.
-- Search uncompressed plain-text chat records with `search-messages --group <group_id> --query <text>`, which calls `POST /api/chatlog/messages/search`. Repeat `--sender <wxid>` to filter by one or more senders; the CLI sends them as a JSON array. Exactly one of `--desc` or `--asc` is required.
+- Search plain-text chat records with `search-messages --group <group_id>`, which calls `POST /api/chatlog/messages/search`. Pass `--query <text>`, repeat `--sender <wxid>`, or combine both; at least one query or sender is required. Exactly one of `--desc` or `--asc` is required.
 - Get group display name with `group-name --group <group_id>`, which calls `GET /api/chatlog/group-display-name`.
 - Health check with `health`, which calls `GET /api/chatlog/health`. Response includes `media` capability flags: `image`, `sticker`, `video_thumb`, `voice`, `file`.
 
@@ -97,6 +97,11 @@ uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
   --group 12345@chatroom --query "发布" \
   --sender wxid_alice --sender wxid_bob --limit 50 --desc
+
+# Query all text messages from one sender in a time range (no keyword required)
+uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
+  --group 12345@chatroom --sender wxid_alice \
+  --start "2026-05-01" --end "2026-05-04" --limit 1000 --asc
 
 # Get group display name
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" group-name \

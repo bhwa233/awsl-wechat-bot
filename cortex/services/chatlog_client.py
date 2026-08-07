@@ -69,7 +69,7 @@ class ChatlogClient:
     def search_messages(
         self,
         group: str,
-        query: str,
+        query: str = "",
         *,
         senders: list[str] | None = None,
         start: datetime | str | None = None,

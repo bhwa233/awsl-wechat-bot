@@ -25,6 +25,14 @@ def normalize_query(query: str | None) -> str:
     return normalized_query
 
 
+def normalize_search_filters(query: str | None, senders: list[str]) -> tuple[str, list[str]]:
+    normalized_query = normalize_query(query)
+    normalized_senders = validate_usernames(senders, "senders")
+    if not normalized_query and not normalized_senders:
+        raise ValueError("query 和 senders 至少提供一个")
+    return normalized_query, normalized_senders
+
+
 def escape_like_query(query: str) -> str:
     return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 

@@ -16,7 +16,7 @@ from chatlog.models import (
     ChatlogMessageSearchRequest,
 )
 from chatlog.platform import get_chatlog_platform
-from chatlog.search import normalize_query, parse_time_range, validate_usernames
+from chatlog.search import normalize_search_filters, parse_time_range
 from chatlog.service import ChatlogService
 from common.auth import verify_token
 from common.config import config
@@ -215,15 +215,13 @@ def create_routes() -> APIRouter:
         if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
             raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
         try:
-            query_text = normalize_query(request.query)
-            if not query_text:
-                raise ValueError("query 不能为空")
+            query_text, senders = normalize_search_filters(request.query, request.senders)
             start_time, end_time = parse_time_range(request.start, request.end)
             messages = chatlog.search_messages(
                 config.WECHAT_DB_OUTPUT_PATH,
                 request.group,
                 query=query_text,
-                senders=validate_usernames(request.senders, "senders"),
+                senders=senders,
                 start_time=start_time,
                 end_time=end_time,
                 limit=request.limit,

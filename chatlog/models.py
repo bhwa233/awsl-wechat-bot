@@ -64,7 +64,7 @@ class ChatlogMessageSearchRequest(BaseModel):
     """纯文本消息搜索请求。"""
 
     group: str
-    query: str = Field(min_length=1, max_length=256)
+    query: str = Field(default="", max_length=256)
     senders: list[str] = Field(default_factory=list, max_length=200)
     start: str | None = None
     end: str | None = None
