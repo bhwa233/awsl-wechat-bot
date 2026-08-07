@@ -108,6 +108,16 @@ Linux Gateway 通过 Chatlog 读取消息、通过 X11 发送消息，不使用�
 sudo apt-get install -y wmctrl xdotool xclip x11-utils xsel
 ```
 
+> **⚠️ WeChat 客户端和 bot 必须在同一个 Linux 用户下启动（推荐都用 root）。**
+>
+> 跨用户部署会让图片发送静默失败：`MessageSender` 用 `tempfile.mkstemp` 写临时图片文件默认权限是 0600（owner-only），bot 进程所属用户之外读不到。Gateway 日志仍会打 `已发送: [图片]`，但 WeChat 实际收不到（因为 adapter 只校验 `xdotool` returncode，不验证 WeChat 是否真的粘贴成功）。
+>
+> `linuxserver/webtop` 这类容器默认 WeChat 跑在 `abc` 用户下，若 bot 用 root 启动就会踩这个坑。两种修法：
+> - **都用 root 启动**（推荐）—— 还能避开 `abc` 用户下 WeChat 把图片消息降级成文件附件（`msg_type=49 file`）的额外问题，root 下能正常发为内联图（`msg_type=3 image`）
+> - **都用 `abc` 启动** —— 至少保证同用户，避免权限问题
+>
+> 切换 WeChat 启动用户后，WeChat 数据目录会跟着变（如 root 下默认在 `~/xwechat_files/`），需要相应更新 `.env` 的 `WECHAT_DB_INPUT_PATH`，并重新提取 DB 密钥（见下文）。
+
 `.env` 至少需要配置：
 
 ```env
