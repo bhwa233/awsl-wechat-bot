@@ -630,20 +630,6 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 if temp_path or temp_dir:
                     self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=1.0)
 
-    def send_text2voice_to_window(self, window, text: str) -> bool:
-        """优先通过 LocalAI、失败时通过 EdgeTTS 合成 MP3 后发送。"""
-        from gateway.utils.windows_voice import synthesize_voice_base64
-
-        try:
-            file_base64 = synthesize_voice_base64(
-                text,
-                timeout=config.WINDOWS_VOICE_TIMEOUT,
-            )
-        except Exception as e:
-            logger.error(f"生成语音失败: {e}")
-            return False
-        return self.send_voice_to_window(window, file_base64, "tts.mp3")
-
     def send_voice_to_window(
         self,
         window,

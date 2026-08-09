@@ -301,7 +301,7 @@ async function refreshState() {
 }
 
 async function openChat(path, name = '') {
-    if (!path || openingChat) return;
+    if (!path || openingChat || sendingMessage) return;
     openingChat = true;
     setChatListBusy(true);
     selectedPath = path;

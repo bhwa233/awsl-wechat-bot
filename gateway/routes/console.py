@@ -2,6 +2,7 @@
 
 import os
 import sys
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -37,6 +38,8 @@ class ConsoleSendMessageRequest(MessagePayload):
 
 
 def create_routes(gateway_app=None):
+    console_operation_lock = threading.Lock()
+
     @router.get("/console", response_class=HTMLResponse)
     def console_page():
         return _serve_console_file("console.html", "text/html")
@@ -59,7 +62,10 @@ def create_routes(gateway_app=None):
         if sys.platform != "win32":
             raise HTTPException(status_code=501, detail="console/open-chat 当前只支持 Windows")
 
-        return _windows_service(gateway_app).open_chat(path=request.path, max_nodes=request.max_nodes)
+        return _windows_service(gateway_app, console_operation_lock).open_chat(
+            path=request.path,
+            max_nodes=request.max_nodes,
+        )
 
     @router.post("/api/console/send-message", dependencies=[Depends(verify_token)])
     def console_send_message(request: ConsoleSendMessageRequest):
@@ -67,7 +73,7 @@ def create_routes(gateway_app=None):
         if sys.platform != "win32":
             raise HTTPException(status_code=501, detail="console/send-message 当前只支持 Windows")
 
-        return _windows_service(gateway_app).send_message(
+        return _windows_service(gateway_app, console_operation_lock).send_message(
             message_type=request.message_type,
             message=request.message or "",
             filename=request.filename or "",
@@ -108,22 +114,24 @@ def _serve_console_file(filename: str, media_type: str):
         return Response(status_code=404)
 
 
-def _windows_service(gateway_app=None):
+def _windows_service(gateway_app=None, console_operation_lock=None):
     if gateway_app is None:
         from gateway.console.windows import WindowsConsoleDebugService
 
-        return WindowsConsoleDebugService()
+        return WindowsConsoleDebugService(console_operation_lock=console_operation_lock)
 
     from gateway.adapters.windows import WindowsWeChatAdapter
     from gateway.console.windows import WindowsConsoleDebugService
+    from gateway.utils.voice_synthesis import synthesize_voice
 
     adapter: WindowsWeChatAdapter = gateway_app.adapter
     return WindowsConsoleDebugService(
         ui_operation_lock=adapter.ui_operation_lock,
+        console_operation_lock=console_operation_lock,
         activate_window=adapter.activate_specific_window,
         set_clipboard_text=adapter.set_clipboard_text_verified,
         send_image_to_window=adapter.send_image_to_window,
         send_file_to_window=adapter.send_file_to_window,
         send_voice_to_window=adapter.send_voice_to_window,
-        send_text2voice_to_window=adapter.send_text2voice_to_window,
+        synthesize_voice=synthesize_voice,
     )

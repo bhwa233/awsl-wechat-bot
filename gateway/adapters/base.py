@@ -55,7 +55,3 @@ class BaseWeChatAdapter(ABC):
     ) -> bool:
         """将 MP3 文件作为语音发送,当前仅 Windows 实现"""
         return False
-
-    def send_text2voice_to_window(self, window: Any, text: str) -> bool:
-        """将文本合成为语音发送,当前仅 Windows 实现"""
-        return False

@@ -9,6 +9,7 @@ from pathlib import Path
 import uiautomation as auto
 
 from gateway.adapters.windows import WindowsWeChatAdapter
+from gateway.utils.voice_synthesis import synthesize_voice
 
 
 def find_window(adapter: WindowsWeChatAdapter, group: str):
@@ -64,11 +65,9 @@ def main() -> None:
             raise RuntimeError(f"音频文件不存在: {path}")
         filename = path.name
         message = base64.b64encode(path.read_bytes()).decode("ascii")
-    sent = (
-        adapter.send_voice_to_window(window, message, filename)
-        if filename
-        else adapter.send_text2voice_to_window(window, message)
-    )
+    if not filename:
+        message, filename = synthesize_voice(message)
+    sent = adapter.send_voice_to_window(window, message, filename)
     if not sent:
         print(f"foreground_after={win32gui.GetForegroundWindow()}", flush=True)
         raise RuntimeError("语音发送失败")

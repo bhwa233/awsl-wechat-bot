@@ -249,7 +249,7 @@ window.consoleTab = (() => {
     }
 
     async function openChat(path, name = '') {
-        if (!path || opening || unsupported) return;
+        if (!path || opening || sending || unsupported) return;
         opening = true;
         setListBusy(true);
         selectedPath = path;

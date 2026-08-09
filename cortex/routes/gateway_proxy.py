@@ -57,7 +57,7 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
             resp = await client.post(
                 "/api/console/send-message",
                 json=body,
-                timeout=httpx.Timeout(connect=5.0, read=120.0, write=120.0, pool=5.0),
+                timeout=httpx.Timeout(connect=5.0, read=400.0, write=120.0, pool=5.0),
             )
         except httpx.HTTPError as e:
             return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})

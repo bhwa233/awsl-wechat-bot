@@ -28,20 +28,22 @@ class WindowsConsoleDebugService:
         self,
         *,
         ui_operation_lock: threading.Lock | None = None,
+        console_operation_lock: threading.Lock | None = None,
         activate_window: Callable[[Any], None] | None = None,
         set_clipboard_text: Callable[[str], None] | None = None,
         send_image_to_window: Callable[[Any, str], bool] | None = None,
         send_file_to_window: Callable[[Any, str, str], bool] | None = None,
         send_voice_to_window: Callable[..., bool] | None = None,
-        send_text2voice_to_window: Callable[[Any, str], bool] | None = None,
+        synthesize_voice: Callable[[str], tuple[str, str]] | None = None,
     ):
         self._ui_lock = ui_operation_lock or threading.Lock()
+        self._console_lock = console_operation_lock or threading.Lock()
         self._activate_window_func = activate_window
         self._set_clipboard_text = set_clipboard_text
         self._send_image_to_window = send_image_to_window
         self._send_file_to_window = send_file_to_window
         self._send_voice_to_window = send_voice_to_window
-        self._send_text2voice_to_window = send_text2voice_to_window
+        self._synthesize_voice = synthesize_voice
         self._thread_inits: dict[int, Any] = {}
 
     def list_windows(self) -> dict[str, Any]:
@@ -170,6 +172,14 @@ class WindowsConsoleDebugService:
         }
 
     def open_chat(self, *, path: str, max_nodes: int = 5000) -> dict[str, Any]:
+        if not self._console_lock.acquire(blocking=False):
+            return self._action_error("Console 正在执行其他操作")
+        try:
+            return self._open_chat(path=path, max_nodes=max_nodes)
+        finally:
+            self._console_lock.release()
+
+    def _open_chat(self, *, path: str, max_nodes: int) -> dict[str, Any]:
         auto = self._ensure_uia()
         with self._ui_operation_lock():
             window = self._find_main_window(auto)
@@ -260,10 +270,39 @@ class WindowsConsoleDebugService:
         filename: str = "",
         max_nodes: int = 5000,
     ) -> dict[str, Any]:
+        if not self._console_lock.acquire(blocking=False):
+            return self._action_error("Console 正在执行其他操作")
+        try:
+            return self._send_message(
+                message_type=message_type,
+                message=message,
+                filename=filename,
+                max_nodes=max_nodes,
+            )
+        finally:
+            self._console_lock.release()
+
+    def _send_message(
+        self,
+        *,
+        message_type: str,
+        message: str,
+        filename: str,
+        max_nodes: int,
+    ) -> dict[str, Any]:
         if message_type == "text":
             return self._send_text_message(text=message, max_nodes=max_nodes)
 
         auto = self._ensure_uia()
+        if message_type == "voice":
+            if not self._send_voice_to_window or not self._synthesize_voice:
+                return self._action_error("当前 Console 未配置语音发送能力")
+            try:
+                file_base64, filename = self._synthesize_voice(message)
+            except Exception as e:
+                return self._action_error(f"生成语音失败: {e}")
+            message = file_base64
+
         window = self._find_main_window(auto)
         if window is None:
             return self._action_error("未找到微信主窗口")
@@ -272,32 +311,26 @@ class WindowsConsoleDebugService:
             if not self._send_image_to_window:
                 return self._action_error("当前 Console 未配置图片发送能力", window=window)
             ok = self._send_image_to_window(window, message)
-            if not ok:
-                return self._action_error("发送图片失败", window=window)
+            error_message = "发送图片失败"
         elif message_type == "file":
             if not filename:
                 return self._action_error("文件消息缺少 filename", window=window)
             if not self._send_file_to_window:
                 return self._action_error("当前 Console 未配置文件发送能力", window=window)
             ok = self._send_file_to_window(window, message, filename)
-            if not ok:
-                return self._action_error("发送文件失败", window=window)
-        elif message_type == "voice":
-            if not self._send_text2voice_to_window:
-                return self._action_error("当前 Console 未配置 TTS 语音发送能力", window=window)
-            ok = self._send_text2voice_to_window(window, message)
-            if not ok:
-                return self._action_error("发送 TTS 语音失败", window=window)
-        elif message_type == "voice_file":
+            error_message = "发送文件失败"
+        elif message_type in {"voice", "voice_file"}:
             if not filename:
                 return self._action_error("语音文件消息缺少 filename", window=window)
             if not self._send_voice_to_window:
                 return self._action_error("当前 Console 未配置语音发送能力", window=window)
             ok = self._send_voice_to_window(window, message, filename)
-            if not ok:
-                return self._action_error("发送语音文件失败", window=window)
+            error_message = "发送 TTS 语音失败" if message_type == "voice" else "发送语音文件失败"
         else:
             return self._action_error(f"不支持的消息类型: {message_type}", window=window)
+
+        if not ok:
+            return self._action_error(error_message, window=window)
 
         time.sleep(0.35)
         return self.get_state(max_nodes=max_nodes)

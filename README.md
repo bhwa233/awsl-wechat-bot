@@ -101,7 +101,7 @@ cp .env.example .env  # 编辑配置
 
 ### Windows 语音发送
 
-Windows 支持两种语音消息：`voice` 优先调用 OpenAI 兼容的 LocalAI TTS 接口，失败时回退 EdgeTTS；`voice_file` 直接发送 Base64 编码的 MP3。两种类型都经 VB-CABLE 送入微信麦克风；Linux 和 macOS 暂不实现语音发送。
+Windows 支持两种语音消息：`voice` 在独立线程中优先调用 OpenAI 兼容的 LocalAI TTS 接口，失败时回退 EdgeTTS，合成期间不阻塞其他消息发送；`voice_file` 直接发送 Base64 编码的 MP3。两种类型都经 VB-CABLE 送入微信麦克风；Linux 和 macOS 暂不实现语音发送。由于 TTS 完成时间不固定，后入队的普通消息可能先于语音发出。
 
 1. 安装 [VB-CABLE](https://vb-audio.com/Cable/)。
 2. 将 Windows 默认录音设备设为 `CABLE Output (VB-Audio Virtual Cable)`。

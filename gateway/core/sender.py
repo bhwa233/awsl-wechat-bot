@@ -9,6 +9,7 @@ from common.config import config
 from common.models import MessageType
 from gateway.adapters.base import BaseWeChatAdapter
 from gateway.core.models import SendTask, SentMessageStore
+from gateway.core.voice_synthesis_worker import VoiceSynthesisWorker
 
 logger = logging.getLogger(__name__)
 _STOP_SENDER = object()
@@ -23,6 +24,14 @@ class MessageSender:
         self.group_windows = group_windows
         self.sent_store = sent_store or SentMessageStore()
         self.send_queue: queue.Queue[SendTask | object] = queue.Queue(maxsize=config.SEND_QUEUE_SIZE)
+        self.voice_synthesis_worker = (
+            VoiceSynthesisWorker(
+                self.enqueue,
+                config.SEND_QUEUE_SIZE,
+            )
+            if adapter.SUPPORTS_VOICE
+            else None
+        )
         self._last_send_time = 0.0
         self._running = False
         self._thread = None
@@ -31,10 +40,14 @@ class MessageSender:
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True, name="sender")
         self._thread.start()
+        if self.voice_synthesis_worker:
+            self.voice_synthesis_worker.start()
         logger.info("消息发送线程启动")
 
     def stop(self):
         self._running = False
+        if self.voice_synthesis_worker:
+            self.voice_synthesis_worker.stop()
         try:
             self.send_queue.put_nowait(_STOP_SENDER)
         except queue.Full:
@@ -85,15 +98,16 @@ class MessageSender:
                     send_ok = self.adapter.send_file_to_window(window, task.message, task.filename)
                     preview = f"[文件] {task.filename}"
                 elif task.message_type == MessageType.VOICE:
-                    send_ok = self.adapter.send_text2voice_to_window(window, task.message)
-                    preview = f"[语音] {task.message[:50]}..."
+                    if not self.voice_synthesis_worker or not self.voice_synthesis_worker.enqueue(task):
+                        logger.warning(f"[{task.group_name}] 语音合成任务入队失败")
+                    continue
                 elif task.message_type == MessageType.VOICE_FILE:
                     send_ok = self.adapter.send_voice_to_window(
                         window,
                         task.message,
                         task.filename,
                     )
-                    preview = f"[语音文件] {task.filename}"
+                    preview = f"[语音] {task.filename}"
                 else:
                     send_ok = self.adapter.send_text_to_window(window, task.message)
                     preview = f"{task.message[:50]}..."
