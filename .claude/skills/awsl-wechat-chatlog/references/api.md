@@ -160,6 +160,7 @@ File responses additionally carry `Content-Disposition` for browser downloads.
 - `msg_type` (int, required): `3` image, `34` voice, `43` video thumbnail, `47` sticker, `49` file
 - `group` (string, required for `msg_type` 3 / 43): group ID or peer wxid
 - `server_id` (string, required for `msg_type` 3 / 34 / 43): message `server_id_str` from `/messages`
+- `local_id` + `create_time` (int, optional pair for `msg_type` 34): self-sent voice fallback fields from `/messages`; provide both or neither
 - `content` (string, required for `msg_type` 47 / 49): the original message XML payload
 - `hd` (bool, default false): image only; high-resolution/original local source (wxgf/HEVC -> JPEG transcode)
 - `token` (string, optional): query-string auth fallback for `<img>` / `<audio>` tags
@@ -169,7 +170,7 @@ File responses additionally carry `Content-Disposition` for browser downloads.
 | msg_type | Required params | Notes |
 |---|---|---|
 | 3 image | `group`, `server_id`, `hd?` | Needs `IMAGE_AES_KEY`. Default returns thumbnail JPEG; `hd=1` tries original/HD local `.dat` and transcodes wxgf/HEVC to JPEG |
-| 34 voice | `server_id` | Needs `pilk` + `av`. Returns MP3 |
+| 34 voice | `server_id`; optional `local_id` + `create_time` | Needs `pilk` + `av`. Returns MP3. Looks up `server_id` first, then uniquely falls back to `local_id` + `create_time` for self-sent voice |
 | 43 video thumb | `group`, `server_id` | Needs `IMAGE_AES_KEY`. Returns JPEG; the full video binary is NOT served |
 | 47 sticker | `content` | Fetched from WeChat CDN, fallback to local `emoticon.db` AES key. Returns GIF/WebP |
 | 49 file | `content` | App-msg `<type>6</type>` plaintext file under `msg/file/<YYYY-MM>/<title>`. Returns raw bytes + `Content-Disposition: attachment; filename*=UTF-8'…'`. Max 200 MB |
@@ -203,8 +204,8 @@ curl -OJ "...&msg_type=3&group=...&server_id=...&hd=1" -H "Authorization: ..."
 # image (HD/original via browser token fallback)
 open "http://127.0.0.1:7998/api/chatlog/media?msg_type=3&group=12345@chatroom&server_id=6349274343476749755&hd=1&token=$HTTP_API_TOKEN"
 
-# voice
-curl -OJ "...?msg_type=34&server_id=..." -H "Authorization: ..."
+# voice (include local_id + create_time so self-sent voice can use its fallback)
+curl -OJ "...?msg_type=34&server_id=...&local_id=...&create_time=..." -H "Authorization: ..."
 
 # video thumbnail
 curl -OJ "...?msg_type=43&group=...&server_id=..." -H "Authorization: ..."

@@ -177,7 +177,12 @@ class MediaResolver:
             data = f.read()
         return MediaResult(msg_type=43, fmt="jpg", data=data, md5=md5)
 
-    def decode_voice(self, server_id: int) -> MediaResult | None:
+    def decode_voice(
+        self,
+        server_id: int,
+        local_id: int | None = None,
+        create_time: int | None = None,
+    ) -> MediaResult | None:
         """type=34 voice: media_*.db.VoiceInfo[svr_id].voice_data → SILK → MP3.
 
         WeChat 4.x 在消息量大时会分片 media_0/1/2.db, 按顺序查直到命中.
@@ -201,6 +206,20 @@ class MediaResolver:
             if rows and rows[0] and rows[0][0]:
                 blob = rows[0][0]
                 break
+        if blob is None and local_id is not None and create_time is not None:
+            fallback_rows = []
+            for db in media_dbs:
+                try:
+                    fallback_rows.extend(self.adapter.query(
+                        db,
+                        "SELECT voice_data FROM VoiceInfo "
+                        "WHERE local_id=? AND create_time=? LIMIT 2",
+                        (local_id, create_time),
+                    ))
+                except Exception as exc:
+                    logger.warning("[voice] 按 local_id 查 %s 失败, 跳过: %s", db.name, exc)
+            if len(fallback_rows) == 1 and fallback_rows[0] and fallback_rows[0][0]:
+                blob = fallback_rows[0][0]
         if blob is None:
             return None
         if isinstance(blob, str):

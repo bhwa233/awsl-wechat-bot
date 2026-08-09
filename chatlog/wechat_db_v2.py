@@ -485,7 +485,7 @@ class WeChatDBReaderV2:
                 if table_name not in self._tables_exist(db_path, [table_name]):
                     continue
                 sql = (
-                    f"SELECT m.sort_seq, m.server_id, m.local_type, n.user_name, "
+                    f"SELECT m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
                     f"m.create_time, m.message_content, m.status, m.source "
                     f"FROM {table_name} m "
                     f"LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
@@ -512,7 +512,7 @@ class WeChatDBReaderV2:
         """把原生库查询行转成 raw_message 元组(与列顺序耦合, 供 get_messages/get_messages_since 复用)."""
         raw_messages: list[tuple] = []
         for row in rows:
-            sort_seq, server_id, local_type, user_name, create_time, message_content, status, source = row
+            sort_seq, server_id, local_type, user_name, local_id, create_time, message_content, status, source = row
             msg_type = int(local_type) & 0xFFFFFFFF
 
             content = _decompress_content(_decode_blob(message_content))
@@ -530,6 +530,7 @@ class WeChatDBReaderV2:
                 (not is_chatroom and talker != sender) if msg_type == 50
                 else (status == 2 or (not is_chatroom and talker != sender)),
                 int(server_id) if server_id is not None else 0,
+                int(local_id) if local_id is not None else 0,
                 at_users,
             ))
         return raw_messages
@@ -547,7 +548,7 @@ class WeChatDBReaderV2:
             contact_names = self._batch_get_contact_names(uncached) if uncached else {}
 
         messages: list[Message] = []
-        for seq, _talker, sender, msg_type, content, create_time, is_self, server_id, at_users in raw_messages:
+        for seq, _talker, sender, msg_type, content, create_time, is_self, server_id, local_id, at_users in raw_messages:
             sender_name = (
                 (display_names.get(sender) or contact_names.get(sender, sender))
                 if sender
@@ -564,6 +565,7 @@ class WeChatDBReaderV2:
                     content=content,
                     is_self=is_self,
                     server_id=server_id,
+                    local_id=local_id,
                     at_users=at_users,
                 )
             )
@@ -599,7 +601,7 @@ class WeChatDBReaderV2:
         results_raw: dict[str, list[tuple]] = {talker: [] for talker in seen}
         cols = (
             "m.sort_seq, m.server_id, m.local_type, n.user_name, "
-            "m.create_time, m.message_content, m.status, m.source"
+            "m.local_id, m.create_time, m.message_content, m.status, m.source"
         )
         for db_path in db_paths:
             exist = self._tables_exist(db_path, list(tables.values()))

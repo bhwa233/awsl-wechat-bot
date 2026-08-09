@@ -40,14 +40,16 @@ matrix.
 ## Rich Media Quick Reference
 
 Get the source fields from `messages`: use `talker` as `group`, use `server_id_str`
-as `server_id`, and use raw `content` XML for stickers/files.
+as `server_id`, and use raw `content` XML for stickers/files. For voice, also pass
+`local_id` and `create_time`; Chatlog uses them only when self-sent voice cannot be
+found by `server_id`.
 
 | Message | URL params |
 |---|---|
 | Image thumbnail (`msg_type=3`) | `msg_type=3&group=<talker>&server_id=<server_id_str>` |
 | Image HD/original (`msg_type=3`) | `msg_type=3&group=<talker>&server_id=<server_id_str>&hd=1` |
 | Video thumbnail (`msg_type=43`) | `msg_type=43&group=<talker>&server_id=<server_id_str>` |
-| Voice (`msg_type=34`) | `msg_type=34&server_id=<server_id_str>` |
+| Voice (`msg_type=34`) | `msg_type=34&server_id=<server_id_str>&local_id=<local_id>&create_time=<create_time>` |
 | Sticker (`msg_type=47`) | `msg_type=47&content=<urlencoded content XML>` |
 | File attachment (`msg_type=49`, appmsg type 6) | `msg_type=49&content=<urlencoded content XML>` |
 

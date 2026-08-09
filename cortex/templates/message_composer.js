@@ -60,18 +60,23 @@ class MessageComposer {
     syncType(opts = {}) {
         const type = this.getType();
         const isText = type === 'text' || type === 'voice';
-        const isAttachment = type === 'image' || type === 'file';
+        const isAttachment = type === 'image' || type === 'file' || type === 'voice_file';
         this._setDisplay(this.cfg.textGroupId, isText);
         this._setDisplay(this.cfg.attachmentGroupId, isAttachment);
         this._setDisplay(this.cfg.summaryGroupId, type === 'summary');
         if (this.fileEl) {
-            this.fileEl.accept = type === 'image' ? 'image/*' : '';
+            this.fileEl.accept = type === 'image' ? 'image/*' : type === 'voice_file' ? 'audio/mpeg,.mp3' : '';
         }
         if (this.dropzoneEl) {
             this.dropzoneEl.dataset.type = type;
         }
         if (opts.resetUpload !== false && isAttachment) {
             this.resetUpload();
+        }
+        if (this.infoEl && !this.state.message) {
+            this.infoEl.textContent = type === 'voice_file'
+                ? '选择 MP3 文件，最长 60 秒'
+                : (this.cfg.emptyLabel || '点击选择 / 拖拽 / Ctrl+V 粘贴');
         }
         this._syncTypeControl();
         if (this.cfg.onTypeChange) this.cfg.onTypeChange(type);
@@ -86,7 +91,11 @@ class MessageComposer {
             this.previewEl.hidden = true;
             this.previewEl.removeAttribute('src');
         }
-        if (this.infoEl) this.infoEl.textContent = this.cfg.emptyLabel || '点击选择 / 拖拽 / Ctrl+V 粘贴';
+        if (this.infoEl) {
+            this.infoEl.textContent = this.getType() === 'voice_file'
+                ? '选择 MP3 文件，最长 60 秒'
+                : (this.cfg.emptyLabel || '点击选择 / 拖拽 / Ctrl+V 粘贴');
+        }
     }
 
     reset() {
@@ -124,6 +133,10 @@ class MessageComposer {
             toast('请选择图片文件', 'error');
             return;
         }
+        if (type === 'voice_file' && !file.name.toLowerCase().endsWith('.mp3')) {
+            toast('语音文件仅支持 MP3', 'error');
+            return;
+        }
         const reader = new FileReader();
         reader.onload = e => {
             const dataUrl = e.target.result;
@@ -156,8 +169,8 @@ class MessageComposer {
         if (type === 'summary') {
             return { message_type: 'summary', message: '', filename: '' };
         }
-        if (type === 'text' || type === 'voice') {
-            if (type === 'voice' && !gatewayCapabilities.voice) {
+        if (type === 'voice') {
+            if (!gatewayCapabilities.voice) {
                 toast('当前平台不支持语音发送', 'error');
                 return null;
             }
@@ -166,7 +179,26 @@ class MessageComposer {
                 if (messages.text) toast(messages.text, 'error');
                 return null;
             }
-            return { message_type: type, message, filename: '' };
+            return { message_type: 'voice', message, filename: '' };
+        }
+        if (type === 'voice_file') {
+            if (!gatewayCapabilities.voice) {
+                toast('当前平台不支持语音发送', 'error');
+                return null;
+            }
+            if (!this.state.message) {
+                toast(messages.attachment || '请选择 MP3 文件', 'error');
+                return null;
+            }
+            return { message_type: 'voice_file', message: this.state.message, filename: this.state.filename };
+        }
+        if (type === 'text') {
+            const message = this.getText();
+            if (!message) {
+                if (messages.text) toast(messages.text, 'error');
+                return null;
+            }
+            return { message_type: 'text', message, filename: '' };
         }
         if (!this.state.message) {
             toast(messages.attachment || '请选择内容', 'error');
@@ -210,7 +242,7 @@ class MessageComposer {
         const options = Array.from(this.typeEl.options).filter(option => option.value);
         if (!options.length) return;
 
-        const iconMap = { text: 'Aa', voice: 'Vo', image: 'Img', file: 'File', summary: 'Sum' };
+        const iconMap = { text: 'Aa', voice: 'TTS', voice_file: 'MP3', image: 'Img', file: 'File', summary: 'Sum' };
         const control = document.createElement('div');
         control.className = 'composer-type-control';
         control.setAttribute('role', 'group');

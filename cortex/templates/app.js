@@ -119,11 +119,11 @@ async function loadServerInfo() {
 async function loadGatewayCapabilities() {
     const r = await api('GET', '/api/gateway/health');
     gatewayCapabilities.voice = !!(r.ok && r.data?.capabilities?.voice);
-    document.querySelectorAll('select option[value="voice"]').forEach(option => {
+    document.querySelectorAll('select option[value="voice"], select option[value="voice_file"]').forEach(option => {
         option.disabled = !gatewayCapabilities.voice;
         option.hidden = !gatewayCapabilities.voice;
     });
-    document.querySelectorAll('.composer-type-option[data-value="voice"]').forEach(button => {
+    document.querySelectorAll('.composer-type-option[data-value="voice"], .composer-type-option[data-value="voice_file"]').forEach(button => {
         button.hidden = !gatewayCapabilities.voice;
     });
 }

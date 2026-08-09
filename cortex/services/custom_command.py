@@ -27,6 +27,7 @@ class CustomCommandActionType(StrEnum):
     IMAGE = "image"
     FILE = "file"
     VOICE = "voice"
+    VOICE_FILE = "voice_file"
     SUMMARY = "summary"
 
     def to_message_type(self) -> MessageType:
@@ -36,6 +37,8 @@ class CustomCommandActionType(StrEnum):
             return MessageType.FILE
         if self == CustomCommandActionType.VOICE:
             return MessageType.VOICE
+        if self == CustomCommandActionType.VOICE_FILE:
+            return MessageType.VOICE_FILE
         return MessageType.TEXT
 
 
@@ -117,7 +120,11 @@ class CustomCommandService:
 
     @staticmethod
     def _normalize_content(action_type: CustomCommandActionType, content: str) -> str:
-        if action_type in {CustomCommandActionType.IMAGE, CustomCommandActionType.FILE} and content.startswith("data:"):
+        if action_type in {
+            CustomCommandActionType.IMAGE,
+            CustomCommandActionType.FILE,
+            CustomCommandActionType.VOICE_FILE,
+        } and content.startswith("data:"):
             return content.split(",", 1)[1] if "," in content else content
         return content
 
@@ -165,7 +172,10 @@ class CustomCommandService:
             return True
         if not message.strip():
             return False
-        return not (action_type == CustomCommandActionType.FILE and not filename.strip())
+        return not (
+            action_type in {CustomCommandActionType.FILE, CustomCommandActionType.VOICE_FILE}
+            and not filename.strip()
+        )
 
     def _run_migrations(self, db_path: str):
         migrator = SQLiteMigrator(db_path)
@@ -196,12 +206,16 @@ class CustomCommandService:
                         WHEN 'TEXT' THEN 'TEXT'
                         WHEN 'IMAGE' THEN 'IMAGE'
                         WHEN 'FILE' THEN 'FILE'
+                        WHEN 'VOICE' THEN 'VOICE'
+                        WHEN 'VOICE_FILE' THEN 'VOICE_FILE'
                         WHEN 'SUMMARY' THEN 'SUMMARY'
                         WHEN 'reply' THEN 'TEXT'
                         WHEN 'REPLY' THEN 'TEXT'
                         WHEN 'text' THEN 'TEXT'
                         WHEN 'image' THEN 'IMAGE'
                         WHEN 'file' THEN 'FILE'
+                        WHEN 'voice' THEN 'VOICE'
+                        WHEN 'voice_file' THEN 'VOICE_FILE'
                         WHEN 'summary' THEN 'SUMMARY'
                         ELSE 'TEXT'
                     END
@@ -220,6 +234,8 @@ class CustomCommandService:
                         WHEN 'FILE' THEN 'FILE'
                         WHEN 'voice' THEN 'VOICE'
                         WHEN 'VOICE' THEN 'VOICE'
+                        WHEN 'voice_file' THEN 'VOICE_FILE'
+                        WHEN 'VOICE_FILE' THEN 'VOICE_FILE'
                         ELSE action_type
                     END
                     WHERE action_type IN ('', 'TEXT', 'REPLY', 'reply')
@@ -243,17 +259,19 @@ class CustomCommandService:
 
             action_expr = """
                 CASE
-                    WHEN action_type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE', 'SUMMARY') THEN action_type
+                    WHEN action_type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE', 'VOICE_FILE', 'SUMMARY') THEN action_type
                     WHEN action_type = 'text' THEN 'TEXT'
                     WHEN action_type = 'image' THEN 'IMAGE'
                     WHEN action_type = 'file' THEN 'FILE'
                     WHEN action_type = 'voice' THEN 'VOICE'
+                    WHEN action_type = 'voice_file' THEN 'VOICE_FILE'
                     WHEN action_type = 'summary' THEN 'SUMMARY'
-                    WHEN message_type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE') THEN message_type
+                    WHEN message_type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE', 'VOICE_FILE') THEN message_type
                     WHEN message_type = 'text' THEN 'TEXT'
                     WHEN message_type = 'image' THEN 'IMAGE'
                     WHEN message_type = 'file' THEN 'FILE'
                     WHEN message_type = 'voice' THEN 'VOICE'
+                    WHEN message_type = 'voice_file' THEN 'VOICE_FILE'
                     WHEN message_type IN ('summary', 'SUMMARY') THEN 'SUMMARY'
                     ELSE 'TEXT'
                 END
@@ -316,14 +334,33 @@ class CustomCommandService:
                     WHEN 'TEXT' THEN 'TEXT'
                     WHEN 'IMAGE' THEN 'IMAGE'
                     WHEN 'FILE' THEN 'FILE'
+                    WHEN 'VOICE' THEN 'VOICE'
+                    WHEN 'VOICE_FILE' THEN 'VOICE_FILE'
                     WHEN 'SUMMARY' THEN 'SUMMARY'
                     WHEN 'reply' THEN 'TEXT'
                     WHEN 'REPLY' THEN 'TEXT'
                     WHEN 'text' THEN 'TEXT'
                     WHEN 'image' THEN 'IMAGE'
                     WHEN 'file' THEN 'FILE'
+                    WHEN 'voice' THEN 'VOICE'
+                    WHEN 'voice_file' THEN 'VOICE_FILE'
                     WHEN 'summary' THEN 'SUMMARY'
                     ELSE 'TEXT'
+                END
+                """
+            )
+
+        def normalize_voice_action_types(conn):
+            columns = SQLiteMigrator.column_names(conn, "custom_commands")
+            if "action_type" not in columns:
+                return
+            conn.execute(
+                """
+                UPDATE custom_commands
+                SET action_type = CASE action_type
+                    WHEN 'voice' THEN 'VOICE'
+                    WHEN 'voice_file' THEN 'VOICE_FILE'
+                    ELSE action_type
                 END
                 """
             )
@@ -334,6 +371,7 @@ class CustomCommandService:
             ("20260529_002_custom_commands_normalize_action_type", normalize_action_type),
             ("20260529_003_custom_commands_drop_legacy_message_type", drop_legacy_message_type),
             ("20260529_004_custom_commands_repair_action_type", repair_action_type),
+            ("20260809_001_custom_commands_normalize_voice_action_types", normalize_voice_action_types),
         ])
 
     def to_response(self, command: CustomCommand) -> CustomCommandResponse:

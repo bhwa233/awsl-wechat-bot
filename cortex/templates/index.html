@@ -78,6 +78,7 @@
                             <select id="msgType" class="msg-type-select" onchange="toggleChatMsgType()">
                                 <option value="text">文本</option>
                                 <option value="voice">语音</option>
+                                <option value="voice_file">语音文件</option>
                                 <option value="image">图片</option>
                                 <option value="file">文件</option>
                                 <option value="summary">总结</option>
@@ -131,6 +132,7 @@
                             <select id="consoleMsgType" class="msg-type-select">
                                 <option value="text">文本</option>
                                 <option value="voice">语音</option>
+                                <option value="voice_file">语音文件</option>
                                 <option value="image">图片</option>
                                 <option value="file">文件</option>
                             </select>
@@ -175,7 +177,7 @@
                         </div>
                         <input type="hidden" id="taskType" value="send">
                         <div class="form-group"><label>状态</label><select id="taskEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
-                        <div class="form-group" id="taskMessageTypeGroup"><label>消息类型</label><select id="taskMessageType"><option value="text">文本</option><option value="voice">语音</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
+                        <div class="form-group" id="taskMessageTypeGroup"><label>消息类型</label><select id="taskMessageType"><option value="text">文本</option><option value="voice">语音</option><option value="voice_file">语音文件</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
                         <div class="form-group" id="taskTextGroup"><label>消息内容</label><textarea id="taskMessage" rows="3"></textarea></div>
                         <div class="form-group" id="taskAttachmentGroup" style="display:none">
                             <label>附件</label>
@@ -265,7 +267,7 @@
                             <div class="form-group"><label>状态</label><select id="customCommandEnabled"><option value="true">启用</option><option value="false">禁用</option></select></div>
                         </div>
                         <div class="form-group"><label>描述</label><input type="text" id="customCommandDescription" placeholder="menu - 查看菜单"></div>
-                        <div class="form-group"><label>消息类型</label><select id="customCommandMessageType"><option value="text">文本</option><option value="voice">语音</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
+                        <div class="form-group"><label>消息类型</label><select id="customCommandMessageType"><option value="text">文本</option><option value="voice">语音</option><option value="voice_file">语音文件</option><option value="image">图片</option><option value="file">文件</option><option value="summary">总结</option></select></div>
                         <div class="form-group" id="customCommandTextGroup"><label>回复内容</label><textarea id="customCommandMessage" rows="3"></textarea></div>
                         <div class="form-group" id="customCommandAttachmentGroup" style="display:none">
                             <label>附件</label>
@@ -325,12 +327,12 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="/static/app.js?v=202608090002"></script>
-    <script src="/static/message_composer.js?v=202608090001"></script>
-    <script src="/static/chat.js?v=202608090001"></script>
-    <script src="/static/console.js?v=202608090001"></script>
-    <script src="/static/tasks.js?v=202608090001"></script>
-    <script src="/static/custom_commands.js?v=202608090001"></script>
+    <script src="/static/app.js?v=202608090003"></script>
+    <script src="/static/message_composer.js?v=202608090003"></script>
+    <script src="/static/chat.js?v=202608090003"></script>
+    <script src="/static/console.js?v=202608090003"></script>
+    <script src="/static/tasks.js?v=202608090003"></script>
+    <script src="/static/custom_commands.js?v=202608090003"></script>
     <script src="/static/webhooks.js?v=202606162015"></script>
 </body>
 </html>

@@ -268,6 +268,9 @@ const taskCrud = {
         } else if (task.message_type === 'voice') {
             contentHtml = escapeHtml(task.message || '');
             contentLabel = '语音文本';
+        } else if (task.message_type === 'voice_file') {
+            contentHtml = escapeHtml(task.filename || '');
+            contentLabel = '语音文件';
         } else {
             contentHtml = escapeHtml(task.message || '');
         }
@@ -349,12 +352,20 @@ const taskCrud = {
         $('taskType').value = task.task_type || 'send';
         $('taskMessageType').value = task.task_type === 'summary' ? 'summary' : (task.message_type || 'text');
         if (task.task_type === 'summary') { populateSummaryRows(task.message); $('taskMessage').value = ''; }
-        else { $('summaryRows').innerHTML = ''; $('taskMessage').value = ['text', 'voice'].includes(task.message_type) ? task.message : ''; }
+        else {
+            $('summaryRows').innerHTML = '';
+            $('taskMessage').value = ['text', 'voice'].includes(task.message_type)
+                ? task.message
+                : '';
+        }
         if (task.task_type === 'send' && task.message_type === 'image' && task.message) {
             taskMessageComposer.setAttachment(task.message, '', 'data:image/png;base64,' + task.message);
         }
         if (task.task_type === 'send' && task.message_type === 'file' && task.message) {
             taskMessageComposer.setAttachment(task.message, task.filename || '');
+        }
+        if (task.task_type === 'send' && task.message_type === 'voice_file' && task.filename && task.message) {
+            taskMessageComposer.setAttachment(task.message, task.filename);
         }
         updateTargetGroupsCheckboxes(task.task_type === 'send' ? (task.target_groups || []) : []);
         toggleTaskFormMode({ resetUpload: false });

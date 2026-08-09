@@ -32,7 +32,8 @@ class WindowsConsoleDebugService:
         set_clipboard_text: Callable[[str], None] | None = None,
         send_image_to_window: Callable[[Any, str], bool] | None = None,
         send_file_to_window: Callable[[Any, str, str], bool] | None = None,
-        send_voice_to_window: Callable[[Any, str], bool] | None = None,
+        send_voice_to_window: Callable[..., bool] | None = None,
+        send_text2voice_to_window: Callable[[Any, str], bool] | None = None,
     ):
         self._ui_lock = ui_operation_lock or threading.Lock()
         self._activate_window_func = activate_window
@@ -40,6 +41,7 @@ class WindowsConsoleDebugService:
         self._send_image_to_window = send_image_to_window
         self._send_file_to_window = send_file_to_window
         self._send_voice_to_window = send_voice_to_window
+        self._send_text2voice_to_window = send_text2voice_to_window
         self._thread_inits: dict[int, Any] = {}
 
     def list_windows(self) -> dict[str, Any]:
@@ -281,11 +283,19 @@ class WindowsConsoleDebugService:
             if not ok:
                 return self._action_error("发送文件失败", window=window)
         elif message_type == "voice":
+            if not self._send_text2voice_to_window:
+                return self._action_error("当前 Console 未配置 TTS 语音发送能力", window=window)
+            ok = self._send_text2voice_to_window(window, message)
+            if not ok:
+                return self._action_error("发送 TTS 语音失败", window=window)
+        elif message_type == "voice_file":
+            if not filename:
+                return self._action_error("语音文件消息缺少 filename", window=window)
             if not self._send_voice_to_window:
                 return self._action_error("当前 Console 未配置语音发送能力", window=window)
-            ok = self._send_voice_to_window(window, message)
+            ok = self._send_voice_to_window(window, message, filename)
             if not ok:
-                return self._action_error("发送语音失败", window=window)
+                return self._action_error("发送语音文件失败", window=window)
         else:
             return self._action_error(f"不支持的消息类型: {message_type}", window=window)
 

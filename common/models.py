@@ -31,6 +31,7 @@ class MessageType(StrEnum):
     IMAGE = "image"
     FILE = "file"
     VOICE = "voice"
+    VOICE_FILE = "voice_file"
 
 
 class TaskType(StrEnum):
@@ -45,12 +46,15 @@ class MessagePayload(BaseModel):
 
     @model_validator(mode="after")
     def check_content(self):
-        if self.message_type == MessageType.FILE and not self.filename:
-            raise ValueError("file 类型必须提供 filename")
+        if self.message_type in {MessageType.FILE, MessageType.VOICE_FILE} and not self.filename:
+            raise ValueError(f"{self.message_type.value} 类型必须提供 filename")
         if not self.message:
             raise ValueError("message 不能为空")
-        if self.message_type == MessageType.VOICE and len(self.message) > config.WINDOWS_VOICE_MAX_TEXT_LENGTH:
-            raise ValueError(f"voice 文本不能超过 {config.WINDOWS_VOICE_MAX_TEXT_LENGTH} 字符")
+        if self.message_type == MessageType.VOICE:
+            if self.filename:
+                raise ValueError("voice 文本类型不接受 filename, MP3 请使用 voice_file")
+            if len(self.message) > config.WINDOWS_VOICE_MAX_TEXT_LENGTH:
+                raise ValueError(f"voice 文本不能超过 {config.WINDOWS_VOICE_MAX_TEXT_LENGTH} 字符")
         return self
 
 

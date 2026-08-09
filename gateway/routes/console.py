@@ -125,4 +125,5 @@ def _windows_service(gateway_app=None):
         send_image_to_window=adapter.send_image_to_window,
         send_file_to_window=adapter.send_file_to_window,
         send_voice_to_window=adapter.send_voice_to_window,
+        send_text2voice_to_window=adapter.send_text2voice_to_window,
     )

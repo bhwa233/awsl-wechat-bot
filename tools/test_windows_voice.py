@@ -1,8 +1,10 @@
 """Windows 微信语音发送脚本。"""
 
 import argparse
+import base64
 import sys
 import time
+from pathlib import Path
 
 import uiautomation as auto
 
@@ -27,7 +29,9 @@ def get_voice_items(window) -> list[tuple[tuple[int, ...], str]]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--group", required=True)
-    parser.add_argument("--text", required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--text")
+    source.add_argument("--file-path")
     parser.add_argument("--send", action="store_true")
     return parser.parse_args()
 
@@ -52,7 +56,20 @@ def main() -> None:
     )
     before = get_voice_items(window)
     before_ids = {runtime_id for runtime_id, _name in before}
-    if not adapter.send_voice_to_window(window, args.text):
+    filename = None
+    message = args.text
+    if args.file_path:
+        path = Path(args.file_path)
+        if not path.is_file():
+            raise RuntimeError(f"音频文件不存在: {path}")
+        filename = path.name
+        message = base64.b64encode(path.read_bytes()).decode("ascii")
+    sent = (
+        adapter.send_voice_to_window(window, message, filename)
+        if filename
+        else adapter.send_text2voice_to_window(window, message)
+    )
+    if not sent:
         print(f"foreground_after={win32gui.GetForegroundWindow()}", flush=True)
         raise RuntimeError("语音发送失败")
     deadline = time.monotonic() + 10

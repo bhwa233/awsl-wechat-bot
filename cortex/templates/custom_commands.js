@@ -255,6 +255,9 @@ const customCommandCrud = {
         } else if (actionType === 'voice') {
             contentHtml = escapeHtml(cmd.message || '');
             contentLabel = '语音文本';
+        } else if (actionType === 'voice_file') {
+            contentHtml = escapeHtml(cmd.filename || '');
+            contentLabel = '语音文件';
         } else {
             contentHtml = escapeHtml(cmd.message || '');
         }
@@ -334,13 +337,18 @@ const customCommandCrud = {
         $('customCommandEnabled').value = cmd.enabled.toString();
         const actionType = cmd.action_type || cmd.message_type || 'text';
         $('customCommandMessageType').value = actionType;
-        $('customCommandMessage').value = ['text', 'voice'].includes(actionType) ? cmd.message : '';
+        $('customCommandMessage').value = ['text', 'voice'].includes(actionType)
+            ? cmd.message
+            : '';
         resetCustomCommandUpload();
         if (actionType === 'image' && cmd.message) {
             customCommandMessageComposer.setAttachment(cmd.message, '', 'data:image/png;base64,' + cmd.message);
         }
         if (actionType === 'file' && cmd.message) {
             customCommandMessageComposer.setAttachment(cmd.message, cmd.filename || '');
+        }
+        if (actionType === 'voice_file' && cmd.filename && cmd.message) {
+            customCommandMessageComposer.setAttachment(cmd.message, cmd.filename);
         }
         updateCustomCommandTargetGroupsCheckboxes(cmd.target_groups || []);
         toggleCustomCommandMessageType({ resetUpload: false });

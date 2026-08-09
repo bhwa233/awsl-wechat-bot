@@ -631,7 +631,10 @@ function renderMediaVoice(m, fallbackText) {
     const lenM = (m.content || '').match(/voicelength="(\d+)"/);
     const seconds = lenM ? Math.round(parseInt(lenM[1], 10) / 1000) : null;
     const label = seconds ? `🎙 ${seconds}″` : '🎙 语音';
-    const url = `/api/chatlog/media?msg_type=34&server_id=${m.server_id_str}${mediaTokenSuffix()}`;
+    const fallback = m.local_id && m.create_time
+        ? `&local_id=${m.local_id}&create_time=${m.create_time}`
+        : '';
+    const url = `/api/chatlog/media?msg_type=34&server_id=${m.server_id_str}${fallback}${mediaTokenSuffix()}`;
     return `<div class="msg-text msg-media"><audio class="msg-audio" preload="none" controls src="${url}"></audio><div class="msg-audio-label">${label}</div></div>`;
 }
 
@@ -858,7 +861,7 @@ async function sendChatMessage() {
     btn.disabled = false;
     if (r.ok) {
         if (type === 'text' || type === 'voice') $('msgInput').value = '';
-        else chatMessageComposer.resetUpload();
+        if (!['text', 'voice'].includes(type)) chatMessageComposer.resetUpload();
         toast('已发送', 'success');
         if (selectedChatlogGroup) setTimeout(() => loadMessages(selectedChatlogGroup), 1000);
     } else {

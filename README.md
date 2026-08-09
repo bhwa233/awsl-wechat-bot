@@ -101,7 +101,7 @@ cp .env.example .env  # 编辑配置
 
 ### Windows 语音发送
 
-Windows 支持将 `voice` 消息中的文字通过 EdgeTTS 合成为音频，再经 VB-CABLE 送入微信麦克风。Linux 和 macOS 暂不实现语音发送。
+Windows 支持两种语音消息：`voice` 将文字通过 EdgeTTS 合成为音频，`voice_file` 直接发送 Base64 编码的 MP3。两种类型都经 VB-CABLE 送入微信麦克风；Linux 和 macOS 暂不实现语音发送。
 
 1. 安装 [VB-CABLE](https://vb-audio.com/Cable/)。
 2. 将 Windows 默认录音设备设为 `CABLE Output (VB-Audio Virtual Cable)`。
@@ -117,6 +117,7 @@ WINDOWS_VOICE_PLAYBACK_DEVICE=Speakers (VB-Audio Virtual Cable)
 WINDOWS_VOICE_RECORDING_DEVICE=CABLE Output (VB-Audio Virtual Cable)
 WINDOWS_VOICE_SAMPLE_RATE=48000
 WINDOWS_VOICE_MAX_TEXT_LENGTH=1000
+WINDOWS_VOICE_MAX_FILE_BYTES=7000000
 WINDOWS_VOICE_MAX_DURATION=60
 WINDOWS_VOICE_TIMEOUT=90
 ```
@@ -127,6 +128,7 @@ WINDOWS_VOICE_TIMEOUT=90
 
 ```bash
 uv run python -m tools.test_windows_voice --group Bruce --text "你好，这是一条中文语音测试。" --send
+uv run python -m tools.test_windows_voice --group Bruce --file-path ./voice.mp3 --send
 ```
 
 ### Linux setup
@@ -341,6 +343,7 @@ GET  /logs?lines=100      # 日志
 {"type": "send_message", "group_name": "群名", "message_type": "image", "message": "<base64>"}
 {"type": "send_message", "group_name": "群名", "message_type": "file", "message": "<base64>", "filename": "voice.mp3"}
 {"type": "send_message", "group_name": "群名", "message_type": "voice", "message": "你好，这是一条语音消息"}
+{"type": "send_message", "group_name": "群名", "message_type": "voice_file", "message": "<mp3-base64>", "filename": "voice.mp3"}
 ```
 
 **Server → Client：**
@@ -359,7 +362,7 @@ GET  /logs?lines=100      # 日志
 ## 注意事项
 
 - macOS 首次运行需授予辅助功能权限（发送）和屏幕录制权限（截图 OCR）
-- 语音发送当前仅支持 Windows；Linux/macOS 会在入队前拒绝 `voice` 请求
+- 语音发送当前仅支持 Windows；Linux/macOS 会在入队前拒绝 `voice` 和 `voice_file` 请求
 - 运行时微信群聊窗口需保持打开（弹出的独立聊天窗口）
 - 窗口自动发现，无需手动选择群聊
 

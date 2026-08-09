@@ -30,10 +30,11 @@ Use `Authorization: Bearer <token>` when a token is available. Omit the header w
 }
 ```
 
-- `message_type`: `text`, `image`, `file`, or `voice`.
+- `message_type`: `text`, `image`, `file`, `voice`, or `voice_file`.
 - `image` and `file` use base64 content in `message`.
 - `file` requires `filename`.
 - `voice` uses plain text in `message`, is currently Windows-only, and is limited to 1,000 input characters and 60 seconds of synthesized audio.
+- `voice_file` uses Base64 MP3 in `message`, requires an `.mp3` `filename`, is Windows-only, and is limited to 7,000,000 decoded bytes and 60 seconds.
 - Response: `{ "success": true, "message": "消息已加入发送队列" }`
 
 Chatlog database APIs are not served by Gateway. Use the `awsl-wechat-chatlog`

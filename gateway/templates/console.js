@@ -183,10 +183,14 @@ function getMessageType() {
 function syncComposerType(reset = true) {
     const type = getMessageType();
     const isText = type === 'text' || type === 'voice';
+    const isAttachment = type === 'image' || type === 'file' || type === 'voice_file';
     $('messageInput').hidden = !isText;
-    $('fileDropzone').hidden = isText;
-    $('fileInput').accept = type === 'image' ? 'image/*' : '';
-    if (reset && !isText) resetAttachment();
+    $('fileDropzone').hidden = !isAttachment;
+    $('fileInput').accept = type === 'image' ? 'image/*' : type === 'voice_file' ? 'audio/mpeg,.mp3' : '';
+    if (reset && isAttachment) resetAttachment();
+    if (type === 'voice_file' && !attachment.message) {
+        $('fileInfo').textContent = '选择 MP3 文件，最长 60 秒';
+    }
 }
 
 function resetAttachment() {
@@ -217,6 +221,10 @@ function loadAttachmentFile(file) {
         setStatus('请选择图片文件', true);
         return;
     }
+    if (type === 'voice_file' && !file.name.toLowerCase().endsWith('.mp3')) {
+        setStatus('语音文件仅支持 MP3', true);
+        return;
+    }
     const reader = new FileReader();
     reader.onload = event => {
         const dataUrl = String(event.target.result || '');
@@ -241,6 +249,9 @@ function loadAttachmentFile(file) {
 
 function buildMessagePayload() {
     const messageType = getMessageType();
+    if (messageType === 'voice_file' && attachment.message) {
+        return { message_type: 'voice_file', message: attachment.message, filename: attachment.filename };
+    }
     if (messageType === 'text' || messageType === 'voice') {
         const message = $('messageInput').value.trim();
         if (!message) return null;

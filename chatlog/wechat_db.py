@@ -179,6 +179,7 @@ class Message:
     content: str
     is_self: bool = False
     server_id: int = 0  # 全局唯一消息 ID, 用于 join MessageResourceInfo 拿明文 md5
+    local_id: int = 0  # 本地消息 ID, 自发语音在 VoiceInfo 中通过此字段关联
     at_users: list[str] = field(default_factory=list)  # 群聊被 @ 人的 wxid 列表
 
     def format(self, time_format: str = "%Y-%m-%d %H:%M:%S") -> str:
@@ -195,6 +196,8 @@ class Message:
             "msg_type": self.msg_type,
             "content": self.content,
             "is_self": self.is_self,
+            "local_id": self.local_id,
+            "create_time": int(self.time.timestamp()),
             "at_users": self.at_users,
         }
 
@@ -760,6 +763,7 @@ class WeChatDBReader:
 
             query = f"""
                 SELECT m.sort_seq, m.server_id, m.local_type, n.user_name,
+                       m.local_id,
                        m.create_time, m.message_content, m.status, m.source
                 FROM {table_name} m
                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
@@ -785,7 +789,7 @@ class WeChatDBReader:
                 params.append(per_db_cap)
             cursor.execute(query, params)
 
-            for sort_seq, server_id, local_type, user_name, create_time, message_content, status, source in cursor.fetchall():
+            for sort_seq, server_id, local_type, user_name, local_id, create_time, message_content, status, source in cursor.fetchall():
                 msg_type = local_type & 0xFFFFFFFF
                 if text_only and msg_type != MESSAGE_TYPE_TEXT:
                     continue
@@ -817,6 +821,7 @@ class WeChatDBReader:
                     content=content,
                     is_self=is_self,
                     server_id=int(server_id) if server_id is not None else 0,
+                    local_id=int(local_id) if local_id is not None else 0,
                     at_users=at_users,
                 ))
 

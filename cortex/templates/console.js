@@ -284,7 +284,7 @@ window.consoleTab = (() => {
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
             if (!r.ok || !r.data?.available) { setStatus(r.data?.detail || r.error || '发送失败', true); renderError(r.data?.detail || r.error); return; }
             if (payload.message_type === 'text' || payload.message_type === 'voice') $('consoleMsgInput').value = '';
-            else composer.resetUpload();
+            if (!['text', 'voice'].includes(payload.message_type)) composer.resetUpload();
             renderList(r.data.chat_list);
             setTimeout(() => {
                 if (selectedName) loadChatlogMessages(selectedName, { quiet: true });

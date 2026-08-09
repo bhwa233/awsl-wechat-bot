@@ -46,6 +46,16 @@ class BaseWeChatAdapter(ABC):
         """向指定窗口发送文件(base64 编码)"""
         pass
 
-    def send_voice_to_window(self, window: Any, text: str) -> bool:
-        """向指定窗口发送语音,当前仅 Windows 实现"""
+    def send_voice_to_window(
+        self,
+        window: Any,
+        file_base64: str,
+        filename: str,
+        timeout: float | None = None,
+    ) -> bool:
+        """将 MP3 文件作为语音发送,当前仅 Windows 实现"""
+        return False
+
+    def send_text2voice_to_window(self, window: Any, text: str) -> bool:
+        """将文本合成为语音发送,当前仅 Windows 实现"""
         return False

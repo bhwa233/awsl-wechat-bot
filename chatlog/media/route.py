@@ -177,6 +177,8 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
         msg_type: int = Query(..., description="3=image, 34=voice, 43=video thumb, 47=sticker, 49=file"),
         group: str | None = Query(None, description="群 ID 或 wxid (msg_type=3/43 必需)"),
         server_id: str | None = Query(None, description="消息 server_id 字符串 (避免 JS Number 精度丢失)"),
+        local_id: int | None = Query(None, description="本地消息 ID (自发语音回退定位)"),
+        create_time: int | None = Query(None, description="消息创建时间戳 (自发语音回退定位)"),
         content: str | None = Query(None, description="原始 content XML (msg_type=47/49 必需)"),
         hd: bool = Query(False, description="image: 是否拉高清 (默认缩略图; 高清 wxgf 走 av 转码)"),
     ):
@@ -200,7 +202,13 @@ def register_media_route(router: APIRouter, binding: MediaBackendBinding) -> Non
             elif msg_type == 34:
                 if server_id_int is None:
                     raise HTTPException(status_code=400, detail="voice 需 server_id")
-                result = _build_resolver(need_base=False).decode_voice(server_id_int)
+                if (local_id is None) != (create_time is None):
+                    raise HTTPException(status_code=400, detail="voice 回退定位需同时提供 local_id + create_time")
+                result = _build_resolver(need_base=False).decode_voice(
+                    server_id_int,
+                    local_id=local_id,
+                    create_time=create_time,
+                )
             elif msg_type == 47:
                 if not content:
                     raise HTTPException(status_code=400, detail="sticker 需 content")

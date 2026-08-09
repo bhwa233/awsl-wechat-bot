@@ -242,11 +242,28 @@ class ScheduledTaskService:
                         WHEN 'text' THEN 'TEXT'
                         WHEN 'image' THEN 'IMAGE'
                         WHEN 'file' THEN 'FILE'
+                        WHEN 'voice' THEN 'VOICE'
+                        WHEN 'voice_file' THEN 'VOICE_FILE'
                         WHEN 'summary' THEN 'TEXT'
                         ELSE message_type
                     END
                     """
                 )
+
+        def normalize_voice_message_types(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            if "message_type" not in columns:
+                return
+            conn.execute(
+                """
+                UPDATE scheduled_tasks
+                SET message_type = CASE message_type
+                    WHEN 'voice' THEN 'VOICE'
+                    WHEN 'voice_file' THEN 'VOICE_FILE'
+                    ELSE message_type
+                END
+                """
+            )
 
         def repair_legacy_image_payload(conn):
             columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
@@ -271,6 +288,7 @@ class ScheduledTaskService:
             ("20260331_007_scheduled_tasks_backfill_defaults", backfill_defaults),
             ("20260331_008_scheduled_tasks_normalize_enum_storage", normalize_enum_storage),
             ("20260331_009_scheduled_tasks_repair_legacy_image_payload", repair_legacy_image_payload),
+            ("20260809_001_scheduled_tasks_normalize_voice_message_types", normalize_voice_message_types),
         ])
 
     @staticmethod
@@ -285,7 +303,10 @@ class ScheduledTaskService:
             return bool(message.strip())
         if not message.strip():
             return False
-        return not (message_type == MessageType.FILE and not filename.strip())
+        return not (
+            message_type in {MessageType.FILE, MessageType.VOICE_FILE}
+            and not filename.strip()
+        )
 
     def create_task(self, data: ScheduledTaskCreate) -> ScheduledTask | None:
         if not self.validate_cron_expression(data.cron_expression):

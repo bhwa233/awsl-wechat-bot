@@ -630,20 +630,47 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 if temp_path or temp_dir:
                     self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=1.0)
 
-    def send_voice_to_window(self, window, text: str) -> bool:
-        """通过 EdgeTTS + VB-CABLE 向 Windows 微信发送语音。"""
-        import sounddevice as sd
+    def send_text2voice_to_window(self, window, text: str) -> bool:
+        """通过 EdgeTTS 合成 MP3 后按语音文件发送。"""
+        from gateway.utils.windows_voice import synthesize_voice_base64
 
-        from gateway.utils.windows_voice import prepare_voice
-
-        self._ensure_uia()
-        logger.debug(f"[send_voice_to_window] 向窗口 {window.Name} 发送语音: {text[:20]}...")
         deadline = time.monotonic() + config.WINDOWS_VOICE_TIMEOUT
         try:
-            pcm, output_device, duration = prepare_voice(text, timeout=config.WINDOWS_VOICE_TIMEOUT)
+            file_base64 = synthesize_voice_base64(
+                text,
+                timeout=max(0.0, deadline - time.monotonic()),
+            )
         except Exception as e:
             logger.error(f"生成语音失败: {e}")
             return False
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            logger.error("发送语音失败: EdgeTTS 合成超时")
+            return False
+        return self.send_voice_to_window(window, file_base64, "edge-tts.mp3", timeout=remaining)
+
+    def send_voice_to_window(
+        self,
+        window,
+        file_base64: str,
+        filename: str,
+        timeout: float | None = None,
+    ) -> bool:
+        """通过 VB-CABLE 向 Windows 微信发送 Base64 MP3 语音。"""
+        from gateway.utils.windows_voice import prepare_voice_file
+
+        self._ensure_uia()
+        logger.debug(f"[send_voice_to_window] 向窗口 {window.Name} 发送语音: {filename}")
+        deadline = time.monotonic() + (config.WINDOWS_VOICE_TIMEOUT if timeout is None else timeout)
+        try:
+            pcm, output_device, duration = prepare_voice_file(file_base64, filename)
+        except Exception as e:
+            logger.error(f"读取语音文件失败: {e}")
+            return False
+        return self._send_voice_pcm_to_window(window, pcm, output_device, duration, deadline)
+
+    def _send_voice_pcm_to_window(self, window, pcm, output_device: int, duration: float, deadline: float) -> bool:
+        import sounddevice as sd
 
         remaining = deadline - time.monotonic()
         if remaining <= 0 or not self._send_lock.acquire(timeout=remaining):

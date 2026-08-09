@@ -146,7 +146,7 @@ per group                              │ 广播
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`
-- **Windows 语音发送**: EdgeTTS 合成晓晓女声，经 VB-CABLE 播放到默认麦克风；激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
+- **Windows 语音发送**: `voice` 用 EdgeTTS 合成晓晓女声，`voice_file` 接收 Base64 MP3；两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
 - **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog HTTP 查询最近文本消息；发送依赖 X11 工具 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
@@ -174,7 +174,7 @@ Chatlog (:7998):
 - 消息搜索端点 `POST /messages/search`: 请求体 `{group,query,senders,start,end,limit,offset,desc}`，`query` 或 `senders` 至少提供一个；关键词搜索仅在 SQL 中匹配 `msg_type=1` 的未压缩纯文本，仅按发送者搜索则在 SQL 中按人/时间过滤；群聊搜索保持旧 `sender:\n正文` 解析兼容
 - 批量消息端点 `POST /messages/batch` (v2): 请求体 `{items:[{group,since_seq}], limit}`，按每群 `sort_seq >= since_seq` 升序返回 `{results:{group:[...]}}`，用于低延迟增量轮询
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
-- 媒体端点 `GET /media?msg_type=&group=&server_id=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 依赖 av/pilk（必需依赖，普通 `uv sync` 安装）；sticker/file 不依赖密钥。image `hd=1` 通过 message_resource md5 查本机 `.dat`，按无后缀原图 / `_h` / `_W` / 非缩略图 / `_t` 顺序尝试，wxgf/HEVC 经 av 转 JPEG；转发聊天记录 type=19 的内嵌图片当前不按普通 msg_type=3 暴露。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
+- 媒体端点 `GET /media?msg_type=&group=&server_id=&local_id=&create_time=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 依赖 av/pilk（必需依赖，普通 `uv sync` 安装），优先按 `server_id` 查询，自发语音因 VoiceInfo.svr_id=0 时用消息返回的 `local_id + create_time` 唯一回退；sticker/file 不依赖密钥。image `hd=1` 通过 message_resource md5 查本机 `.dat`，按无后缀原图 / `_h` / `_W` / 非缩略图 / `_t` 顺序尝试，wxgf/HEVC 经 av 转 JPEG；转发聊天记录 type=19 的内嵌图片当前不按普通 msg_type=3 暴露。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
 - 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
 
 Cortex (:7999):
@@ -193,7 +193,7 @@ Client → Server:
 - `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
 - `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}` — priority/passive 可选，无效 regex 返回 error
 - `{"type": "unsubscribe"}`
-- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file|voice", "message": "...", "filename": "..."}`（file 需要 filename；voice 当前仅 Windows）
+- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file|voice|voice_file", "message": "...", "filename": "..."}`（file/voice_file 需要 filename；voice 是 TTS 文本，voice_file 是 Base64 MP3；两种语音当前仅 Windows）
 
 Server → Client:
 - `{"type": "auth_ok"}`
