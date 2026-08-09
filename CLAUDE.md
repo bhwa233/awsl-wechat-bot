@@ -83,7 +83,7 @@ per group                              │ 广播
 - `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
 - `adapters/base.py` - BaseWeChatAdapter 抽象基类 (窗口读取/发送 + 平台消息检测策略)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
-- `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，文本/图片/文件/语音发送共用 _send_lock 串行；语音通过 EdgeTTS + VB-CABLE + 右 Alt 录音实现
+- `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，文本/图片/文件/语音发送共用 _send_lock 串行；语音通过 LocalAI TTS（EdgeTTS 回退）+ VB-CABLE + 右 Alt 录音实现
 - `adapters/linux.py` - Linux: 通过 Chatlog HTTP 读取文本消息，通过 X11 工具发送文本/图片/文件
 - `utils/ocr.py` - macOS Vision OCR 封装
 - `utils/screenshot.py` - 截图工具
@@ -146,7 +146,7 @@ per group                              │ 广播
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`
-- **Windows 语音发送**: `voice` 用 EdgeTTS 合成晓晓女声，`voice_file` 接收 Base64 MP3；两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
+- **Windows 语音发送**: `voice` 优先用 OpenAI 兼容 LocalAI TTS 合成 Serena 女声 MP3，失败时回退 EdgeTTS 晓晓女声，`voice_file` 接收 Base64 MP3；两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
 - **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog HTTP 查询最近文本消息；发送依赖 X11 工具 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）

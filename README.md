@@ -101,16 +101,21 @@ cp .env.example .env  # 编辑配置
 
 ### Windows 语音发送
 
-Windows 支持两种语音消息：`voice` 将文字通过 EdgeTTS 合成为音频，`voice_file` 直接发送 Base64 编码的 MP3。两种类型都经 VB-CABLE 送入微信麦克风；Linux 和 macOS 暂不实现语音发送。
+Windows 支持两种语音消息：`voice` 优先调用 OpenAI 兼容的 LocalAI TTS 接口，失败时回退 EdgeTTS；`voice_file` 直接发送 Base64 编码的 MP3。两种类型都经 VB-CABLE 送入微信麦克风；Linux 和 macOS 暂不实现语音发送。
 
 1. 安装 [VB-CABLE](https://vb-audio.com/Cable/)。
 2. 将 Windows 默认录音设备设为 `CABLE Output (VB-Audio Virtual Cable)`。
 3. 确认播放设备中存在 `Speakers (VB-Audio Virtual Cable)`。
 4. 微信和 Gateway 必须运行在同一个交互式桌面会话中。
 
-默认使用晓晓女声和正常语速，可在 `.env` 覆盖：
+LocalAI 默认使用 `qwen3-tts-cpp-customvoice-q4` 的 Serena 女声、请求 MP3，API 超时 180 秒；EdgeTTS 回退使用晓晓女声和正常语速。可在 `.env` 覆盖：
 
 ```env
+LOCALAI_TTS_API_URL=https://local-ai.example.com/v1/audio/speech
+LOCALAI_TTS_API_KEY=your-localai-api-key
+LOCALAI_TTS_MODEL=qwen3-tts-cpp-customvoice-q4
+LOCALAI_TTS_VOICE=Serena
+LOCALAI_TTS_TIMEOUT=180
 EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
 EDGE_TTS_RATE=+0%
 WINDOWS_VOICE_PLAYBACK_DEVICE=Speakers (VB-Audio Virtual Cable)
