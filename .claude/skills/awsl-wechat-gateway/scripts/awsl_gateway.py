@@ -235,9 +235,9 @@ def build_parser() -> argparse.ArgumentParser:
     windows_parser = subparsers.add_parser("windows", help="List open/listened WeChat chat windows")
     windows_parser.set_defaults(func=command_windows)
 
-    send_parser = subparsers.add_parser("send", help="Send a text/image/file message")
+    send_parser = subparsers.add_parser("send", help="Send a text/image/file/voice message")
     send_parser.add_argument("--group", required=True, help="Open chat window name")
-    send_parser.add_argument("--message-type", choices=("text", "image", "file"), default="text")
+    send_parser.add_argument("--message-type", choices=("text", "image", "file", "voice"), default="text")
     send_parser.add_argument("--message", default=None, help="Text content or pre-encoded base64 payload")
     send_parser.add_argument("--file-path", default=None, help="Local file to base64 encode for image/file sends")
     send_parser.add_argument("--filename", default=None, help="Filename for file messages")

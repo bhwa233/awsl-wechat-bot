@@ -97,7 +97,12 @@ async def _handle_message(ws: WebSocket, gateway: Gateway, raw: str):
             gateway.ws_unsubscribe(ws)
 
         case WSSendMessage():
-            if not gateway.send_message(msg.to_outgoing_message()):
+            outgoing = msg.to_outgoing_message()
+            error = gateway.get_send_error(outgoing)
+            if error:
+                await ws.send_text(WSError(request_id=msg.request_id, detail=error).model_dump_json())
+                return
+            if not gateway.send_message(outgoing):
                 await ws.send_text(WSError(
                     request_id=msg.request_id,
                     detail="发送队列已满,请稍后重试",

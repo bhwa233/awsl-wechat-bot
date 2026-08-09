@@ -19,7 +19,10 @@ def create_routes(gateway: Gateway):
 
     @router.post("/api/send", response_model=SendMessageResponse, dependencies=[Depends(verify_token)])
     async def send_message(request: SendMessageRequest):
-        """向指定聊天窗口发送文本、图片或文件"""
+        """向指定聊天窗口发送文本、图片、文件或语音"""
+        error = gateway.get_send_error(request)
+        if error:
+            raise HTTPException(status_code=501, detail=error)
         if not gateway.send_message(request):
             raise HTTPException(status_code=503, detail="发送队列已满,请稍后重试")
 

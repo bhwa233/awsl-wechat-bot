@@ -5,6 +5,8 @@ from typing import Any
 class BaseWeChatAdapter(ABC):
     """微信操作适配器基类"""
 
+    SUPPORTS_VOICE = False
+
     def messages_to_check(self, messages: list[str]) -> list[str]:
         """返回本轮需要检查的新消息候选范围"""
         return messages[-3:] if len(messages) > 3 else messages
@@ -43,3 +45,7 @@ class BaseWeChatAdapter(ABC):
     def send_file_to_window(self, window: Any, file_base64: str, filename: str) -> bool:
         """向指定窗口发送文件(base64 编码)"""
         pass
+
+    def send_voice_to_window(self, window: Any, text: str) -> bool:
+        """向指定窗口发送语音,当前仅 Windows 实现"""
+        return False

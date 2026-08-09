@@ -33,6 +33,16 @@ class Config(BaseSettings):
     # 发送间隔配置
     GLOBAL_SEND_INTERVAL: float = 3.0  # 全局发送间隔(秒)
 
+    # Windows 语音发送(EdgeTTS -> VB-CABLE -> 微信右 Alt 录音)
+    EDGE_TTS_VOICE: str = "zh-CN-XiaoxiaoNeural"
+    EDGE_TTS_RATE: str = "+0%"
+    WINDOWS_VOICE_PLAYBACK_DEVICE: str = "Speakers (VB-Audio Virtual Cable)"
+    WINDOWS_VOICE_RECORDING_DEVICE: str = "CABLE Output (VB-Audio Virtual Cable)"
+    WINDOWS_VOICE_SAMPLE_RATE: int = 48_000
+    WINDOWS_VOICE_MAX_TEXT_LENGTH: int = 1_000
+    WINDOWS_VOICE_MAX_DURATION: float = 60.0
+    WINDOWS_VOICE_TIMEOUT: float = 90.0
+
     # 调试模式(输出每次检测到的所有消息)
     DEBUG: bool = False
 

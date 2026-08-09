@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-gateway
-description: "Use when Codex needs to operate an AWSL WeChat Bot Gateway by HTTP API: connect with a Gateway base URL and optional Bearer token, list open/listened WeChat chat windows, or send text/image/file messages through the Gateway."
+description: "Use when Codex needs to operate an AWSL WeChat Bot Gateway by HTTP API: connect with a Gateway base URL and optional Bearer token, list open/listened WeChat chat windows, or send text/image/file/voice messages through the Gateway."
 ---
 
 # AWSL WeChat Gateway
@@ -27,6 +27,7 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Manage cached connection info with `config show|set|clear`.
 - List open/listened chat windows with `windows`, which calls `GET /api/groups`.
 - Send messages with `send --group <window_name> --message <text>`. Use the visible/open window name from `windows` as `--group`.
+- Send Windows voice messages with `send --group <window_name> --message-type voice --message <text>`; Gateway synthesizes the text with EdgeTTS and limits output to 60 seconds.
 
 **Note:** Chatlog features (decrypt, groups, messages) have been moved to the `awsl-wechat-chatlog` skill. Use that skill for WeChat database operations.
 
@@ -55,6 +56,10 @@ uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
 # Send a local image or file; the helper base64-encodes file contents
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type image --file-path ./image.png
+
+# Send synthesized voice on a Windows Gateway
+uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
+  --group "测试群" --message-type voice --message "你好，这是一条语音消息"
 ```
 
 ## Gateway Notes

@@ -59,8 +59,9 @@ class MessageComposer {
 
     syncType(opts = {}) {
         const type = this.getType();
+        const isText = type === 'text' || type === 'voice';
         const isAttachment = type === 'image' || type === 'file';
-        this._setDisplay(this.cfg.textGroupId, type === 'text');
+        this._setDisplay(this.cfg.textGroupId, isText);
         this._setDisplay(this.cfg.attachmentGroupId, isAttachment);
         this._setDisplay(this.cfg.summaryGroupId, type === 'summary');
         if (this.fileEl) {
@@ -155,13 +156,17 @@ class MessageComposer {
         if (type === 'summary') {
             return { message_type: 'summary', message: '', filename: '' };
         }
-        if (type === 'text') {
+        if (type === 'text' || type === 'voice') {
+            if (type === 'voice' && !gatewayCapabilities.voice) {
+                toast('当前平台不支持语音发送', 'error');
+                return null;
+            }
             const message = this.getText();
             if (!message) {
                 if (messages.text) toast(messages.text, 'error');
                 return null;
             }
-            return { message_type: 'text', message, filename: '' };
+            return { message_type: type, message, filename: '' };
         }
         if (!this.state.message) {
             toast(messages.attachment || '请选择内容', 'error');
@@ -205,7 +210,7 @@ class MessageComposer {
         const options = Array.from(this.typeEl.options).filter(option => option.value);
         if (!options.length) return;
 
-        const iconMap = { text: 'Aa', image: 'Img', file: 'File', summary: 'Sum' };
+        const iconMap = { text: 'Aa', voice: 'Vo', image: 'Img', file: 'File', summary: 'Sum' };
         const control = document.createElement('div');
         control.className = 'composer-type-control';
         control.setAttribute('role', 'group');

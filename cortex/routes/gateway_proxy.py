@@ -21,6 +21,11 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
         resp = await client.get("/api/groups")
         return resp.json()
 
+    @router.get("/api/gateway/health", dependencies=[Depends(verify_token)])
+    async def proxy_gateway_health():
+        resp = await client.get("/api/health")
+        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+
     @router.post("/api/send", dependencies=[Depends(verify_token)])
     async def proxy_send(request: Request):
         body = await request.json()
@@ -52,7 +57,7 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
             resp = await client.post(
                 "/api/console/send-message",
                 json=body,
-                timeout=httpx.Timeout(connect=5.0, read=60.0, write=60.0, pool=5.0),
+                timeout=httpx.Timeout(connect=5.0, read=120.0, write=120.0, pool=5.0),
             )
         except httpx.HTTPError as e:
             return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})

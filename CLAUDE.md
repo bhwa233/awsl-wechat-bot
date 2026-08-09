@@ -83,7 +83,7 @@ per group                              │ 广播
 - `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
 - `adapters/base.py` - BaseWeChatAdapter 抽象基类 (窗口读取/发送 + 平台消息检测策略)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
-- `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，发送 _send_lock 串行
+- `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，文本/图片/文件/语音发送共用 _send_lock 串行；语音通过 EdgeTTS + VB-CABLE + 右 Alt 录音实现
 - `adapters/linux.py` - Linux: 通过 Chatlog HTTP 读取文本消息，通过 X11 工具发送文本/图片/文件
 - `utils/ocr.py` - macOS Vision OCR 封装
 - `utils/screenshot.py` - 截图工具
@@ -146,6 +146,7 @@ per group                              │ 广播
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`
+- **Windows 语音发送**: EdgeTTS 合成晓晓女声，经 VB-CABLE 播放到默认麦克风；激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
 - **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog HTTP 查询最近文本消息；发送依赖 X11 工具 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
 - **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
@@ -153,7 +154,7 @@ per group                              │ 广播
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，发送载荷统一为 `message_type + message + filename`
 - **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池，AI service 限制 max_connections=10
 - **远程命令开关**: `REMOTE_COMMANDS_ENABLED` 默认 true，但 `COMMAND_API_BASE_URL` 默认为空；未配置 URL 或设为 false 时 Cortex 不初始化 `CommandService`，不加载/刷新/执行远程命令，本地自定义命令不受影响
-- **自消息过滤**: Windows UIA 读取所有消息（含自己发送的），SentMessageStore 通过精确/前缀/包含/相似度 4 层匹配过滤自发消息，TTL 120s
+- **自消息过滤**: Windows UIA 读取所有文本消息（语音气泡直接忽略），SentMessageStore 通过精确/前缀/包含/相似度 4 层匹配过滤自发消息，TTL 120s
 - **输入校验**: 正则长度 MAX_REGEX_LEN=200（common/models.py 共享），cron 表达式限 256 字符，AppleScript 参数化防注入（`on run argv`）
 - **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
 - **comtypes 日志静默**: Windows 上 `comtypes` logger 设为 WARNING 级别，屏蔽 COM 类型库生成的 INFO 日志
@@ -192,7 +193,7 @@ Client → Server:
 - `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
 - `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}` — priority/passive 可选，无效 regex 返回 error
 - `{"type": "unsubscribe"}`
-- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file", "message": "...", "filename": "..."}`（file 需要 filename）
+- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file|voice", "message": "...", "filename": "..."}`（file 需要 filename；voice 当前仅 Windows）
 
 Server → Client:
 - `{"type": "auth_ok"}`

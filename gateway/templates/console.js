@@ -182,7 +182,7 @@ function getMessageType() {
 
 function syncComposerType(reset = true) {
     const type = getMessageType();
-    const isText = type === 'text';
+    const isText = type === 'text' || type === 'voice';
     $('messageInput').hidden = !isText;
     $('fileDropzone').hidden = isText;
     $('fileInput').accept = type === 'image' ? 'image/*' : '';
@@ -241,10 +241,10 @@ function loadAttachmentFile(file) {
 
 function buildMessagePayload() {
     const messageType = getMessageType();
-    if (messageType === 'text') {
+    if (messageType === 'text' || messageType === 'voice') {
         const message = $('messageInput').value.trim();
         if (!message) return null;
-        return { message_type: 'text', message, filename: '' };
+        return { message_type: messageType, message, filename: '' };
     }
     if (!attachment.message) {
         setStatus(messageType === 'image' ? '请选择图片' : '请选择文件', true);
@@ -328,7 +328,7 @@ async function sendMessage() {
             renderError(res.data);
             return;
         }
-        if (payload.message_type === 'text') $('messageInput').value = '';
+        if (payload.message_type === 'text' || payload.message_type === 'voice') $('messageInput').value = '';
         else resetAttachment();
         renderCurrentChat(res.data);
         setStatus('消息已发送');

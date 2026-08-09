@@ -21,6 +21,7 @@ function onGroupsLoaded() {
 
 function onTokenSaved() {
     loadGroups();
+    loadGatewayCapabilities();
     chatlogBackend = null;
     chatlogContactCache.clear();
     chatlogContactPending.clear();
@@ -856,7 +857,7 @@ async function sendChatMessage() {
     const r = await api('POST', '/api/send', { body });
     btn.disabled = false;
     if (r.ok) {
-        if (type === 'text') $('msgInput').value = '';
+        if (type === 'text' || type === 'voice') $('msgInput').value = '';
         else chatMessageComposer.resetUpload();
         toast('已发送', 'success');
         if (selectedChatlogGroup) setTimeout(() => loadMessages(selectedChatlogGroup), 1000);

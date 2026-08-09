@@ -21,6 +21,8 @@ dependencies = [
     "uiautomation>=2.0.0; sys_platform == 'win32'",
     "pywin32>=305; sys_platform == 'win32'",
     "Pillow>=9.0.0; sys_platform == 'win32'",
+    "edge-tts>=7.2.8; sys_platform == 'win32'",
+    "sounddevice>=0.5.2; sys_platform == 'win32'",
     # 解密 + 总结
     "pycryptodome>=3.19.0",
     "zstandard>=0.22.0",

@@ -8,7 +8,7 @@ Use `Authorization: Bearer <token>` when a token is available. Omit the header w
 
 `GET /api/health`
 
-- Returns Gateway health and group count.
+- Returns Gateway health, group count, and `capabilities.voice` platform support.
 
 `GET /api/groups`
 
@@ -30,9 +30,10 @@ Use `Authorization: Bearer <token>` when a token is available. Omit the header w
 }
 ```
 
-- `message_type`: `text`, `image`, or `file`.
+- `message_type`: `text`, `image`, `file`, or `voice`.
 - `image` and `file` use base64 content in `message`.
 - `file` requires `filename`.
+- `voice` uses plain text in `message`, is currently Windows-only, and is limited to 1,000 input characters and 60 seconds of synthesized audio.
 - Response: `{ "success": true, "message": "消息已加入发送队列" }`
 
 Chatlog database APIs are not served by Gateway. Use the `awsl-wechat-chatlog`
@@ -42,4 +43,5 @@ skill and its API reference for groups, messages, decryption, and media access.
 
 - `401`: missing or invalid Bearer token when authentication is enabled.
 - `422`: invalid request payload, such as an unsupported `message_type` or a file message without `filename`.
+- `501`: the current Gateway platform does not support the requested message type.
 - `503`: send queue full.

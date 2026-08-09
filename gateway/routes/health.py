@@ -29,7 +29,10 @@ def create_routes(gateway_app):
             "server_time": datetime.now().isoformat(),
             "timezone": time.strftime("%Z"),
             "timezone_offset": time.strftime("%z"),
-            "auth_enabled": bool(config.HTTP_API_TOKEN)
+            "auth_enabled": bool(config.HTTP_API_TOKEN),
+            "capabilities": {
+                "voice": gateway_app.adapter.SUPPORTS_VOICE,
+            },
         }
 
     return router

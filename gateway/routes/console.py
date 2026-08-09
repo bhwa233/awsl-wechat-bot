@@ -63,7 +63,7 @@ def create_routes(gateway_app=None):
 
     @router.post("/api/console/send-message", dependencies=[Depends(verify_token)])
     def console_send_message(request: ConsoleSendMessageRequest):
-        """在主窗口当前聊天输入框发送文本、图片或文件."""
+        """在主窗口当前聊天输入框发送文本、图片、文件或语音."""
         if sys.platform != "win32":
             raise HTTPException(status_code=501, detail="console/send-message 当前只支持 Windows")
 
@@ -124,4 +124,5 @@ def _windows_service(gateway_app=None):
         set_clipboard_text=adapter.set_clipboard_text_verified,
         send_image_to_window=adapter.send_image_to_window,
         send_file_to_window=adapter.send_file_to_window,
+        send_voice_to_window=adapter.send_voice_to_window,
     )

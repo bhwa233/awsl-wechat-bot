@@ -265,6 +265,9 @@ const taskCrud = {
         } else if (task.message_type === 'file') {
             contentHtml = escapeHtml(task.filename || '未命名');
             contentLabel = '文件';
+        } else if (task.message_type === 'voice') {
+            contentHtml = escapeHtml(task.message || '');
+            contentLabel = '语音文本';
         } else {
             contentHtml = escapeHtml(task.message || '');
         }
@@ -346,7 +349,7 @@ const taskCrud = {
         $('taskType').value = task.task_type || 'send';
         $('taskMessageType').value = task.task_type === 'summary' ? 'summary' : (task.message_type || 'text');
         if (task.task_type === 'summary') { populateSummaryRows(task.message); $('taskMessage').value = ''; }
-        else { $('summaryRows').innerHTML = ''; $('taskMessage').value = task.message_type === 'text' ? task.message : ''; }
+        else { $('summaryRows').innerHTML = ''; $('taskMessage').value = ['text', 'voice'].includes(task.message_type) ? task.message : ''; }
         if (task.task_type === 'send' && task.message_type === 'image' && task.message) {
             taskMessageComposer.setAttachment(task.message, '', 'data:image/png;base64,' + task.message);
         }

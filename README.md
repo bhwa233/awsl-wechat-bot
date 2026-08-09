@@ -10,7 +10,7 @@
 - **自动窗口发现**：自动扫描微信群聊窗口，动态增删检测线程
 - **WebSocket 消息网关**：统一消息广播，支持正则过滤订阅
 - **多群并发处理**：每群独立检测线程，全局限速发送
-- **内置 Web UI**：访问 Cortex `:7999/` 即可使用聊天、定时任务、Webhook 管理（图片/文件支持点击/拖拽/Ctrl+V 粘贴）
+- **内置 Web UI**：访问 Cortex `:7999/` 即可发送文本/图片/文件/语音，并管理定时任务、命令和 Webhook
 - **Chatlog 双后端**：v1（pycryptodome 离线解密）/ v2（原生库在线读 SQLCipher v4，Windows/Linux），默认走 v2
 - **富媒体渲染**：图片（V2 .dat 派生 AES + wxgf→JPEG）/ 表情包 / 语音（SILK→MP3）/ 视频缩略图 / 位置 / 名片 / appmsg；Web UI 内置 `[发呆][呲牙]` 等微信表情符 → Unicode emoji 替换
 - **定时任务 / 群聊总结 / @触发 / 动态命令 / Webhook 转发**
@@ -85,7 +85,7 @@ flowchart TB
 
 - Python 3.11+
 - **macOS**: macOS 10.15+，微信客户端，辅助功能权限 + 屏幕录制权限
-- **Windows**: Windows 10/11，微信客户端，建议管理员身份运行
+- **Windows**: Windows 10/11，微信客户端，建议管理员身份运行；发送语音需安装 VB-CABLE
 - **Linux**: Linux WeChat + X11 会话（x86_64/arm64），需安装 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐安装 `xsel`
 
 ## 安装
@@ -97,6 +97,36 @@ cd awsl-wechat-bot
 uv sync
 
 cp .env.example .env  # 编辑配置
+```
+
+### Windows 语音发送
+
+Windows 支持将 `voice` 消息中的文字通过 EdgeTTS 合成为音频，再经 VB-CABLE 送入微信麦克风。Linux 和 macOS 暂不实现语音发送。
+
+1. 安装 [VB-CABLE](https://vb-audio.com/Cable/)。
+2. 将 Windows 默认录音设备设为 `CABLE Output (VB-Audio Virtual Cable)`。
+3. 确认播放设备中存在 `Speakers (VB-Audio Virtual Cable)`。
+4. 微信和 Gateway 必须运行在同一个交互式桌面会话中。
+
+默认使用晓晓女声和正常语速，可在 `.env` 覆盖：
+
+```env
+EDGE_TTS_VOICE=zh-CN-XiaoxiaoNeural
+EDGE_TTS_RATE=+0%
+WINDOWS_VOICE_PLAYBACK_DEVICE=Speakers (VB-Audio Virtual Cable)
+WINDOWS_VOICE_RECORDING_DEVICE=CABLE Output (VB-Audio Virtual Cable)
+WINDOWS_VOICE_SAMPLE_RATE=48000
+WINDOWS_VOICE_MAX_TEXT_LENGTH=1000
+WINDOWS_VOICE_MAX_DURATION=60
+WINDOWS_VOICE_TIMEOUT=90
+```
+
+语音发送和其他消息共用 Windows Adapter 的全局 UI 锁。发送时激活目标窗口、按住右 Alt、向 VB-CABLE 播放音频，结束后释放右 Alt。
+
+可直接用测试脚本验证指定窗口，只有松开右 Alt 后出现新的语音气泡才会返回成功：
+
+```bash
+uv run python -m tools.test_windows_voice --group Bruce --text "你好，这是一条中文语音测试。" --send
 ```
 
 ### Linux setup
@@ -218,7 +248,7 @@ uv run run_daemon.py       # Daemon (:8001)
 ```
 GET  /api/health              # 健康检查
 GET  /api/groups              # 群组列表
-POST /api/send                # 发送消息/图片
+POST /api/send                # 发送文本/图片/文件/语音
 WS   /ws                      # WebSocket（首条消息认证）
 ```
 
@@ -310,6 +340,7 @@ GET  /logs?lines=100      # 日志
 {"type": "send_message", "group_name": "群名", "message_type": "text", "message": "hello"}
 {"type": "send_message", "group_name": "群名", "message_type": "image", "message": "<base64>"}
 {"type": "send_message", "group_name": "群名", "message_type": "file", "message": "<base64>", "filename": "voice.mp3"}
+{"type": "send_message", "group_name": "群名", "message_type": "voice", "message": "你好，这是一条语音消息"}
 ```
 
 **Server → Client：**
@@ -328,6 +359,7 @@ GET  /logs?lines=100      # 日志
 ## 注意事项
 
 - macOS 首次运行需授予辅助功能权限（发送）和屏幕录制权限（截图 OCR）
+- 语音发送当前仅支持 Windows；Linux/macOS 会在入队前拒绝 `voice` 请求
 - 运行时微信群聊窗口需保持打开（弹出的独立聊天窗口）
 - 窗口自动发现，无需手动选择群聊
 

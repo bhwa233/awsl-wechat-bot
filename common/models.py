@@ -7,6 +7,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Discriminator, Field, Tag, TypeAdapter, field_validator, model_validator
 
+from common.config import config
+
 # ── 消息类型常量 ──────────────────────────────────────────
 
 class WSType:
@@ -28,6 +30,7 @@ class MessageType(StrEnum):
     TEXT = "text"
     IMAGE = "image"
     FILE = "file"
+    VOICE = "voice"
 
 
 class TaskType(StrEnum):
@@ -46,6 +49,8 @@ class MessagePayload(BaseModel):
             raise ValueError("file 类型必须提供 filename")
         if not self.message:
             raise ValueError("message 不能为空")
+        if self.message_type == MessageType.VOICE and len(self.message) > config.WINDOWS_VOICE_MAX_TEXT_LENGTH:
+            raise ValueError(f"voice 文本不能超过 {config.WINDOWS_VOICE_MAX_TEXT_LENGTH} 字符")
         return self
 
 

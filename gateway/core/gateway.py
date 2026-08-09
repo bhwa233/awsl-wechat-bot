@@ -10,6 +10,7 @@ from fastapi import WebSocket
 
 from common.models import (
     GatewayMessage,
+    MessageType,
     WSMessageBroadcast,
     WSSubscribe,
     WSSubscription,
@@ -88,6 +89,12 @@ class Gateway:
     def send_message(self, task: SendTask) -> bool:
         """发送消息到微信(所有调用者统一入口)"""
         return self.sender.enqueue(task)
+
+    def get_send_error(self, task: SendTask) -> str | None:
+        """返回当前平台无法发送该消息的原因。"""
+        if task.message_type == MessageType.VOICE and not self.sender.adapter.SUPPORTS_VOICE:
+            return "当前平台不支持语音发送"
+        return None
 
     def _consume_loop(self):
         """消费 gateway_queue,广播到匹配的 WS 客户端"""

@@ -252,6 +252,9 @@ const customCommandCrud = {
         } else if (actionType === 'file') {
             contentHtml = escapeHtml(cmd.filename || '未命名');
             contentLabel = '文件';
+        } else if (actionType === 'voice') {
+            contentHtml = escapeHtml(cmd.message || '');
+            contentLabel = '语音文本';
         } else {
             contentHtml = escapeHtml(cmd.message || '');
         }
@@ -331,7 +334,7 @@ const customCommandCrud = {
         $('customCommandEnabled').value = cmd.enabled.toString();
         const actionType = cmd.action_type || cmd.message_type || 'text';
         $('customCommandMessageType').value = actionType;
-        $('customCommandMessage').value = actionType === 'text' ? cmd.message : '';
+        $('customCommandMessage').value = ['text', 'voice'].includes(actionType) ? cmd.message : '';
         resetCustomCommandUpload();
         if (actionType === 'image' && cmd.message) {
             customCommandMessageComposer.setAttachment(cmd.message, '', 'data:image/png;base64,' + cmd.message);

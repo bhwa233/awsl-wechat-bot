@@ -1,4 +1,4 @@
-"""本地自定义命令服务 - 静态文本/图片/文件回复"""
+"""本地自定义命令服务 - 静态文本/图片/文件/语音回复"""
 
 import json
 import logging
@@ -26,6 +26,7 @@ class CustomCommandActionType(StrEnum):
     TEXT = "text"
     IMAGE = "image"
     FILE = "file"
+    VOICE = "voice"
     SUMMARY = "summary"
 
     def to_message_type(self) -> MessageType:
@@ -33,6 +34,8 @@ class CustomCommandActionType(StrEnum):
             return MessageType.IMAGE
         if self == CustomCommandActionType.FILE:
             return MessageType.FILE
+        if self == CustomCommandActionType.VOICE:
+            return MessageType.VOICE
         return MessageType.TEXT
 
 
@@ -215,6 +218,8 @@ class CustomCommandService:
                         WHEN 'IMAGE' THEN 'IMAGE'
                         WHEN 'file' THEN 'FILE'
                         WHEN 'FILE' THEN 'FILE'
+                        WHEN 'voice' THEN 'VOICE'
+                        WHEN 'VOICE' THEN 'VOICE'
                         ELSE action_type
                     END
                     WHERE action_type IN ('', 'TEXT', 'REPLY', 'reply')
@@ -238,15 +243,17 @@ class CustomCommandService:
 
             action_expr = """
                 CASE
-                    WHEN action_type IN ('TEXT', 'IMAGE', 'FILE', 'SUMMARY') THEN action_type
+                    WHEN action_type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE', 'SUMMARY') THEN action_type
                     WHEN action_type = 'text' THEN 'TEXT'
                     WHEN action_type = 'image' THEN 'IMAGE'
                     WHEN action_type = 'file' THEN 'FILE'
+                    WHEN action_type = 'voice' THEN 'VOICE'
                     WHEN action_type = 'summary' THEN 'SUMMARY'
-                    WHEN message_type IN ('TEXT', 'IMAGE', 'FILE') THEN message_type
+                    WHEN message_type IN ('TEXT', 'IMAGE', 'FILE', 'VOICE') THEN message_type
                     WHEN message_type = 'text' THEN 'TEXT'
                     WHEN message_type = 'image' THEN 'IMAGE'
                     WHEN message_type = 'file' THEN 'FILE'
+                    WHEN message_type = 'voice' THEN 'VOICE'
                     WHEN message_type IN ('summary', 'SUMMARY') THEN 'SUMMARY'
                     ELSE 'TEXT'
                 END

@@ -2,6 +2,7 @@ const $ = id => document.getElementById(id);
 
 let authEnabled = false;
 let allGroups = [];
+let gatewayCapabilities = { voice: false };
 const groupsLoadedHandlers = [];
 
 function getToken() { return localStorage.getItem('awsl_api_token') || ''; }
@@ -19,6 +20,7 @@ function clearToken() {
     localStorage.removeItem('awsl_api_token');
     $('authToken').value = '';
     updateAuthUI();
+    loadGatewayCapabilities();
 }
 
 function updateAuthUI() {
@@ -114,6 +116,18 @@ async function loadServerInfo() {
     return r.data;
 }
 
+async function loadGatewayCapabilities() {
+    const r = await api('GET', '/api/gateway/health');
+    gatewayCapabilities.voice = !!(r.ok && r.data?.capabilities?.voice);
+    document.querySelectorAll('select option[value="voice"]').forEach(option => {
+        option.disabled = !gatewayCapabilities.voice;
+        option.hidden = !gatewayCapabilities.voice;
+    });
+    document.querySelectorAll('.composer-type-option[data-value="voice"]').forEach(button => {
+        button.hidden = !gatewayCapabilities.voice;
+    });
+}
+
 function switchTab(name) {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
     document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `${name}-panel`));
@@ -142,6 +156,7 @@ async function init() {
         t.addEventListener('click', () => switchTab(t.dataset.tab));
     });
     await loadServerInfo();
+    await loadGatewayCapabilities();
     await loadGroups();
     const saved = localStorage.getItem('cortex_tab') || 'chat';
     switchTab(saved);

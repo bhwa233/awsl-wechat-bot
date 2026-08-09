@@ -14,24 +14,23 @@ from common.config import config  # noqa: E402
 from gateway.adapters.base import BaseWeChatAdapter  # noqa: E402
 
 logger = logging.getLogger(__name__)
-_WINDOWS_RESERVED_NAMES = {
-    "CON", "PRN", "AUX", "NUL",
-    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
-}
-_WINDOWS_INVALID_FILENAME_RE = re.compile(r'[<>:"/\\\\|?*\x00-\x1f]')
-_WINDOWS_DROPFILE_CLEANUP_DELAY = 60.0
-_WINDOWS_DROPFILE_CLEANUP_RETRY_DELAY = 1.0
-_WINDOWS_DROPFILE_CLEANUP_RETRIES = 10
 
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
+    SUPPORTS_VOICE = True
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
     _RESERVED_NAMES: ClassVar[set[str]] = {
         "CON", "PRN", "AUX", "NUL",
         *(f"COM{i}" for i in range(1, 10)),
         *(f"LPT{i}" for i in range(1, 10)),
     }
+    _DROPFILE_CLEANUP_DELAY = 60.0
+    _DROPFILE_CLEANUP_RETRY_DELAY = 1.0
+    _DROPFILE_CLEANUP_RETRIES = 10
+    _VOICE_ALT_KEY = auto.Keys.VK_RMENU
+    _VOICE_RECORDING_START_DELAY = 0.4
+    _VOICE_RECORDING_FINISH_DELAY = 0.3
+    _VOICE_MIN_RECORDING_DURATION = 4.5
 
     @classmethod
     def _sanitize_windows_filename(cls, filename: str | None, default: str = "attachment.bin") -> str:
@@ -114,18 +113,18 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             return "image.webp"
         return "image.png"
 
-    @staticmethod
-    def _safe_filename(filename: str | None, default_name: str) -> str:
+    @classmethod
+    def _safe_filename(cls, filename: str | None, default_name: str) -> str:
         safe_name = os.path.basename(filename or "").strip()
         if not safe_name:
             return default_name
-        safe_name = _WINDOWS_INVALID_FILENAME_RE.sub("_", safe_name)
+        safe_name = cls._ILLEGAL_FILENAME_CHARS.sub("_", safe_name)
         safe_name = safe_name.rstrip(" .")
         if not safe_name:
             return default_name
 
         stem, ext = os.path.splitext(safe_name)
-        if stem.upper() in _WINDOWS_RESERVED_NAMES:
+        if stem.upper() in cls._RESERVED_NAMES:
             safe_name = f"_{stem}{ext}"
         return (safe_name or default_name)[:200]
 
@@ -296,8 +295,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 "temp_path": temp_path,
                 "temp_dir": temp_dir,
                 "initial_delay": initial_delay,
-                "retry_delay": _WINDOWS_DROPFILE_CLEANUP_RETRY_DELAY,
-                "retries": _WINDOWS_DROPFILE_CLEANUP_RETRIES,
+                "retry_delay": self._DROPFILE_CLEANUP_RETRY_DELAY,
+                "retries": self._DROPFILE_CLEANUP_RETRIES,
             },
             daemon=True,
             name="wechat-temp-cleanup",
@@ -367,22 +366,35 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         """
         logger.debug(f"正在激活窗口: {window.Name}")
         try:
-            try:
-                if hasattr(window, "ShowWindow"):
-                    window.ShowWindow(1)  # SW_SHOWNORMAL
-            except Exception:
-                pass
-            try:
-                if hasattr(window, "Restore"):
-                    window.Restore()
-            except Exception:
-                pass
+            import ctypes
 
-            window.SetForeground()
-            time.sleep(0.5)
+            import win32gui
+
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+            hwnd = window.NativeWindowHandle
+            current_thread = kernel32.GetCurrentThreadId()
+            foreground_thread = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
+            target_thread = user32.GetWindowThreadProcessId(hwnd, None)
+            attached = []
+            try:
+                for thread_id in {foreground_thread, target_thread} - {current_thread, 0}:
+                    if user32.AttachThreadInput(current_thread, thread_id, True):
+                        attached.append(thread_id)
+                user32.ShowWindow(hwnd, 9)
+                user32.BringWindowToTop(hwnd)
+                user32.SetForegroundWindow(hwnd)
+            finally:
+                for thread_id in attached:
+                    user32.AttachThreadInput(current_thread, thread_id, False)
+            time.sleep(0.3)
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise RuntimeError("目标窗口未获得前台焦点")
             logger.debug(f"窗口已激活: {window.Name}")
+            return True
         except Exception as e:
             logger.debug(f"激活窗口时出现警告: {e}")
+            return False
 
     def get_messages_from_window(self, window) -> list[str]:
         """从指定窗口获取消息
@@ -414,6 +426,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             for item in msg_list.GetChildren():
                 # 新版微信的消息内容在子控件的 Name 属性里
                 if item.ControlTypeName == 'ListItemControl':
+                    if item.ClassName == 'mmui::ChatVoiceItemView':
+                        continue
                     text_control = item.TextControl()
                     # 有些消息是图片或表情,没有文本控件
                     if text_control.Exists(0):
@@ -452,7 +466,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             logger.debug(f"[send_text_to_window] 向窗口 {window.Name} 发送: {text[:20]}...")
 
             # 激活窗口
-            self.activate_specific_window(window)
+            if not self.activate_specific_window(window):
+                return False
             target = self._focus_send_target(window)
 
             try:
@@ -542,7 +557,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             logger.debug(f"[send_image_to_window] 向窗口 {window.Name} 发送图片...")
 
             # 激活窗口
-            self.activate_specific_window(window)
+            if not self.activate_specific_window(window):
+                return False
 
             temp_path = None
             try:
@@ -579,7 +595,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     self._schedule_temp_path_cleanup(
                         temp_path,
                         None,
-                        initial_delay=_WINDOWS_DROPFILE_CLEANUP_DELAY,
+                        initial_delay=self._DROPFILE_CLEANUP_DELAY,
                     )
 
     def send_file_to_window(self, window, file_base64: str, filename: str) -> bool:
@@ -590,7 +606,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         with self._send_lock:
             logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
 
-            self.activate_specific_window(window)
+            if not self.activate_specific_window(window):
+                return False
             target = self._focus_send_target(window)
 
             temp_path = None
@@ -600,7 +617,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 temp_path, temp_dir = self._write_temp_file(file_data, filename=filename, default_name="attachment.bin")
                 self._paste_file_to_window(window, temp_path)
                 self._send_file_paste_and_enter(target)
-                self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=_WINDOWS_DROPFILE_CLEANUP_DELAY)
+                self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=self._DROPFILE_CLEANUP_DELAY)
                 temp_path = None
                 temp_dir = None
 
@@ -612,3 +629,59 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             finally:
                 if temp_path or temp_dir:
                     self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=1.0)
+
+    def send_voice_to_window(self, window, text: str) -> bool:
+        """通过 EdgeTTS + VB-CABLE 向 Windows 微信发送语音。"""
+        import sounddevice as sd
+
+        from gateway.utils.windows_voice import prepare_voice
+
+        self._ensure_uia()
+        logger.debug(f"[send_voice_to_window] 向窗口 {window.Name} 发送语音: {text[:20]}...")
+        deadline = time.monotonic() + config.WINDOWS_VOICE_TIMEOUT
+        try:
+            pcm, output_device, duration = prepare_voice(text, timeout=config.WINDOWS_VOICE_TIMEOUT)
+        except Exception as e:
+            logger.error(f"生成语音失败: {e}")
+            return False
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0 or not self._send_lock.acquire(timeout=remaining):
+            logger.error("发送语音失败: 等待全局发送锁超时")
+            return False
+        try:
+            if not self.activate_specific_window(window):
+                raise RuntimeError("激活目标微信窗口失败")
+            self._focus_send_target(window)
+            finish_delay = max(
+                self._VOICE_RECORDING_FINISH_DELAY,
+                self._VOICE_MIN_RECORDING_DURATION - self._VOICE_RECORDING_START_DELAY - duration,
+            )
+            remaining = deadline - time.monotonic()
+            if remaining < self._VOICE_RECORDING_START_DELAY + duration + finish_delay:
+                raise TimeoutError("语音发送总超时不足以完成播放")
+            auto.PressKey(self._VOICE_ALT_KEY, waitTime=0)
+            try:
+                time.sleep(self._VOICE_RECORDING_START_DELAY)
+                timed_out = threading.Event()
+                timer = threading.Timer(
+                    max(0.0, deadline - time.monotonic()),
+                    lambda: (timed_out.set(), sd.stop()),
+                )
+                timer.start()
+                try:
+                    sd.play(pcm.reshape(-1, 1), config.WINDOWS_VOICE_SAMPLE_RATE, device=output_device, blocking=True)
+                finally:
+                    timer.cancel()
+                if timed_out.is_set():
+                    raise TimeoutError("音频播放超时")
+                time.sleep(finish_delay)
+            finally:
+                auto.ReleaseKey(self._VOICE_ALT_KEY, waitTime=0)
+            logger.debug(f"✓ 语音发送成功到 [{window.Name}]: {duration:.1f}s")
+            return True
+        except Exception as e:
+            logger.error(f"发送语音失败: {e}")
+            return False
+        finally:
+            self._send_lock.release()
