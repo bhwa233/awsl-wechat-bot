@@ -221,7 +221,7 @@ class WeChatDBReaderV2:
             "c.small_head_url, c.big_head_url "
             "FROM contact c "
             "LEFT JOIN chat_room cr ON c.username = cr.username "
-            "WHERE c.local_type IN (1, 2) "
+            "WHERE c.local_type IN (1, 2, 5) "
             "AND c.username NOT LIKE 'gh_%' "
             "AND c.username NOT IN "
             "('filehelper','fmessage','floatbottle','medianote','newsapp','weixin','weixinpay') "
