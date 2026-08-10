@@ -19,6 +19,7 @@ _AT_PREFIX_RE = re.compile(r'^((?:@[^\s@,，;；:：]+\s+)+)(.*)', re.DOTALL)
 _AT_POPOVER_TIMEOUT = 0.5
 _AT_POPOVER_GONE_TIMEOUT = 0.3
 _AT_POPOVER_INTERVAL = 0.05
+_STATE_MAX_DEPTH = 22
 
 
 class WindowsConsoleDebugService:
@@ -90,7 +91,7 @@ class WindowsConsoleDebugService:
                 "input_box": {"available": False},
             }
 
-        nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
+        nodes = self._collect_nodes(window, max_depth=_STATE_MAX_DEPTH, max_nodes=max_nodes)
         chat_list = self._parse_chat_list(nodes)
         return {
             "available": True,
@@ -554,7 +555,7 @@ class WindowsConsoleDebugService:
         return input_control
 
     def _find_input_control(self, window):
-        nodes = self._collect_nodes(window, max_depth=18, max_nodes=5000)
+        nodes = self._collect_nodes(window, max_depth=_STATE_MAX_DEPTH, max_nodes=5000)
         input_node = self._first_node(
             nodes,
             lambda node: node["control_type"] == "EditControl"
@@ -563,7 +564,7 @@ class WindowsConsoleDebugService:
         return None if input_node is None else input_node["_control"]
 
     def _current_chat_context(self, window) -> tuple[str, list[str]]:
-        nodes = self._collect_nodes(window, max_depth=18, max_nodes=5000)
+        nodes = self._collect_nodes(window, max_depth=_STATE_MAX_DEPTH, max_nodes=5000)
         title_node = self._chat_title_node(nodes)
         current = "" if title_node is None else str(title_node["name"]).strip()
         chat_names = [item["name"] for item in self._parse_chat_list(nodes)["items"]]
