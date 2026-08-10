@@ -1,4 +1,4 @@
 interface:
   display_name: "AWSL WeChat Gateway Console"
-  short_description: "List chats and send validated Console messages."
-  default_prompt: "Use $awsl-wechat-gateway-console to list main-window chats or open one, verify it, and send a validated message."
+  short_description: "List or scroll chats and send validated messages."
+  default_prompt: "Use $awsl-wechat-gateway-console to list or scroll main-window chats, or open one, verify it, and send a validated message."

@@ -3,6 +3,7 @@
 import os
 import sys
 import threading
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -30,6 +31,11 @@ class ConsoleStateRequest(BaseModel):
 
 class ConsoleOpenChatRequest(BaseModel):
     path: str = Field(min_length=1, max_length=512)
+    max_nodes: int = Field(default=5000, ge=1, le=10000)
+
+
+class ConsoleScrollChatsRequest(BaseModel):
+    direction: Literal["up", "down"]
     max_nodes: int = Field(default=5000, ge=1, le=10000)
 
 
@@ -65,6 +71,17 @@ def create_routes(gateway_app=None):
 
         return _windows_service(gateway_app, console_operation_lock).open_chat(
             path=request.path,
+            max_nodes=request.max_nodes,
+        )
+
+    @router.post("/api/console/scroll-chats", dependencies=[Depends(verify_token)])
+    def console_scroll_chats(request: ConsoleScrollChatsRequest):
+        """向上或向下滚动 Windows 微信主窗口聊天列表."""
+        if sys.platform != "win32":
+            raise HTTPException(status_code=501, detail="console/scroll-chats 当前只支持 Windows")
+
+        return _windows_service(gateway_app, console_operation_lock).scroll_chats(
+            direction=request.direction,
             max_nodes=request.max_nodes,
         )
 

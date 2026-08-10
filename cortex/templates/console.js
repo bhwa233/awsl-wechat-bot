@@ -8,6 +8,7 @@ window.consoleTab = (() => {
     let selectedName = '';
     let opening = false;
     let refreshing = false;
+    let scrolling = false;
     let sending = false;
     let polling = false;
     let pollTimer = null;
@@ -232,7 +233,7 @@ window.consoleTab = (() => {
     }
 
     async function refresh() {
-        if (refreshing || unsupported) return;
+        if (refreshing || scrolling || unsupported) return;
         refreshing = true;
         const btn = $('consoleRefreshBtn');
         if (btn) btn.disabled = true;
@@ -256,8 +257,36 @@ window.consoleTab = (() => {
         }
     }
 
+    async function scroll(direction) {
+        if (scrolling || opening || refreshing || sending || unsupported) return;
+        scrolling = true;
+        setListBusy(true);
+        const upBtn = $('consoleScrollUp');
+        const downBtn = $('consoleScrollDown');
+        upBtn.disabled = true;
+        downBtn.disabled = true;
+        setStatus(direction === 'up' ? '正在向上滚动聊天列表' : '正在向下滚动聊天列表');
+        try {
+            const r = await consoleApi('/api/console/scroll-chats', { direction });
+            if (r.status === 501) { showUnsupported(r.data?.detail); return; }
+            if (!r.ok || !r.data?.available) {
+                setStatus(r.data?.detail || r.error || '滚动聊天列表失败', true);
+                return;
+            }
+            renderList(r.data.chat_list);
+            setStatus(direction === 'up' ? '聊天列表已向上滚动' : '聊天列表已向下滚动');
+        } catch {
+            setStatus('网络错误，无法滚动聊天列表', true);
+        } finally {
+            scrolling = false;
+            setListBusy(false);
+            upBtn.disabled = false;
+            downBtn.disabled = false;
+        }
+    }
+
     async function openChat(path, name = '') {
-        if (!path || opening || sending || unsupported) return;
+        if (!path || opening || scrolling || sending || unsupported) return;
         opening = true;
         setListBusy(true);
         selectedPath = path;
@@ -280,7 +309,7 @@ window.consoleTab = (() => {
     }
 
     async function send() {
-        if (sending || unsupported) return;
+        if (sending || scrolling || unsupported) return;
         const payload = composer?.getPayload({ attachment: '请选择文件' });
         if (!payload) return;
         if (!selectedName) {
@@ -314,7 +343,7 @@ window.consoleTab = (() => {
             && !unsupported
             && document.visibilityState === 'visible'
             && $('console-panel')?.classList.contains('active')
-            && !opening && !refreshing && !sending;
+            && !opening && !refreshing && !scrolling && !sending;
     }
 
     async function poll() {
@@ -360,6 +389,8 @@ window.consoleTab = (() => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
             });
             $('consoleBackBtn')?.addEventListener('click', () => showChatPane(false));
+            $('consoleScrollUp')?.addEventListener('click', () => scroll('up'));
+            $('consoleScrollDown')?.addEventListener('click', () => scroll('down'));
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') poll();
             });

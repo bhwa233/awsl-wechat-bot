@@ -802,6 +802,8 @@ input[type="checkbox"] {
     display: flex; align-items: center; gap: 8px;
     padding: 10px 14px; border-bottom: 1px solid var(--border-strong); flex-shrink: 0;
 }
+.console-list-actions { display: flex; gap: 4px; margin-left: auto; }
+.console-list-actions .btn { min-width: 30px; padding-inline: 8px; font-size: 15px; }
 .console-count {
     min-width: 22px; padding: 1px 7px; border-radius: 999px;
     border: 1px solid var(--border); background: var(--card);

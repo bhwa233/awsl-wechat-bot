@@ -72,7 +72,10 @@ def print_action(data: Any) -> None:
 
 
 def command_list(args: argparse.Namespace) -> None:
-    data = state(args)
+    print_chat_state(state(args))
+
+
+def print_chat_state(data: dict[str, Any]) -> None:
     chat_area = data.get("chat_area", {})
     gateway.json_dump({
         "available": data.get("available", False),
@@ -80,6 +83,16 @@ def command_list(args: argparse.Namespace) -> None:
         "current_chat": chat_area.get("title", "") if chat_area.get("available") else "",
         "chats": data.get("chat_list", {}).get("items", []),
     })
+
+
+def command_scroll(args: argparse.Namespace) -> None:
+    data = request(args, "/api/console/scroll-chats", {
+        "direction": args.direction,
+        "max_nodes": args.max_nodes,
+    })
+    if not isinstance(data, dict) or not data.get("available"):
+        print_action(data)
+    print_chat_state(data)
 
 
 def command_send(args: argparse.Namespace) -> None:
@@ -116,6 +129,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_parser = subparsers.add_parser("list", help="List main-window chats and current chat")
     list_parser.set_defaults(func=command_list, max_nodes=5000)
+
+    scroll_parser = subparsers.add_parser("scroll", help="Scroll the virtualized main-window chat list")
+    scroll_parser.add_argument("direction", choices=("up", "down"))
+    scroll_parser.set_defaults(func=command_scroll, max_nodes=5000)
 
     send_parser = subparsers.add_parser("send", help="Open a chat and send a name-validated message")
     send_parser.add_argument("--chat", required=True, help="Exact chat-list name")

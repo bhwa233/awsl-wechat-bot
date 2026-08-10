@@ -4,6 +4,7 @@ let selectedPath = '';
 let selectedName = '';
 let openingChat = false;
 let refreshingState = false;
+let scrollingChats = false;
 let sendingMessage = false;
 let pollingState = false;
 let pollTimer = null;
@@ -286,7 +287,7 @@ function showTokenModal(show) {
 }
 
 async function refreshState() {
-    if (refreshingState) return;
+    if (refreshingState || scrollingChats) return;
     refreshingState = true;
     const btn = $('refresh');
     setButtonBusy(btn, true);
@@ -308,8 +309,33 @@ async function refreshState() {
     }
 }
 
+async function scrollChats(direction) {
+    if (scrollingChats || openingChat || refreshingState || sendingMessage) return;
+    scrollingChats = true;
+    setChatListBusy(true);
+    setButtonBusy($('scrollChatsUp'), true);
+    setButtonBusy($('scrollChatsDown'), true);
+    setStatus(direction === 'up' ? '正在向上滚动聊天列表' : '正在向下滚动聊天列表', false, true);
+    try {
+        const res = await api('/api/console/scroll-chats', { direction });
+        if (!res.ok || !res.data?.available) {
+            setStatus(res.data?.detail || res.data?.message || '滚动聊天列表失败', true);
+            return;
+        }
+        renderState(res.data);
+        setStatus(direction === 'up' ? '聊天列表已向上滚动' : '聊天列表已向下滚动');
+    } catch {
+        setStatus('网络错误，无法滚动聊天列表', true);
+    } finally {
+        scrollingChats = false;
+        setChatListBusy(false);
+        setButtonBusy($('scrollChatsUp'), false);
+        setButtonBusy($('scrollChatsDown'), false);
+    }
+}
+
 async function openChat(path, name = '') {
-    if (!path || openingChat || sendingMessage) return;
+    if (!path || openingChat || scrollingChats || sendingMessage) return;
     openingChat = true;
     setChatListBusy(true);
     selectedPath = path;
@@ -334,7 +360,7 @@ async function openChat(path, name = '') {
 }
 
 async function sendMessage() {
-    if (sendingMessage) return;
+    if (sendingMessage || scrollingChats) return;
     const payload = buildMessagePayload();
     if (!payload) return;
     if (!selectedName) {
@@ -366,6 +392,7 @@ function shouldPoll() {
     return document.visibilityState === 'visible'
         && !openingChat
         && !refreshingState
+        && !scrollingChats
         && !sendingMessage;
 }
 
@@ -412,6 +439,8 @@ function init() {
         showTokenModal(false);
     });
     $('refresh').addEventListener('click', refreshState);
+    $('scrollChatsUp').addEventListener('click', () => scrollChats('up'));
+    $('scrollChatsDown').addEventListener('click', () => scrollChats('down'));
     $('messageType').addEventListener('change', () => syncComposerType());
     $('fileInput').addEventListener('change', e => loadAttachmentFile(e.target.files[0]));
     $('fileDropzone').addEventListener('dragover', e => {

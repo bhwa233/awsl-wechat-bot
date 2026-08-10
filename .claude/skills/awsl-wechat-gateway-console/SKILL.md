@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-gateway-console
-description: "Use when Codex needs to list chats or send a message through the AWSL WeChat Gateway Windows main-window Console. Sending opens the named chat first, verifies that it opened, then sends with backend chat-name validation. Reuses awsl-wechat-gateway connection and authentication; use awsl-wechat-chatlog for chat history."
+description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows main-window Console. Sending opens the named chat first, verifies that it opened, then sends with backend chat-name validation. Reuses awsl-wechat-gateway connection and authentication; use awsl-wechat-chatlog for chat history."
 ---
 
 # AWSL WeChat Gateway Console
@@ -30,6 +30,10 @@ Explicit `--base-url` and `--token` overrides use the same Gateway cache. Add `-
 # List main-window chats
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" list
 
+# Scroll the virtualized chat list, then inspect the newly visible chats
+uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll down
+uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll up
+
 # Open the chat, verify the opened title, then send
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message "Console test"
@@ -41,6 +45,8 @@ uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.
   --chat "Bruce" --message-type voice --message "Console TTS test"
 
 ```
+
+`list` returns only the chats currently exposed by the virtualized WeChat list. Use `scroll up` or `scroll down` repeatedly until the target becomes visible.
 
 `send` resolves the exact chat-list item, opens it, and checks that the refreshed current-chat title matches. It sends only after that check; the backend validates the live title again immediately before sending.
 

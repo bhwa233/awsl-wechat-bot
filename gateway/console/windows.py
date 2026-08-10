@@ -20,6 +20,7 @@ _AT_POPOVER_TIMEOUT = 0.5
 _AT_POPOVER_GONE_TIMEOUT = 0.3
 _AT_POPOVER_INTERVAL = 0.05
 _STATE_MAX_DEPTH = 22
+_CHAT_SCROLL_WHEEL_TIMES = 5
 
 
 class WindowsConsoleDebugService:
@@ -180,6 +181,37 @@ class WindowsConsoleDebugService:
             return self._open_chat(path=path, max_nodes=max_nodes)
         finally:
             self._console_lock.release()
+
+    def scroll_chats(self, *, direction: str, max_nodes: int = 5000) -> dict[str, Any]:
+        if direction not in {"up", "down"}:
+            return self._action_error(f"无效滚动方向: {direction}")
+        if not self._console_lock.acquire(blocking=False):
+            return self._action_error("Console 正在执行其他操作")
+        try:
+            return self._scroll_chats(direction=direction, max_nodes=max_nodes)
+        finally:
+            self._console_lock.release()
+
+    def _scroll_chats(self, *, direction: str, max_nodes: int) -> dict[str, Any]:
+        auto = self._ensure_uia()
+        with self._ui_operation_lock():
+            window = self._find_main_window(auto)
+            if window is None:
+                return self._action_error("未找到微信主窗口")
+            if not self._activate_window_locked(window):
+                return self._action_error("激活微信主窗口失败", window=window)
+
+            nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
+            list_node = self._chat_list_node(nodes)
+            if list_node is None:
+                return self._action_error("未找到聊天列表", window=window)
+            try:
+                scroll = list_node["_control"].WheelUp if direction == "up" else list_node["_control"].WheelDown
+                scroll(wheelTimes=_CHAT_SCROLL_WHEEL_TIMES, interval=0.03, waitTime=0.35)
+            except Exception as e:
+                return self._action_error(f"滚动聊天列表失败: {e}", window=window)
+
+            return self.get_state(max_nodes=max_nodes)
 
     def _open_chat(self, *, path: str, max_nodes: int) -> dict[str, Any]:
         auto = self._ensure_uia()
@@ -688,11 +720,7 @@ class WindowsConsoleDebugService:
             )
 
     def _parse_chat_list(self, nodes: list[dict[str, Any]]) -> dict[str, Any]:
-        list_node = self._first_node(
-            nodes,
-            lambda node: node["control_type"] == "ListControl"
-            and (node["automation_id"] == "session_list" or (node["class_name"] == "mmui::XTableView" and node["name"] == "会话")),
-        )
+        list_node = self._chat_list_node(nodes)
         items = [
             self._chat_list_item(node)
             for node in nodes
@@ -704,6 +732,17 @@ class WindowsConsoleDebugService:
             "rect": None if list_node is None else list_node["rect"],
             "items": items,
         }
+
+    @staticmethod
+    def _chat_list_node(nodes: list[dict[str, Any]]) -> dict[str, Any] | None:
+        return WindowsConsoleDebugService._first_node(
+            nodes,
+            lambda node: node["control_type"] == "ListControl"
+            and (
+                node["automation_id"] == "session_list"
+                or (node["class_name"] == "mmui::XTableView" and node["name"] == "会话")
+            ),
+        )
 
     def _parse_chat_area(
         self,
