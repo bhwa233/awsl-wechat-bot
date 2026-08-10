@@ -196,40 +196,67 @@ class WindowsConsoleDebugService:
             if target is None:
                 return self._action_error(f"未找到聊天项 path={path}", window=window)
             target_info = self._control_info(target)
+            target_automation_id = target_info["automation_id"]
+            if (
+                target_info["class_name"] != "mmui::ChatSessionCell"
+                and not target_automation_id.startswith("session_item_")
+            ):
+                return self._action_error(f"path={path} 不是聊天项", window=window)
             expected_chat_name = (
-                target_info["automation_id"].removeprefix("session_item_")
+                target_automation_id.removeprefix("session_item_")
                 or self._chat_name_from_raw(target_info["name"])
             )
+            if not expected_chat_name:
+                return self._action_error(f"聊天项缺少名称 path={path}", window=window)
 
             if not self._activate_window_locked(window):
                 return self._action_error("激活微信主窗口失败", window=window)
 
-            target = self._find_by_path(window, path_indexes)
-            if target is None:
-                return self._action_error(f"激活后未找到聊天项 path={path}", window=window)
+            nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
+            target_node = self._first_node(
+                nodes,
+                lambda node: (
+                    node["class_name"] == "mmui::ChatSessionCell"
+                    or node["automation_id"].startswith("session_item_")
+                )
+                and (
+                    node["automation_id"] == target_automation_id
+                    if target_automation_id
+                    else self._chat_name_from_raw(node["name"]) == expected_chat_name
+                ),
+            )
+            if target_node is None:
+                return self._action_error(f"激活后未找到聊天项「{expected_chat_name}」", window=window)
 
             try:
-                target.GetSelectionItemPattern().Select()
+                selection = target_node["_control"].GetSelectionItemPattern()
+                if selection is None or not selection.Select(waitTime=0.35):
+                    return self._action_error(f"选择聊天项失败: {expected_chat_name}", window=window)
             except Exception as e:
                 return self._action_error(f"选择聊天项失败: {e}", window=window)
 
-            time.sleep(0.35)
-            self._focus_input(window)
-            result = self.get_state(max_nodes=max_nodes)
-            chat_area = result.get("chat_area", {})
-            input_box = result.get("input_box", {})
-            chat_names = [item["name"] for item in result.get("chat_list", {}).get("items", [])]
-            current_chat_name = chat_area.get("title", "")
-            if (
-                not chat_area.get("available")
-                or not input_box.get("available")
-                or not self._chat_names_match(expected_chat_name, current_chat_name, chat_names)
-            ):
-                return self._action_error(
-                    f"打开聊天失败: 目标「{expected_chat_name}」，当前「{current_chat_name or '未识别'}」",
-                    window=window,
-                )
-            return result
+            deadline = time.monotonic() + 2.0
+            current_chat_name = ""
+            while True:
+                self._focus_input(window)
+                result = self.get_state(max_nodes=max_nodes)
+                chat_area = result.get("chat_area", {})
+                input_box = result.get("input_box", {})
+                chat_names = [item["name"] for item in result.get("chat_list", {}).get("items", [])]
+                current_chat_name = chat_area.get("title", "")
+                if (
+                    chat_area.get("available")
+                    and input_box.get("available")
+                    and self._chat_names_match(expected_chat_name, current_chat_name, chat_names)
+                ):
+                    return result
+                if time.monotonic() >= deadline:
+                    break
+                time.sleep(0.1)
+            return self._action_error(
+                f"打开聊天失败: 目标「{expected_chat_name}」，当前「{current_chat_name or '未识别'}」",
+                window=window,
+            )
 
     def _send_text_message(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
         auto = self._ensure_uia()
