@@ -120,6 +120,7 @@ window.consoleTab = (() => {
         const oldScrollTop = box.scrollTop;
         if (!msgs.length) {
             box.innerHTML = '<div class="empty-hint">暂无 Chatlog 消息</div>';
+            observeLazyMedia(box);
             return;
         }
         let lastDate = '';

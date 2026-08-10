@@ -649,13 +649,13 @@ function renderMediaImage(m, fallbackText) {
     const thumbUrl = base;            // 默认 hd=false
     const hdUrl = base + '&hd=1';
     // hdUrl 经 JSON.stringify 安全嵌入 inline onclick (encodeURIComponent 不编码单引号)
-    return `<div class="msg-text msg-media"><img class="msg-img" data-lazy-src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(${escapeHtml(JSON.stringify(hdUrl))}, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
+    return `<div class="msg-text msg-media"><img class="msg-img" data-lazy-src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(${escapeHtml(JSON.stringify(hdUrl))}, this.src || this.dataset.lazySrc)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
 }
 
 function renderMediaVideoThumb(m, fallbackText) {
     if (!chatlogMediaCaps.video_thumb || !m.server_id_str || !m.talker) return mediaPlaceholder(fallbackText);
     const url = `/api/chatlog/media?msg_type=43&group=${encodeURIComponent(m.talker)}&server_id=${m.server_id_str}${mediaTokenSuffix()}`;
-    return `<div class="msg-text msg-media"><img class="msg-img msg-video-thumb" data-lazy-src="${escapeHtml(url)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"><div class="msg-video-label">▶ 视频</div></div>`;
+    return `<div class="msg-text msg-media"><img class="msg-img msg-video-thumb" data-lazy-src="${escapeHtml(url)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src || this.dataset.lazySrc, this.src || this.dataset.lazySrc)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"><div class="msg-video-label">▶ 视频</div></div>`;
 }
 
 function renderMediaVoice(m, fallbackText) {
@@ -676,7 +676,7 @@ function renderMediaSticker(m, fallbackText) {
     const content = m.content || '';
     if (!content) return mediaPlaceholder(fallbackText);
     const url = `/api/chatlog/media?msg_type=47&content=${encodeURIComponent(content)}${mediaTokenSuffix()}`;
-    return `<div class="msg-text msg-media"><img class="msg-img msg-sticker" data-lazy-src="${escapeHtml(url)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
+    return `<div class="msg-text msg-media"><img class="msg-img msg-sticker" data-lazy-src="${escapeHtml(url)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src || this.dataset.lazySrc, this.src || this.dataset.lazySrc)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
 }
 
 /**
