@@ -195,6 +195,11 @@ class WindowsConsoleDebugService:
             target = self._find_by_path(window, path_indexes)
             if target is None:
                 return self._action_error(f"未找到聊天项 path={path}", window=window)
+            target_info = self._control_info(target)
+            expected_chat_name = (
+                target_info["automation_id"].removeprefix("session_item_")
+                or self._chat_name_from_raw(target_info["name"])
+            )
 
             if not self._activate_window_locked(window):
                 return self._action_error("激活微信主窗口失败", window=window)
@@ -204,13 +209,27 @@ class WindowsConsoleDebugService:
                 return self._action_error(f"激活后未找到聊天项 path={path}", window=window)
 
             try:
-                target.Click(waitTime=0)
+                target.GetSelectionItemPattern().Select()
             except Exception as e:
-                return self._action_error(f"点击聊天项失败: {e}", window=window)
+                return self._action_error(f"选择聊天项失败: {e}", window=window)
 
             time.sleep(0.35)
             self._focus_input(window)
-            return self.get_state(max_nodes=max_nodes)
+            result = self.get_state(max_nodes=max_nodes)
+            chat_area = result.get("chat_area", {})
+            input_box = result.get("input_box", {})
+            chat_names = [item["name"] for item in result.get("chat_list", {}).get("items", [])]
+            current_chat_name = chat_area.get("title", "")
+            if (
+                not chat_area.get("available")
+                or not input_box.get("available")
+                or not self._chat_names_match(expected_chat_name, current_chat_name, chat_names)
+            ):
+                return self._action_error(
+                    f"打开聊天失败: 目标「{expected_chat_name}」，当前「{current_chat_name or '未识别'}」",
+                    window=window,
+                )
+            return result
 
     def _send_text_message(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
         auto = self._ensure_uia()
