@@ -192,6 +192,14 @@ window.consoleTab = (() => {
     }
 
     function renderState(data) {
+        if (!selectedName && data.chat_area?.available) {
+            const current = (data.chat_list?.items || []).find(item => item.name === data.chat_area.title);
+            if (current) {
+                selectedName = current.name;
+                selectedPath = current.path || '';
+                showChatPane(true);
+            }
+        }
         renderList(data.chat_list);
         if (!selectedName) {
             const hasChats = (data.chat_list?.items || []).length > 0;
@@ -275,6 +283,11 @@ window.consoleTab = (() => {
         if (sending || unsupported) return;
         const payload = composer?.getPayload({ attachment: '请选择文件' });
         if (!payload) return;
+        if (!selectedName) {
+            setStatus('请先选择聊天', true);
+            return;
+        }
+        payload.chat_name = selectedName;
         sending = true;
         const btn = $('consoleSendBtn');
         btn.disabled = true;

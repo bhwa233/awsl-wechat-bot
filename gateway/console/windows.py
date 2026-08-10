@@ -91,13 +91,14 @@ class WindowsConsoleDebugService:
             }
 
         nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
+        chat_list = self._parse_chat_list(nodes)
         return {
             "available": True,
             "platform": "windows",
             "message": "",
             "window": info,
-            "chat_list": self._parse_chat_list(nodes),
-            "chat_area": self._parse_chat_area(nodes, info),
+            "chat_list": chat_list,
+            "chat_area": self._parse_chat_area(nodes, chat_list["items"]),
             "input_box": self._parse_input_box(nodes),
             "node_count": len(nodes),
         }
@@ -268,6 +269,7 @@ class WindowsConsoleDebugService:
         message_type: str,
         message: str,
         filename: str = "",
+        chat_name: str,
         max_nodes: int = 5000,
     ) -> dict[str, Any]:
         if not self._console_lock.acquire(blocking=False):
@@ -277,6 +279,7 @@ class WindowsConsoleDebugService:
                 message_type=message_type,
                 message=message,
                 filename=filename,
+                chat_name=chat_name,
                 max_nodes=max_nodes,
             )
         finally:
@@ -288,12 +291,9 @@ class WindowsConsoleDebugService:
         message_type: str,
         message: str,
         filename: str,
+        chat_name: str,
         max_nodes: int,
     ) -> dict[str, Any]:
-        if message_type == "text":
-            return self._send_text_message(text=message, max_nodes=max_nodes)
-
-        auto = self._ensure_uia()
         if message_type == "voice":
             if not self._send_voice_to_window or not self._synthesize_voice:
                 return self._action_error("当前 Console 未配置语音发送能力")
@@ -303,9 +303,19 @@ class WindowsConsoleDebugService:
                 return self._action_error(f"生成语音失败: {e}")
             message = file_base64
 
+        auto = self._ensure_uia()
         window = self._find_main_window(auto)
         if window is None:
             return self._action_error("未找到微信主窗口")
+        with self._ui_operation_lock():
+            if not self._activate_window_locked(window):
+                return self._action_error("激活微信主窗口失败", window=window)
+            current_chat_name, chat_names = self._current_chat_context(window)
+            if not self._chat_names_match(chat_name, current_chat_name, chat_names):
+                return self._chat_name_error(chat_name, current_chat_name, window)
+
+        if message_type == "text":
+            return self._send_text_message(text=message, max_nodes=max_nodes)
 
         if message_type == "image":
             if not self._send_image_to_window:
@@ -508,6 +518,30 @@ class WindowsConsoleDebugService:
         )
         return None if input_node is None else input_node["_control"]
 
+    def _current_chat_context(self, window) -> tuple[str, list[str]]:
+        nodes = self._collect_nodes(window, max_depth=18, max_nodes=5000)
+        title_node = self._chat_title_node(nodes)
+        current = "" if title_node is None else str(title_node["name"]).strip()
+        chat_names = [item["name"] for item in self._parse_chat_list(nodes)["items"]]
+        return current, chat_names
+
+    @staticmethod
+    def _chat_names_match(target: str, current: str, chat_names: list[str]) -> bool:
+        if current == target:
+            return True
+        if current in chat_names:
+            return False
+        return bool(
+            re.fullmatch(rf"{re.escape(target)}\s*(?:\(\d+\)|（\d+）)", current)
+        )
+
+    def _chat_name_error(self, target: str, current: str, window) -> dict[str, Any]:
+        current_label = current or "未识别"
+        return self._action_error(
+            f"聊天名称不匹配: 选中「{target}」，当前「{current_label}」",
+            window=window,
+        )
+
     def _action_error(self, message: str, window=None) -> dict[str, Any]:
         return {
             "available": False,
@@ -626,7 +660,11 @@ class WindowsConsoleDebugService:
             "items": items,
         }
 
-    def _parse_chat_area(self, nodes: list[dict[str, Any]], window_info: dict[str, Any]) -> dict[str, Any]:
+    def _parse_chat_area(
+        self,
+        nodes: list[dict[str, Any]],
+        chat_items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         message_list = self._first_node(
             nodes,
             lambda node: node["control_type"] == "ListControl"
@@ -645,13 +683,16 @@ class WindowsConsoleDebugService:
             nodes,
             lambda node: node["class_name"] in {"mmui::ChatDetailView", "mmui::ChatMessagePage", "mmui::ChatPage"},
         )
-        # 当前打开聊天名取自 ChatInputField 的 Name；主窗口本身 Name 恒为 "WeChat" 用不上
-        input_node = self._first_node(
-            nodes,
-            lambda node: node["control_type"] == "EditControl"
-            and (node["automation_id"] == "chat_input_field" or node["class_name"] == "mmui::ChatInputField"),
-        )
-        title = (input_node["name"] if input_node else "") or window_info.get("name", "")
+        title_node = self._chat_title_node(nodes)
+        raw_title = "" if title_node is None else str(title_node["name"]).strip()
+        chat_names = [item["name"] for item in chat_items]
+        if raw_title in chat_names:
+            title = raw_title
+        else:
+            title = next(
+                (name for name in chat_names if self._chat_names_match(name, raw_title, chat_names)),
+                raw_title,
+            )
         return {
             "available": message_list is not None,
             "title": title,
@@ -660,6 +701,14 @@ class WindowsConsoleDebugService:
             "detail_path": None if detail_node is None else detail_node["path"],
             "messages": messages,
         }
+
+    @staticmethod
+    def _chat_title_node(nodes: list[dict[str, Any]]) -> dict[str, Any] | None:
+        return WindowsConsoleDebugService._first_node(
+            nodes,
+            lambda node: node["control_type"] == "TextControl"
+            and node["automation_id"].endswith("big_title_line_h_view"),
+        )
 
     def _parse_input_box(self, nodes: list[dict[str, Any]]) -> dict[str, Any]:
         input_node = self._first_node(

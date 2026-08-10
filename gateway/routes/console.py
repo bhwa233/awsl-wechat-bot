@@ -34,6 +34,7 @@ class ConsoleOpenChatRequest(BaseModel):
 
 
 class ConsoleSendMessageRequest(MessagePayload):
+    chat_name: str = Field(min_length=1, max_length=256)
     max_nodes: int = Field(default=5000, ge=1, le=10000)
 
 
@@ -77,6 +78,7 @@ def create_routes(gateway_app=None):
             message_type=request.message_type,
             message=request.message or "",
             filename=request.filename or "",
+            chat_name=request.chat_name,
             max_nodes=request.max_nodes,
         )
 

@@ -140,6 +140,14 @@ function renderChatArea(chatArea, chatList, options = {}) {
 }
 
 function renderState(data) {
+    if (!selectedName && data.chat_area?.available) {
+        const current = (data.chat_list?.items || []).find(item => item.name === data.chat_area.title);
+        if (current) {
+            selectedName = current.name;
+            selectedPath = current.path || '';
+            showChatPanel(true);
+        }
+    }
     renderChatList(data.chat_list);
     renderChatArea(data.chat_area, data.chat_list);
 }
@@ -329,6 +337,11 @@ async function sendMessage() {
     if (sendingMessage) return;
     const payload = buildMessagePayload();
     if (!payload) return;
+    if (!selectedName) {
+        setStatus('请先选择聊天', true);
+        return;
+    }
+    payload.chat_name = selectedName;
     sendingMessage = true;
     setButtonBusy($('sendMessage'), true);
     setStatus('正在发送消息', false, true);
