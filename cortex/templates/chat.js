@@ -14,6 +14,39 @@ const chatlogContactCache = new Map();
 const chatlogContactPending = new Map();
 const chatlogMemberCache = new Map();
 const chatlogMemberPending = new Map();
+const lazyMediaObservers = new WeakMap();
+
+function observeLazyMedia(container) {
+    const previous = lazyMediaObservers.get(container);
+    if (previous) previous.disconnect();
+
+    const elements = [...container.querySelectorAll('[data-lazy-src]')];
+    if (!elements.length) {
+        lazyMediaObservers.delete(container);
+        return;
+    }
+
+    const load = element => {
+        const src = element.dataset.lazySrc;
+        if (!src) return;
+        element.src = src;
+        element.removeAttribute('data-lazy-src');
+    };
+    if (!('IntersectionObserver' in window)) {
+        elements.forEach(load);
+        return;
+    }
+
+    const observer = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            observer.unobserve(entry.target);
+            load(entry.target);
+        }
+    }, { root: container, threshold: 0.01 });
+    lazyMediaObservers.set(container, observer);
+    elements.forEach(element => observer.observe(element));
+}
 
 function onGroupsLoaded() {
     populateSendWindowSelect();
@@ -190,7 +223,7 @@ function renderMessageAvatar(message, displayName) {
     const avatar = chatlogContactAvatar(contact);
     const fallback = `<span class="msg-avatar msg-avatar-fallback">${escapeHtml(avatarInitial(displayName))}</span>`;
     const inner = avatar
-        ? `<span class="msg-avatar-wrap"><img class="msg-avatar msg-avatar-img" loading="lazy" src="${escapeHtml(avatar)}" alt="${escapeHtml(displayName)}" onerror="this.parentElement.classList.add('avatar-error')">${fallback}</span>`
+        ? `<span class="msg-avatar-wrap"><img class="msg-avatar msg-avatar-img" data-lazy-src="${escapeHtml(avatar)}" alt="${escapeHtml(displayName)}" onerror="this.parentElement.classList.add('avatar-error')">${fallback}</span>`
         : fallback;
     if (!message?.talker || !message?.sender) return inner;
     return `<button type="button" class="msg-avatar-button" onclick="showMentionMember('${escapeHtml(message.talker)}','${escapeHtml(message.sender)}')">${inner}</button>`;
@@ -616,13 +649,13 @@ function renderMediaImage(m, fallbackText) {
     const thumbUrl = base;            // 默认 hd=false
     const hdUrl = base + '&hd=1';
     // hdUrl 经 JSON.stringify 安全嵌入 inline onclick (encodeURIComponent 不编码单引号)
-    return `<div class="msg-text msg-media"><img class="msg-img" loading="lazy" src="${thumbUrl}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(${escapeHtml(JSON.stringify(hdUrl))}, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
+    return `<div class="msg-text msg-media"><img class="msg-img" data-lazy-src="${escapeHtml(thumbUrl)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(${escapeHtml(JSON.stringify(hdUrl))}, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
 }
 
 function renderMediaVideoThumb(m, fallbackText) {
     if (!chatlogMediaCaps.video_thumb || !m.server_id_str || !m.talker) return mediaPlaceholder(fallbackText);
     const url = `/api/chatlog/media?msg_type=43&group=${encodeURIComponent(m.talker)}&server_id=${m.server_id_str}${mediaTokenSuffix()}`;
-    return `<div class="msg-text msg-media"><img class="msg-img msg-video-thumb" loading="lazy" src="${url}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"><div class="msg-video-label">▶ 视频</div></div>`;
+    return `<div class="msg-text msg-media"><img class="msg-img msg-video-thumb" data-lazy-src="${escapeHtml(url)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"><div class="msg-video-label">▶ 视频</div></div>`;
 }
 
 function renderMediaVoice(m, fallbackText) {
@@ -635,7 +668,7 @@ function renderMediaVoice(m, fallbackText) {
         ? `&local_id=${m.local_id}&create_time=${m.create_time}`
         : '';
     const url = `/api/chatlog/media?msg_type=34&server_id=${m.server_id_str}${fallback}${mediaTokenSuffix()}`;
-    return `<div class="msg-text msg-media"><audio class="msg-audio" preload="none" controls src="${url}"></audio><div class="msg-audio-label">${label}</div></div>`;
+    return `<div class="msg-text msg-media"><audio class="msg-audio" preload="none" controls data-lazy-src="${escapeHtml(url)}"></audio><div class="msg-audio-label">${label}</div></div>`;
 }
 
 function renderMediaSticker(m, fallbackText) {
@@ -643,7 +676,7 @@ function renderMediaSticker(m, fallbackText) {
     const content = m.content || '';
     if (!content) return mediaPlaceholder(fallbackText);
     const url = `/api/chatlog/media?msg_type=47&content=${encodeURIComponent(content)}${mediaTokenSuffix()}`;
-    return `<div class="msg-text msg-media"><img class="msg-img msg-sticker" loading="lazy" src="${url}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
+    return `<div class="msg-text msg-media"><img class="msg-img msg-sticker" data-lazy-src="${escapeHtml(url)}" alt="${escapeHtml(fallbackText)}" onclick="showImageLightbox(this.src, this.src)" onerror="this.outerHTML='${escapeHtml(fallbackText)}'"></div>`;
 }
 
 /**
@@ -798,6 +831,7 @@ function renderMessages(msgs) {
     const box = $('messages');
     if (!msgs.length) {
         box.innerHTML = '<div class="empty-hint">暂无消息</div>';
+        observeLazyMedia(box);
         return;
     }
     let lastDate = '';
@@ -825,6 +859,7 @@ function renderMessages(msgs) {
     }
     box.innerHTML = html;
     box.scrollTop = box.scrollHeight;
+    observeLazyMedia(box);
 }
 
 function toggleChatMsgType() {

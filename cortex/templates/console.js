@@ -145,9 +145,11 @@ window.consoleTab = (() => {
         box.innerHTML = html;
         if (options.preserveScroll && !wasNearBottom) {
             box.scrollTop = oldScrollTop;
+            observeLazyMedia(box);
             return;
         }
         box.scrollTop = box.scrollHeight;
+        observeLazyMedia(box);
     }
 
     async function loadChatlogMessages(name, options = {}) {
