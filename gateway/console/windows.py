@@ -229,9 +229,7 @@ class WindowsConsoleDebugService:
                 return self._action_error(f"激活后未找到聊天项「{expected_chat_name}」", window=window)
 
             try:
-                selection = target_node["_control"].GetSelectionItemPattern()
-                if selection is None or not selection.Select(waitTime=0.35):
-                    return self._action_error(f"选择聊天项失败: {expected_chat_name}", window=window)
+                target_node["_control"].Click(waitTime=0.35)
             except Exception as e:
                 return self._action_error(f"选择聊天项失败: {e}", window=window)
 
