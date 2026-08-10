@@ -565,31 +565,38 @@ class WeChatDBReader:
         return content.decode('utf-8', errors='ignore') if isinstance(content, bytes) else str(content)
 
     def list_groups(self, limit: int = 0) -> list[ChatRoom]:
-        """列出所有群聊"""
+        """列出好友和群聊"""
         db = self._get_contact_db()
         cursor = db.cursor()
-        query = "SELECT username, owner FROM chat_room ORDER BY username"
+        query = (
+            "SELECT c.username, COALESCE(cr.owner, ''), c.nick_name, c.remark, "
+            "c.small_head_url, c.big_head_url "
+            "FROM contact c "
+            "LEFT JOIN chat_room cr ON c.username = cr.username "
+            "WHERE ((c.local_type = 1 AND (c.flag & 2) != 0) "
+            "OR c.local_type IN (2, 5)) "
+            "AND c.username NOT LIKE 'gh_%' "
+            "AND c.username NOT IN "
+            "('filehelper','fmessage','floatbottle','medianote','newsapp','weixin','weixinpay') "
+            "AND c.delete_flag = 0 "
+            "ORDER BY c.local_type, c.remark, c.nick_name"
+        )
         if limit > 0:
             query += " LIMIT ?"
             cursor.execute(query, (limit,))
         else:
             cursor.execute(query)
-        chat_rooms = []
-        for username, owner in cursor.fetchall():
-            chat_room = ChatRoom(username=username, owner=owner or "")
-            cursor.execute(
-                "SELECT nick_name, remark, small_head_url, big_head_url "
-                "FROM contact WHERE username = ?",
-                (username,),
+        return [
+            ChatRoom(
+                username=row[0] or "",
+                owner=row[1] or "",
+                nick_name=row[2] or "",
+                remark=row[3] or "",
+                avatar=row[4] or "",
+                big_avatar=row[5] or "",
             )
-            row = cursor.fetchone()
-            if row:
-                chat_room.nick_name = row[0] or ""
-                chat_room.remark = row[1] or ""
-                chat_room.avatar = row[2] or ""
-                chat_room.big_avatar = row[3] or ""
-            chat_rooms.append(chat_room)
-        return chat_rooms
+            for row in cursor.fetchall()
+        ]
 
     def get_group_display_name(self, group_id: str) -> str:
         """获取群聊显示名称(优先 remark,其次 nick_name)"""
