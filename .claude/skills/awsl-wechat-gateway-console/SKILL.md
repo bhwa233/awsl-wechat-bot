@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-gateway-console
-description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows main-window Console. Sending opens the named chat first, verifies that it opened, then sends with backend chat-name validation. Reuses awsl-wechat-gateway connection and authentication; use awsl-wechat-chatlog for chat history."
+description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows main-window Console. Treat Console UI state and send results as non-authoritative; confirm every send through awsl-wechat-chatlog before reporting success or retrying. Reuses awsl-wechat-gateway connection and authentication."
 ---
 
 # AWSL WeChat Gateway Console
@@ -34,7 +34,7 @@ uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll down
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll up
 
-# Open the chat, verify the opened title, then send
+# Open the chat and request a send
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message "Console test"
 
@@ -48,11 +48,24 @@ uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.
 
 `list` returns only the chats currently exposed by the virtualized WeChat list. Use `scroll up` or `scroll down` repeatedly until the target becomes visible.
 
-`send` resolves the exact chat-list item, opens it, and checks that the refreshed current-chat title matches. It sends only after that check; the backend validates the live title again immediately before sending.
+`send` resolves the exact chat-list item and uses Console UIA state while opening and sending. UI recognition/validation and the actual send are decoupled: a validation failure or error response does not prove that no message was sent.
+
+## Send Confirmation (Required)
+
+Treat Chatlog as the only source of truth for whether a send occurred. For every `send` invocation, including one that exits with an error such as `Failed to open chat` or reports the current chat as unrecognized:
+
+1. Resolve the destination to its stable Chatlog `username` with `awsl-wechat-chatlog groups`, preferably before sending.
+2. Run the Console `send` command once.
+3. Query the destination's newest records with `awsl-wechat-chatlog messages --group <username> --limit 20 --desc`.
+4. Confirm a matching record with `is_self=true` in the send time window. Match the text exactly when possible; for attachments or voice, also use the message type, filename/content metadata, and timestamp available in Chatlog.
+5. Report the send as successful when that record exists, regardless of the Console command's UI error or return status.
+6. Do not immediately retry any failed or ambiguous Console send. Retry only after Chatlog confirms that no matching self-sent record exists; re-query first if ingestion timing is uncertain.
+
+Never infer send success or failure from the Console UI, UIA title recognition, process exit code, or API response alone. Blindly retrying an `open chat failed`-style error can send a duplicate message.
 
 ## Chat History
 
-Do not treat Console UIA bubbles as chat history. Delegate history, search, contacts, members, and media to `awsl-wechat-chatlog`:
+Do not treat Console UIA bubbles as chat history or reliable evidence of whether a message was sent. Use `awsl-wechat-chatlog` for all history and send confirmation, as well as search, contacts, members, and media:
 
 1. List Chatlog groups.
 2. Match the Console chat name against `username`, `display_name`, `remark`, or `nick_name`.
