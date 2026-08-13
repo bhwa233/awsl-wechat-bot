@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-gateway-console
-description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows main-window Console. Treat Console UI state and send results as non-authoritative; confirm every send through awsl-wechat-chatlog before reporting success or retrying. Reuses awsl-wechat-gateway connection and authentication."
+description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows main-window Console. Treat Console UI state and send results as non-authoritative; confirm every send through awsl-wechat-chatlog, and wait at least two minutes before declaring failure or retrying. Reuses awsl-wechat-gateway connection and authentication."
 ---
 
 # AWSL WeChat Gateway Console
@@ -56,12 +56,13 @@ Treat Chatlog as the only source of truth for whether a send occurred. For every
 
 1. Resolve the destination to its stable Chatlog `username` with `awsl-wechat-chatlog groups`, preferably before sending.
 2. Run the Console `send` command once.
-3. Query the destination's newest records with `awsl-wechat-chatlog messages --group <username> --limit 20 --desc`.
+3. Query the destination's newest records with `awsl-wechat-chatlog messages --group <username> --limit 20 --desc` and keep polling Chatlog during the confirmation window. Do not invoke `send` again while polling.
 4. Confirm a matching record with `is_self=true` in the send time window. Match the text exactly when possible; for attachments or voice, also use the message type, filename/content metadata, and timestamp available in Chatlog.
-5. Report the send as successful when that record exists, regardless of the Console command's UI error or return status.
-6. Do not immediately retry any failed or ambiguous Console send. Retry only after Chatlog confirms that no matching self-sent record exists; re-query first if ingestion timing is uncertain.
+5. Report the send as successful as soon as that record exists, regardless of the Console command's UI error or return status.
+6. Treat an absent record as pending, not failed, until at least 120 seconds have elapsed since the first `send` invocation. After the 120-second deadline, perform one final fresh Chatlog query.
+7. Declare failure or retry only when that final query still contains no matching self-sent record. Never shorten the 120-second minimum because the Console returned early or reported an error.
 
-Never infer send success or failure from the Console UI, UIA title recognition, process exit code, or API response alone. Blindly retrying an `open chat failed`-style error can send a duplicate message.
+Never infer send success or failure from the Console UI, UIA title recognition, process exit code, or API response alone. Chatlog ingestion and sending can be delayed; blindly retrying an `open chat failed`-style error before the full confirmation window can send a duplicate message.
 
 ## Chat History
 
