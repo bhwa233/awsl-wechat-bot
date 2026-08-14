@@ -256,17 +256,16 @@ async function init() {
         b.addEventListener('click', () => { navigate(b.dataset.goto); closeDrawer(); });
     });
 
-    // 顶部标题栏按钮：桌面端折叠/展开，移动端开/关抽屉
+    // 桌面端：标题栏缩放按钮切换大/小侧边栏
     if (localStorage.getItem('sidebar_collapsed') === '1') $('app').classList.add('sidebar-collapsed');
     $('sidebarToggle').addEventListener('click', () => {
         const app = $('app');
-        if (window.matchMedia('(max-width: 720px)').matches) {
-            app.classList.toggle('drawer-open');
-        } else {
-            app.classList.toggle('sidebar-collapsed');
-            localStorage.setItem('sidebar_collapsed', app.classList.contains('sidebar-collapsed') ? '1' : '0');
-        }
+        app.classList.toggle('sidebar-collapsed');
+        localStorage.setItem('sidebar_collapsed', app.classList.contains('sidebar-collapsed') ? '1' : '0');
     });
+
+    // 移动端：悬浮按钮开/关抽屉
+    $('menuToggle').addEventListener('click', () => $('app').classList.toggle('drawer-open'));
     $('drawerBackdrop').addEventListener('click', closeDrawer);
 
     $('themeToggle').addEventListener('click', toggleTheme);

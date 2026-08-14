@@ -932,6 +932,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 
 /* ---------- 14. Responsive ---------- */
 .drawer-backdrop { display: none; }
+.menu-toggle { display: none; }
 
 @media (max-width: 1020px) {
     .dash-health { grid-column: span 12; }
@@ -954,20 +955,27 @@ input[type="checkbox"] { accent-color: var(--accent); }
 @media (max-width: 720px) {
     body { overflow: hidden; }
 
-    /* 侧边栏默认折叠为窄条，只显示缩放按钮 */
-    .sidebar {
-        width: 48px;
-        flex: 0 0 48px;
-        padding-top: env(safe-area-inset-top, 0px);
+    /* 悬浮缩放按钮（收起时顶部只显示这一个图标） */
+    .menu-toggle {
+        display: grid;
+        position: fixed;
+        top: calc(8px + env(safe-area-inset-top, 0px));
+        left: 8px;
+        z-index: 45;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--panel);
+        color: var(--text-2);
+        box-shadow: var(--shadow-sm);
+        cursor: pointer;
     }
-    .sidebar .logo,
-    .sidebar .side-brand-text,
-    .sidebar .side-nav,
-    .sidebar .side-foot { display: none; }
-    .sidebar .side-brand { justify-content: center; padding: 14px 0; border-bottom: 0; }
+    .menu-toggle svg { width: 17px; height: 17px; }
 
-    /* 展开态：全宽抽屉覆盖 */
-    .app.drawer-open .sidebar {
+    /* 侧边栏离屏，作为悬浮抽屉 */
+    .sidebar {
         position: fixed;
         top: 0;
         bottom: 0;
@@ -976,17 +984,10 @@ input[type="checkbox"] { accent-color: var(--accent); }
         width: 248px;
         padding-top: env(safe-area-inset-top, 0px);
         padding-bottom: env(safe-area-inset-bottom, 0px);
-        box-shadow: 0 0 50px rgba(0, 0, 0, 0.25);
+        transform: translateX(-100%);
+        transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
     }
-    .app.drawer-open .sidebar .logo { display: grid; }
-    .app.drawer-open .sidebar .side-brand-text { display: grid; }
-    .app.drawer-open .sidebar .side-nav { display: flex; flex-direction: column; align-items: stretch; }
-    .app.drawer-open .sidebar .side-foot { display: flex; flex-direction: row; padding: 12px 14px; }
-    .app.drawer-open .sidebar .side-brand { justify-content: flex-start; padding: 14px 12px; border-bottom: 1px solid var(--border); }
-    .app.drawer-open .nav-item { justify-content: flex-start; padding: 10px 12px; }
-    .app.drawer-open .nav-item span,
-    .app.drawer-open .side-status .status-text { display: inline; }
-    .app.drawer-open .side-status { justify-content: flex-start; }
+    .app.drawer-open .sidebar { transform: translateX(0); box-shadow: 0 0 50px rgba(0, 0, 0, 0.25); }
 
     /* 遮罩 */
     .drawer-backdrop {
@@ -1000,6 +1001,9 @@ input[type="checkbox"] { accent-color: var(--accent); }
         transition: opacity 0.22s;
     }
     .app.drawer-open .drawer-backdrop { opacity: 1; pointer-events: auto; }
+
+    /* 移动端隐藏侧边栏内的缩放按钮（用悬浮按钮代替） */
+    .sidebar .sidebar-toggle { display: none; }
 
     #section-dashboard, #section-tasks, #section-remote-commands, #section-custom-commands, #section-webhooks { padding: 16px 14px calc(40px + env(safe-area-inset-bottom, 0px)); }
     .section-title { font-size: 18px; }
