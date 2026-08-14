@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from common.config import config
 
@@ -23,9 +24,12 @@ def create_routes(gateway_app):
     @router.get("/api/health")
     async def health():
         """健康检查"""
-        return {
-            "status": "healthy",
-            "groups_count": len(gateway_app.groups),
+        groups_count = len(gateway_app.groups)
+        healthy = groups_count > 0
+        content = {
+            "service": "gateway",
+            "status": "healthy" if healthy else "unhealthy",
+            "groups_count": groups_count,
             "server_time": datetime.now().isoformat(),
             "timezone": time.strftime("%Z"),
             "timezone_offset": time.strftime("%z"),
@@ -34,5 +38,6 @@ def create_routes(gateway_app):
                 "voice": gateway_app.adapter.SUPPORTS_VOICE,
             },
         }
+        return JSONResponse(content=content, status_code=200 if healthy else 503)
 
     return router

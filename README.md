@@ -299,7 +299,7 @@ GET  /api/chatlog/media?msg_type=&group=&server_id=&content=&hd=
 # 返回原始 bytes + X-Media-Md5/Format + Cache-Control immutable + ETag
 ```
 
-Chatlog v2 的 DB 读取接口会先确认微信进程仍在运行；微信未运行时返回 `503`，避免直接读取未在线的数据库。`/health` 可在微信未运行时继续返回服务状态，`/decrypt` 是 v2 no-op，不读取数据库。
+Chatlog v2 的 DB 读取接口和 `/health` 会先确认微信进程仍在运行；微信未运行或群列表读取失败时返回 `503`。`/decrypt` 是 v2 no-op，不读取数据库。
 
 > 消息响应包含 `server_id: int` 与 `server_id_str: str` 双字段，前者保留 JSON 数字合同，后者用于 JS 客户端避免 Number 精度丢失。
 

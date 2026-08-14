@@ -75,7 +75,7 @@ def create_app(cortex_app: CortexRuntime) -> FastAPI:
         lifespan=lifespan,
     )
     app.include_router(webui.create_routes())
-    app.include_router(health.create_routes())
+    app.include_router(health.create_routes(cortex_app))
     app.include_router(tasks.create_routes(task_service))
     app.include_router(webhooks.create_routes(webhook_service))
     app.include_router(remote_commands.create_routes(cortex_app.command_service))

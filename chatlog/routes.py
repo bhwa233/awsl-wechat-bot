@@ -6,6 +6,8 @@ import threading
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 
 from chatlog.media.route import V1MediaBackendBinding, register_media_route
 from chatlog.models import (
@@ -260,24 +262,36 @@ def create_routes() -> APIRouter:
             logger.error(f"[Chatlog] 获取群名失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="查询失败") from e
 
-    @router.get("/health")
-    async def health():
+    def _health():
         if _media_binding is None:
-            return {
+            return JSONResponse(status_code=503, content={
                 "status": "unavailable",
                 "backend": "v1",
                 "media": V1MediaBackendBinding.unavailable_media_health(),
                 "detail": "当前平台不支持 chatlog",
-            }
+            })
         detail = _media_binding.config_error()
-        ready = detail is None
         resp = {
-            "status": "ok" if ready else "unavailable",
+            "status": "unavailable",
             "backend": "v1",
             "media": _media_binding.media_health(),
         }
         if detail:
             resp["detail"] = detail
+            return JSONResponse(status_code=503, content=resp)
+
+        try:
+            chatlog.list_groups(config.WECHAT_DB_OUTPUT_PATH, limit=1)
+        except Exception as exc:
+            logger.error("[Chatlog] 健康检查读取群聊失败: %s", exc, exc_info=True)
+            resp["detail"] = "微信数据库读取失败"
+            return JSONResponse(status_code=503, content=resp)
+
+        resp["status"] = "ok"
         return resp
+
+    @router.get("/health")
+    async def health():
+        return await run_in_threadpool(_health)
 
     return router

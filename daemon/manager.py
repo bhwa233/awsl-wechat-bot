@@ -21,7 +21,7 @@ logger = logging.getLogger("daemon")
 
 PROJECT_DIR = Path(__file__).parent.parent.resolve()
 BOT_ENTRY = PROJECT_DIR / "main.py"
-BOT_HEALTH_URL = f"http://127.0.0.1:{config.HTTP_API_PORT}/api/health"
+BOT_HEALTH_URL = f"http://127.0.0.1:{config.HTTP_API_PORT}/"
 
 HEALTH_CHECK_INTERVAL = 60
 HEALTH_CHECK_TIMEOUT = 10
