@@ -256,16 +256,18 @@ async function init() {
         b.addEventListener('click', () => { navigate(b.dataset.goto); closeDrawer(); });
     });
 
-    $('menuToggle').addEventListener('click', () => $('app').classList.toggle('drawer-open'));
-    $('drawerBackdrop').addEventListener('click', closeDrawer);
-
-    // 桌面端侧边栏折叠/展开
+    // 顶部标题栏按钮：桌面端折叠/展开，移动端开/关抽屉
     if (localStorage.getItem('sidebar_collapsed') === '1') $('app').classList.add('sidebar-collapsed');
-    $('collapseToggle').addEventListener('click', () => {
+    $('sidebarToggle').addEventListener('click', () => {
         const app = $('app');
-        app.classList.toggle('sidebar-collapsed');
-        localStorage.setItem('sidebar_collapsed', app.classList.contains('sidebar-collapsed') ? '1' : '0');
+        if (window.matchMedia('(max-width: 720px)').matches) {
+            app.classList.toggle('drawer-open');
+        } else {
+            app.classList.toggle('sidebar-collapsed');
+            localStorage.setItem('sidebar_collapsed', app.classList.contains('sidebar-collapsed') ? '1' : '0');
+        }
     });
+    $('drawerBackdrop').addEventListener('click', closeDrawer);
 
     $('themeToggle').addEventListener('click', toggleTheme);
     $('tokenBtn').addEventListener('click', openTokenModal);
