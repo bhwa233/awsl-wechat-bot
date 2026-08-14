@@ -14,7 +14,7 @@
     <script>
         (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=202608150016">
+    <link rel="stylesheet" href="/static/style.css?v=202608150017">
 </head>
 <body>
     <div class="app" id="app">
@@ -70,6 +70,10 @@
                     <span class="status-dot" id="statusDot"></span>
                     <span class="status-text" id="statusText">连接中…</span>
                 </div>
+                <button class="icon-btn-ghost collapse-toggle" id="collapseToggle" type="button" title="折叠/展开侧边栏">
+                    <svg class="icon-collapse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/></svg>
+                    <svg class="icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m13 17 5-5-5-5"/><path d="m6 17 5-5-5-5"/></svg>
+                </button>
                 <button class="icon-btn-ghost" id="tokenBtn" type="button" title="API Token">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="3.5"/><path d="M10.2 12.8 21 2"/><path d="m15 8 2 2"/><path d="m18 5 2 2"/></svg>
                 </button>
@@ -474,12 +478,12 @@
 
     <div class="toast" id="toast"></div>
 
-    <script src="/static/app.js?v=202608150016"></script>
-    <script src="/static/message_composer.js?v=202608150016"></script>
-    <script src="/static/chat.js?v=202608150016"></script>
-    <script src="/static/console.js?v=202608150016"></script>
-    <script src="/static/tasks.js?v=202608150016"></script>
-    <script src="/static/custom_commands.js?v=202608150016"></script>
-    <script src="/static/webhooks.js?v=202608150016"></script>
+    <script src="/static/app.js?v=202608150017"></script>
+    <script src="/static/message_composer.js?v=202608150017"></script>
+    <script src="/static/chat.js?v=202608150017"></script>
+    <script src="/static/console.js?v=202608150017"></script>
+    <script src="/static/tasks.js?v=202608150017"></script>
+    <script src="/static/custom_commands.js?v=202608150017"></script>
+    <script src="/static/webhooks.js?v=202608150017"></script>
 </body>
 </html>

@@ -259,6 +259,14 @@ async function init() {
     $('menuToggle').addEventListener('click', () => $('app').classList.toggle('drawer-open'));
     $('drawerBackdrop').addEventListener('click', closeDrawer);
 
+    // 桌面端侧边栏折叠/展开
+    if (localStorage.getItem('sidebar_collapsed') === '1') $('app').classList.add('sidebar-collapsed');
+    $('collapseToggle').addEventListener('click', () => {
+        const app = $('app');
+        app.classList.toggle('sidebar-collapsed');
+        localStorage.setItem('sidebar_collapsed', app.classList.contains('sidebar-collapsed') ? '1' : '0');
+    });
+
     $('themeToggle').addEventListener('click', toggleTheme);
     $('tokenBtn').addEventListener('click', openTokenModal);
     $('tokenModal').addEventListener('click', e => { if (e.target === $('tokenModal')) closeTokenModal(); });
