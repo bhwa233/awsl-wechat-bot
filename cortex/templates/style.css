@@ -955,15 +955,15 @@ input[type="checkbox"] { accent-color: var(--accent); }
 @media (max-width: 720px) {
     body { overflow: hidden; }
 
-    /* 悬浮缩放按钮（收起时顶部只显示这一个图标） */
+    /* 顶部按钮单独一行：只显示侧边栏按钮，内容在其下方 */
     .menu-toggle {
         display: grid;
         position: fixed;
-        top: calc(8px + env(safe-area-inset-top, 0px));
+        top: calc(4px + env(safe-area-inset-top, 0px));
         left: 8px;
         z-index: 45;
-        width: 34px;
-        height: 34px;
+        width: 36px;
+        height: 36px;
         place-items: center;
         border: 1px solid var(--border);
         border-radius: 9px;
@@ -974,7 +974,10 @@ input[type="checkbox"] { accent-color: var(--accent); }
     }
     .menu-toggle svg { width: 17px; height: 17px; }
 
-    /* 侧边栏离屏，作为悬浮抽屉 */
+    /* 主内容下移：按钮行 + 顶部安全区 */
+    .main { padding-top: calc(44px + env(safe-area-inset-top, 0px)); }
+
+    /* 抽屉侧边栏（离屏，展开时悬浮） */
     .sidebar {
         position: fixed;
         top: 0;
@@ -989,6 +992,19 @@ input[type="checkbox"] { accent-color: var(--accent); }
     }
     .app.drawer-open .sidebar { transform: translateX(0); box-shadow: 0 0 50px rgba(0, 0, 0, 0.25); }
 
+    /* 展开后隐藏顶部按钮 */
+    .app.drawer-open .menu-toggle { display: none; }
+
+    /* 展开后恢复完整内容（覆盖 860px 图标 rail） */
+    .app.drawer-open .side-brand-text { display: grid; }
+    .app.drawer-open .nav-item span,
+    .app.drawer-open .side-status .status-text { display: inline; }
+    .app.drawer-open .side-nav { align-items: stretch; }
+    .app.drawer-open .nav-item { justify-content: flex-start; padding: 10px 12px; }
+    .app.drawer-open .side-foot { flex-direction: row; padding: 12px 14px; }
+    .app.drawer-open .side-brand { justify-content: flex-start; padding: 14px 12px; }
+    .app.drawer-open .side-status { justify-content: flex-start; }
+
     /* 遮罩 */
     .drawer-backdrop {
         display: block;
@@ -1002,7 +1018,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
     }
     .app.drawer-open .drawer-backdrop { opacity: 1; pointer-events: auto; }
 
-    /* 移动端隐藏侧边栏内的缩放按钮（用悬浮按钮代替） */
+    /* 移动端隐藏侧边栏内的缩放按钮（用顶部按钮代替） */
     .sidebar .sidebar-toggle { display: none; }
 
     #section-dashboard, #section-tasks, #section-remote-commands, #section-custom-commands, #section-webhooks { padding: 16px 14px calc(40px + env(safe-area-inset-bottom, 0px)); }
