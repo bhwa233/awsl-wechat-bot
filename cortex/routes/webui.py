@@ -25,8 +25,8 @@ def create_routes():
             "short_name": "AWSL Bot",
             "start_url": "/",
             "display": "standalone",
-            "background_color": "#f4f4f2",
-            "theme_color": "#22c55e",
+            "background_color": "#ededed",
+            "theme_color": "#35d18c",
             "icons": [
                 {
                     "src": (

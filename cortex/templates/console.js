@@ -1,5 +1,7 @@
-// 控制台 Tab: 布局/交互照搬 gateway console, 聊天气泡复用 chat.js 风格 class。
-// 数据走 /api/console/* (Cortex 代理 Gateway), 仅 Windows Gateway 可用。
+// ============================================================================
+// console.js — 控制台模块：远程控制 Windows 微信主窗口，聊天记录来自 Chatlog
+// 数据走 /api/console/* (Cortex 代理 Gateway)，仅 Windows Gateway 可用。
+// ============================================================================
 
 const CONSOLE_POLL_INTERVAL_MS = 3000;
 
@@ -34,10 +36,8 @@ window.consoleTab = (() => {
         return (Array.from(text)[0] || '?').toUpperCase();
     }
 
-    // Cortex 全局 api(method, path, {body}) 适配 console 的 POST 接口
     async function consoleApi(path, body = {}) {
-        const r = await api('POST', path, { body });
-        return r;
+        return api('POST', path, { body });
     }
 
     function renderList(chatList) {
@@ -155,7 +155,7 @@ window.consoleTab = (() => {
 
     async function loadChatlogMessages(name, options = {}) {
         const gen = ++historyLoadGen;
-        if (!options.quiet) $('consoleMessages').innerHTML = '<div class="loading-hint">正在加载 Chatlog 记录...</div>';
+        if (!options.quiet) $('consoleMessages').innerHTML = '<div class="loading-hint">正在加载 Chatlog 记录…</div>';
         if (!await ensureChatlogReady()) {
             if (gen === historyLoadGen) $('consoleMessages').innerHTML = '<div class="empty-hint">Chatlog 不可用</div>';
             return false;
@@ -169,12 +169,7 @@ window.consoleTab = (() => {
         }
         $('consoleChatTitle').textContent = chatlogDisplayName(group);
         await WECHAT_EMOJI_READY;
-        const params = new URLSearchParams({
-            group: group.username,
-            limit: '101',
-            offset: '0',
-            desc: 'true',
-        });
+        const params = new URLSearchParams({ group: group.username, limit: '101', offset: '0', desc: 'true' });
         const result = await api('GET', `/api/chatlog/messages?${params}`);
         if (gen !== historyLoadGen) return false;
         if (!result.ok) {
@@ -228,7 +223,7 @@ window.consoleTab = (() => {
     }
 
     function clearChatArea() {
-        $('consoleMessages').innerHTML = '<div class="loading-hint">正在切换聊天...</div>';
+        $('consoleMessages').innerHTML = '<div class="loading-hint">正在切换聊天…</div>';
     }
 
     function setListBusy(busy) {
@@ -243,7 +238,7 @@ window.consoleTab = (() => {
         setStatus('正在读取主窗口 UIA 状态');
         const box = $('consoleMessages');
         if (box && !$('consoleChatList')?.children.length) {
-            box.innerHTML = '<div class="loading-hint">正在读取主窗口状态...</div>';
+            box.innerHTML = '<div class="loading-hint">正在读取主窗口状态…</div>';
         }
         try {
             const r = await consoleApi('/api/console/state', {});
@@ -272,10 +267,7 @@ window.consoleTab = (() => {
         try {
             const r = await consoleApi('/api/console/scroll-chats', { direction });
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
-            if (!r.ok || !r.data?.available) {
-                setStatus(r.data?.detail || r.error || '滚动聊天列表失败', true);
-                return;
-            }
+            if (!r.ok || !r.data?.available) { setStatus(r.data?.detail || r.error || '滚动聊天列表失败', true); return; }
             renderList(r.data.chat_list);
             setStatus(direction === 'up' ? '聊天列表已向上滚动' : '聊天列表已向下滚动');
         } catch {
@@ -315,14 +307,14 @@ window.consoleTab = (() => {
         if (sending || scrolling || unsupported) return;
         const payload = composer?.getPayload({ attachment: '请选择文件' });
         if (!payload) return;
-        if (!selectedName) {
-            setStatus('请先选择聊天', true);
-            return;
-        }
+        if (!selectedName) { setStatus('请先选择聊天', true); return; }
         payload.chat_name = selectedName;
         sending = true;
         const btn = $('consoleSendBtn');
         btn.disabled = true;
+        btn.classList.add('loading');
+        btn.setAttribute('aria-busy', 'true');
+        $('consoleCompose').classList.add('sending');
         setStatus('正在发送消息');
         try {
             const r = await consoleApi('/api/console/send-message', payload);
@@ -331,13 +323,14 @@ window.consoleTab = (() => {
             if (payload.message_type === 'text' || payload.message_type === 'voice') $('consoleMsgInput').value = '';
             if (!['text', 'voice'].includes(payload.message_type)) composer.resetUpload();
             renderList(r.data.chat_list);
-            setTimeout(() => {
-                if (selectedName) loadChatlogMessages(selectedName, { quiet: true });
-            }, 1000);
+            setTimeout(() => { if (selectedName) loadChatlogMessages(selectedName, { quiet: true }); }, 1000);
             setStatus('消息已发送');
         } finally {
             sending = false;
             btn.disabled = false;
+            btn.classList.remove('loading');
+            btn.setAttribute('aria-busy', 'false');
+            $('consoleCompose').classList.remove('sending');
         }
     }
 
@@ -345,7 +338,7 @@ window.consoleTab = (() => {
         return activated
             && !unsupported
             && document.visibilityState === 'visible'
-            && $('console-panel')?.classList.contains('active')
+            && $('section-console')?.classList.contains('active')
             && !opening && !refreshing && !scrolling && !sending;
     }
 
@@ -363,7 +356,7 @@ window.consoleTab = (() => {
             }
             renderState(r.data);
         } catch {
-            // 轮询失败静默, 不覆盖手动操作状态
+            // 轮询失败静默
         } finally {
             polling = false;
         }
@@ -386,7 +379,7 @@ window.consoleTab = (() => {
                 dropzoneId: 'consoleFileDropzone',
                 previewId: 'consoleFilePreview',
                 infoId: 'consoleFileInfo',
-                isActive: () => $('console-panel')?.classList.contains('active'),
+                isActive: () => $('section-console')?.classList.contains('active'),
             });
             $('consoleMsgInput').addEventListener('keydown', e => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
