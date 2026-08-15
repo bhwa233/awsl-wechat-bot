@@ -9,8 +9,8 @@ router = APIRouter()
 
 def create_routes(runtime):
     @router.get("/api/groups", response_model=list[GroupInfo], dependencies=[Depends(verify_token)])
-    async def list_groups():
+    async def list_groups() -> list[GroupInfo]:
         """列出所有监听中的群聊"""
-        return [GroupInfo(name=name, active=True) for name in runtime.groups]
+        return runtime.group_snapshots
 
     return router

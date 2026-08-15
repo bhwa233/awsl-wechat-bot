@@ -6,18 +6,32 @@ import threading
 import time
 from typing import ClassVar
 
+from pydantic import computed_field
+
 logging.getLogger("comtypes").setLevel(logging.WARNING)
 
 import uiautomation as auto  # noqa: E402
 
 from common.config import config  # noqa: E402
-from gateway.adapters.base import BaseWeChatAdapter  # noqa: E402
+from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow  # noqa: E402
+from gateway.models import GroupDebugInfo  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 
+class WindowsGroupDebugInfo(GroupDebugInfo):
+    window_id: int | None = None
+    automation_id: str | None = None
+
+    @computed_field
+    @property
+    def chat_id(self) -> str | None:
+        return WindowsWeChatAdapter.standalone_conversation_id(self.automation_id)
+
+
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     SUPPORTS_VOICE = True
+    STANDALONE_AUTOMATION_PREFIX: ClassVar[str] = "ChatSingleWindow"
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
     _RESERVED_NAMES: ClassVar[set[str]] = {
         "CON", "PRN", "AUX", "NUL",
@@ -31,6 +45,15 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
     _VOICE_RECORDING_START_DELAY = 0.4
     _VOICE_RECORDING_FINISH_DELAY = 0.3
     _VOICE_MIN_RECORDING_DURATION = 4.5
+
+    @classmethod
+    def standalone_conversation_id(cls, automation_id: str | None) -> str | None:
+        if not isinstance(automation_id, str):
+            return None
+        if not automation_id.startswith(cls.STANDALONE_AUTOMATION_PREFIX):
+            return None
+        conversation_id = automation_id[len(cls.STANDALONE_AUTOMATION_PREFIX):]
+        return conversation_id or None
 
     @classmethod
     def _sanitize_windows_filename(cls, filename: str | None, default: str = "attachment.bin") -> str:
@@ -302,18 +325,11 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             name="wechat-temp-cleanup",
         ).start()
 
-    def find_all_wechat_windows(self) -> list[dict]:
-        """查找所有微信窗口(包括弹出的群聊窗口)
-
-        Returns:
-            list[dict]: 窗口信息列表,每个字典包含:
-                - title: 窗口标题(群名)
-                - window: WindowControl 对象
-                - class: 窗口类名
-        """
+    def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
+        """查找所有微信窗口(包括弹出的群聊窗口)."""
         self._ensure_uia()
         logger.debug("正在扫描所有微信窗口...")
-        all_windows = []
+        all_windows: list[DiscoveredWindow] = []
 
         # 支持的类名列表
         # mmui::MainWindow - 主窗口
@@ -337,11 +353,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                             if not title:
                                 continue
 
-                            all_windows.append({
-                                "title": title,
-                                "window": ctrl,
-                                "class": cls
-                            })
+                            all_windows.append(self._discovered_window(ctrl))
                             logger.debug(f"发现窗口: {title} ({cls})")
                     except Exception:
                         continue
@@ -352,11 +364,38 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         # 过滤掉主窗口(标题为"微信"或"WeChat")
         popup_windows = [
             w for w in all_windows
-            if w["title"] not in main_titles
+            if w.title not in main_titles
         ]
 
         logger.debug(f"扫描到 {len(popup_windows)} 个群聊窗口")
         return popup_windows
+
+    @staticmethod
+    def _discovered_window(control) -> DiscoveredWindow:
+        return DiscoveredWindow(
+            title=control.Name,
+            window=control,
+            debug_info=WindowsGroupDebugInfo(
+                window_id=WindowsWeChatAdapter._native_window_handle(control),
+                automation_id=WindowsWeChatAdapter._automation_id(control),
+            ),
+        )
+
+    @staticmethod
+    def _native_window_handle(control) -> int | None:
+        try:
+            window_id = int(control.NativeWindowHandle)
+        except Exception:
+            return None
+        return window_id or None
+
+    @staticmethod
+    def _automation_id(control) -> str | None:
+        try:
+            automation_id = control.AutomationId
+        except Exception:
+            return None
+        return automation_id if isinstance(automation_id, str) and automation_id else None
 
     def activate_specific_window(self, window):
         """激活指定的微信窗口(调用方须持有 _send_lock)

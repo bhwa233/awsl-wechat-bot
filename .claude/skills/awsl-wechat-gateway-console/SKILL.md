@@ -46,7 +46,17 @@ uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.
 
 ```
 
-`list` returns only the chats currently exposed by the virtualized WeChat list. Use `scroll up` or `scroll down` repeatedly until the target becomes visible.
+`list` returns only the chats currently exposed by the virtualized WeChat list. `send --chat` resolves the target with a deterministic traversal: it first scrolls upward until two consecutive ordered visible-list snapshots are identical, then scans downward only. It reports the chat as absent only after two consecutive downward snapshots are identical. The traversal limit is only a safety guard; reaching it does not prove that either edge was reached.
+
+When resolving a chat manually, follow the same rules:
+
+1. Record the ordered visible chat signature, including each item's `path` and exact `name`.
+2. Run `scroll up` repeatedly until two consecutive signatures are identical. This confirms the top regardless of whether the list started at the top, middle, or bottom.
+3. Inspect the top snapshot, then use only `scroll down` while searching.
+4. Stop when one exact-name match is visible. If multiple visible items have the same exact name, report ambiguity instead of choosing one.
+5. Report not found only when two consecutive downward signatures are identical, confirming the bottom.
+
+Never alternate scroll directions or treat the traversal limit as an edge. Main-window `ChatSessionCell` AutomationIds use the display-name form `session_item_<name>` and do not expose the stable WeChat chat ID; do not infer a chat ID from them.
 
 `send` resolves the exact chat-list item and uses Console UIA state while opening and sending. UI recognition/validation and the actual send are decoupled: a validation failure or error response does not prove that no message was sent.
 

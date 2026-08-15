@@ -1,5 +1,17 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import Any
+
+from gateway.models import GroupDebugInfo
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveredWindow:
+    """平台适配器发现的聊天窗口."""
+
+    title: str
+    window: Any
+    debug_info: GroupDebugInfo | None
 
 
 class BaseWeChatAdapter(ABC):
@@ -16,14 +28,8 @@ class BaseWeChatAdapter(ABC):
         return index == len(messages_to_check) - 1
 
     @abstractmethod
-    def find_all_wechat_windows(self) -> list[dict]:
-        """查找所有微信窗口
-
-        Returns:
-            list[dict]: 窗口信息列表,每个字典包含:
-                - title: 窗口标题(群名)
-                - window: 窗口控制对象
-        """
+    def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
+        """查找所有微信聊天窗口."""
         pass
 
     @abstractmethod

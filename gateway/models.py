@@ -2,7 +2,7 @@
 HTTP API 数据模型
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SerializeAsAny
 
 from common.models import OutgoingMessage
 
@@ -21,7 +21,13 @@ class SendMessageResponse(BaseModel):
     message: str
 
 
+class GroupDebugInfo(BaseModel):
+    """平台相关的窗口调试信息."""
+
+
 class GroupInfo(BaseModel):
     """群组信息"""
+
     name: str
     active: bool
+    debug_info: SerializeAsAny[GroupDebugInfo] | None = None

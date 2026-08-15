@@ -248,6 +248,16 @@
                                     <button class="btn btn-ghost btn-sm" id="consoleRefreshBtn" onclick="consoleTab.refresh()" type="button">刷新</button>
                                 </div>
                             </header>
+                            <div class="console-window-toolbar">
+                                <span class="console-window-state" id="consoleWindowState">未选择会话</span>
+                                <div class="console-window-actions">
+                                    <button class="btn btn-green btn-sm" id="consoleWindowOpenBtn" type="button" disabled>独立窗口打开</button>
+                                    <button class="btn btn-ghost btn-sm" id="consoleWindowCloseBtn" type="button" disabled>关闭独立窗口</button>
+                                    <button class="btn btn-ghost btn-sm" id="consoleWindowCacheBtn" type="button" disabled>更新窗口缓存</button>
+                                    <button class="btn btn-ghost btn-sm" id="consoleWindowCacheViewBtn" type="button" disabled>查看窗口缓存</button>
+                                    <button class="btn btn-ghost btn-sm" id="consoleWindowRestoreBtn" type="button" disabled>一键打开缓存</button>
+                                </div>
+                            </div>
                             <div class="messages" id="consoleMessages">
                                 <div class="chat-empty" id="consoleEmpty">
                                     <div class="chat-empty-icon">🖥️</div>
@@ -480,7 +490,7 @@
     <script src="/static/app.js?v=202608150021"></script>
     <script src="/static/message_composer.js?v=202608150021"></script>
     <script src="/static/chat.js?v=202608150021"></script>
-    <script src="/static/console.js?v=202608150021"></script>
+    <script src="/static/console.js?v=202608150023"></script>
     <script src="/static/tasks.js?v=202608150021"></script>
     <script src="/static/custom_commands.js?v=202608150021"></script>
     <script src="/static/webhooks.js?v=202608150021"></script>

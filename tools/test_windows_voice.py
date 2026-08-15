@@ -14,7 +14,7 @@ from gateway.utils.voice_synthesis import synthesize_voice
 
 def find_window(adapter: WindowsWeChatAdapter, group: str):
     return next(
-        (item["window"] for item in adapter.find_all_wechat_windows() if item["title"] == group),
+        (item.window for item in adapter.find_all_wechat_windows() if item.title == group),
         None,
     )
 

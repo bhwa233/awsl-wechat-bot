@@ -11,8 +11,8 @@ windows = adapter.find_all_wechat_windows()
 print(f"发现 {len(windows)} 个窗口\n")
 
 for w in windows:
-    title = w["title"]
-    wid = w["window"].window_id
+    title = w.title
+    wid = w.window.window_id
     results = screenshot_and_ocr(wid)
 
     print(f"{'=' * 60}")

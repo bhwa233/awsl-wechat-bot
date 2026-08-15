@@ -12,6 +12,10 @@ window.consoleTab = (() => {
     let refreshing = false;
     let scrolling = false;
     let sending = false;
+    let standaloneOperating = false;
+    let standaloneOperation = '';
+    let standaloneKnown = false;
+    let standaloneOpen = false;
     let polling = false;
     let pollTimer = null;
     let activated = false;
@@ -40,12 +44,168 @@ window.consoleTab = (() => {
         return api('POST', path, { body });
     }
 
+    function selectedChatId() {
+        return findChatlogGroup(selectedName)?.username || '';
+    }
+
+    function updateStandaloneControls() {
+        const openBtn = $('consoleWindowOpenBtn');
+        const closeBtn = $('consoleWindowCloseBtn');
+        const cacheBtn = $('consoleWindowCacheBtn');
+        const cacheViewBtn = $('consoleWindowCacheViewBtn');
+        const restoreBtn = $('consoleWindowRestoreBtn');
+        const state = $('consoleWindowState');
+        if (!openBtn || !closeBtn || !cacheBtn || !cacheViewBtn || !restoreBtn || !state) return;
+
+        const chatId = selectedChatId();
+        const busy = standaloneOperating || opening || refreshing || scrolling || sending;
+        const selected = standaloneKnown && !!selectedName && !!selectedPath && !!chatId;
+        openBtn.disabled = busy || !selected || standaloneOpen || unsupported;
+        closeBtn.disabled = busy || !selected || !standaloneOpen || unsupported;
+        cacheBtn.disabled = busy || unsupported || !standaloneKnown;
+        cacheViewBtn.disabled = busy || unsupported || !standaloneKnown;
+        restoreBtn.disabled = busy || unsupported || !standaloneKnown;
+        if ($('consoleRefreshBtn')) $('consoleRefreshBtn').disabled = busy || unsupported;
+        if ($('consoleScrollUp')) $('consoleScrollUp').disabled = busy || unsupported;
+        if ($('consoleScrollDown')) $('consoleScrollDown').disabled = busy || unsupported;
+        if ($('consoleSendBtn')) $('consoleSendBtn').disabled = busy || unsupported;
+
+        for (const [button, operation] of [
+            [openBtn, 'open'],
+            [closeBtn, 'close'],
+            [cacheBtn, 'cache'],
+            [restoreBtn, 'restore'],
+        ]) {
+            const loading = standaloneOperating && standaloneOperation === operation;
+            button.classList.toggle('loading', loading);
+            button.setAttribute('aria-busy', loading ? 'true' : 'false');
+        }
+
+        if (!standaloneKnown) state.textContent = '独立窗口状态尚未确认';
+        else if (!selectedName) state.textContent = '未选择会话';
+        else if (!chatId) state.textContent = '当前会话尚未匹配到 Chatlog';
+        else if (standaloneOpen) state.textContent = '独立窗口已打开';
+        else state.textContent = '独立窗口未打开';
+    }
+
+    async function showStandaloneCache() {
+        if (standaloneOperating || opening || refreshing || scrolling || sending || unsupported) return;
+        const r = await api('GET', '/api/console/standalone-windows/cache');
+        if (r.status === 501) { showUnsupported(r.data?.detail); return; }
+        if (!r.ok || !r.data?.available) {
+            setStatus(r.data?.detail || r.data?.message || r.error || '读取窗口缓存失败', true);
+            return;
+        }
+
+        const windows = Array.isArray(r.data.windows) ? r.data.windows : [];
+        const updatedAt = r.data.updated_at ? formatTime(r.data.updated_at) : '尚未更新';
+        const body = windows.length
+            ? `<div class="console-cache-list">${windows.map(windowInfo => `
+                <div class="console-cache-item">
+                    <strong>${escapeHtml(windowInfo.name || '未命名会话')}</strong>
+                </div>`).join('')}</div>`
+            : '<div class="empty-hint">缓存中没有独立窗口</div>';
+        let modal = $('consoleWindowCacheModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'consoleWindowCacheModal';
+            modal.className = 'modal-overlay';
+            modal.addEventListener('click', event => {
+                if (event.target === modal) modal.style.display = 'none';
+            });
+            document.body.appendChild(modal);
+        }
+        modal.innerHTML = `<div class="modal-content">
+            <div class="modal-header"><span>独立窗口缓存</span><button class="modal-close" type="button">✕</button></div>
+            <div class="modal-body">
+                <div class="console-cache-meta">更新时间：${escapeHtml(updatedAt)} · ${windows.length} 个窗口</div>
+                ${body}
+            </div>
+        </div>`;
+        modal.querySelector('.modal-close').addEventListener('click', () => { modal.style.display = 'none'; });
+        modal.style.display = 'flex';
+        setStatus(r.data.message || '窗口缓存已读取');
+    }
+
+    async function refreshStandaloneWindowStatus({ quiet = false } = {}) {
+        const chatId = selectedChatId();
+        const query = chatId ? `?chat_id=${encodeURIComponent(chatId)}` : '';
+        const r = await api('GET', `/api/console/standalone-windows/status${query}`);
+        if (r.status === 501) { showUnsupported(r.data?.detail); return false; }
+        if (!r.ok || !r.data?.available) {
+            standaloneKnown = false;
+            standaloneOpen = false;
+            updateStandaloneControls();
+            if (!quiet) setStatus(r.data?.detail || r.data?.message || r.error || '读取独立窗口状态失败', true);
+            return false;
+        }
+        standaloneKnown = true;
+        standaloneOpen = !!r.data.open;
+        updateStandaloneControls();
+        return true;
+    }
+
+    async function runStandaloneOperation(operation) {
+        if (standaloneOperating || opening || refreshing || scrolling || sending || unsupported || !standaloneKnown) return;
+
+        let path;
+        let payload = {};
+        let pendingStatus;
+        if (operation === 'open') {
+            const chatId = selectedChatId();
+            if (!selectedPath || !chatId || standaloneOpen) return;
+            path = '/api/console/standalone-windows/open';
+            payload = { path: selectedPath, chat_id: chatId };
+            pendingStatus = '正在打开独立窗口';
+        } else if (operation === 'close') {
+            const chatId = selectedChatId();
+            if (!chatId || !standaloneOpen) return;
+            path = '/api/console/standalone-windows/close';
+            payload = { chat_id: chatId };
+            pendingStatus = '正在关闭独立窗口';
+        } else if (operation === 'cache') {
+            path = '/api/console/standalone-windows/cache';
+            pendingStatus = '正在更新独立窗口缓存';
+        } else if (operation === 'restore') {
+            path = '/api/console/standalone-windows/open-cached';
+            pendingStatus = '正在按缓存打开独立窗口';
+        } else {
+            return;
+        }
+
+        standaloneOperating = true;
+        standaloneOperation = operation;
+        setListBusy(true);
+        updateStandaloneControls();
+        setStatus(pendingStatus);
+        try {
+            const r = await consoleApi(path, payload);
+            if (r.status === 501) { showUnsupported(r.data?.detail); return; }
+            if (!r.ok || !r.data?.available) {
+                setStatus(r.data?.detail || r.data?.message || r.error || `${pendingStatus}失败`, true);
+                return;
+            }
+            setStatus(r.data.message || `${pendingStatus}完成`);
+        } finally {
+            if (operation === 'open' || operation === 'restore') {
+                const stateResult = await consoleApi('/api/console/state', {});
+                if (stateResult.ok && stateResult.data?.available) renderList(stateResult.data.chat_list);
+            }
+            await refreshStandaloneWindowStatus({ quiet: true });
+            standaloneOperating = false;
+            standaloneOperation = '';
+            setListBusy(false);
+            updateStandaloneControls();
+        }
+    }
+
     function renderList(chatList) {
         const items = chatList?.items || [];
         $('consoleChatCount').textContent = String(items.length);
         const box = $('consoleChatList');
         if (!items.length) {
             box.innerHTML = '<div class="empty-hint">未解析到聊天列表</div>';
+            updateStandaloneControls();
             return;
         }
         box.innerHTML = items.map(item => {
@@ -71,6 +231,7 @@ window.consoleTab = (() => {
         box.querySelectorAll('.console-row[data-path]').forEach(row => {
             row.addEventListener('click', () => openChat(row.dataset.path, row.dataset.name || ''));
         });
+        updateStandaloneControls();
     }
 
     async function ensureChatlogReady() {
@@ -208,6 +369,18 @@ window.consoleTab = (() => {
         }
     }
 
+    async function restoreActualConsoleState() {
+        const stateResult = await consoleApi('/api/console/state', {});
+        if (!stateResult.ok || !stateResult.data?.available) return false;
+        selectedName = '';
+        selectedPath = '';
+        renderState(stateResult.data);
+        if (selectedName) {
+            await loadChatlogMessages(selectedName, { preserveScroll: true, quiet: true });
+        }
+        return true;
+    }
+
     function renderError(detail) {
         $('consoleChatCount').textContent = '0';
         $('consoleChatList').innerHTML = '<div class="empty-hint">未解析到聊天列表</div>';
@@ -216,10 +389,13 @@ window.consoleTab = (() => {
 
     function showUnsupported(detail) {
         unsupported = true;
+        standaloneKnown = false;
+        standaloneOpen = false;
         $('consoleChatCount').textContent = '0';
         $('consoleChatList').innerHTML = '<div class="empty-hint">仅支持 Windows</div>';
         $('consoleMessages').innerHTML = `<div class="chat-empty"><div class="chat-empty-icon">🪟</div><p>${escapeHtml(detail || 'Console 仅支持 Windows Gateway')}</p></div>`;
         setStatus('当前 Gateway 平台不支持 Console', true);
+        updateStandaloneControls();
     }
 
     function clearChatArea() {
@@ -228,11 +404,13 @@ window.consoleTab = (() => {
 
     function setListBusy(busy) {
         $('consoleChatList').querySelectorAll('.console-row').forEach(row => { row.disabled = busy; });
+        updateStandaloneControls();
     }
 
     async function refresh() {
-        if (refreshing || scrolling || unsupported) return;
+        if (refreshing || scrolling || standaloneOperating || unsupported) return;
         refreshing = true;
+        updateStandaloneControls();
         const btn = $('consoleRefreshBtn');
         if (btn) btn.disabled = true;
         setStatus('正在读取主窗口 UIA 状态');
@@ -246,17 +424,19 @@ window.consoleTab = (() => {
             if (!r.ok) { setStatus(r.data?.detail || r.error || `请求失败 ${r.status}`, true); renderError(r.data?.detail || r.error); return; }
             renderState(r.data);
             if (selectedName) await loadChatlogMessages(selectedName, { preserveScroll: true, quiet: true });
+            await refreshStandaloneWindowStatus({ quiet: true });
             setStatus(r.data.available ? '主窗口状态已更新，聊天记录来自 Chatlog' : (r.data.message || '主窗口不可用'), !r.data.available);
         } catch {
             setStatus('网络错误，无法读取 console 状态', true);
         } finally {
             refreshing = false;
             if (btn) btn.disabled = false;
+            updateStandaloneControls();
         }
     }
 
     async function scroll(direction) {
-        if (scrolling || opening || refreshing || sending || unsupported) return;
+        if (scrolling || opening || refreshing || sending || standaloneOperating || unsupported) return;
         scrolling = true;
         setListBusy(true);
         const upBtn = $('consoleScrollUp');
@@ -281,11 +461,14 @@ window.consoleTab = (() => {
     }
 
     async function openChat(path, name = '') {
-        if (!path || opening || scrolling || sending || unsupported) return;
+        if (!path || opening || refreshing || scrolling || sending || standaloneOperating || unsupported) return;
         opening = true;
         setListBusy(true);
         selectedPath = path;
         selectedName = name || selectedName;
+        standaloneKnown = false;
+        standaloneOpen = false;
+        updateStandaloneControls();
         $('consoleChatTitle').textContent = selectedName || '聊天区域';
         clearChatArea();
         showChatPane(true);
@@ -293,23 +476,30 @@ window.consoleTab = (() => {
         try {
             const r = await consoleApi('/api/console/open-chat', { path });
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
-            if (!r.ok || !r.data?.available) { setStatus(r.data?.detail || r.error || '切换聊天失败', true); renderError(r.data?.detail || r.error); return; }
+            if (!r.ok || !r.data?.available) {
+                setStatus(r.data?.detail || r.error || '切换聊天失败', true);
+                if (!await restoreActualConsoleState()) renderError(r.data?.detail || r.error);
+                return;
+            }
             renderList(r.data.chat_list);
             await loadChatlogMessages(selectedName);
             setStatus('聊天已切换，聊天记录来自 Chatlog');
         } finally {
+            if (!unsupported) await refreshStandaloneWindowStatus({ quiet: true });
             opening = false;
             setListBusy(false);
+            updateStandaloneControls();
         }
     }
 
     async function send() {
-        if (sending || scrolling || unsupported) return;
+        if (sending || opening || refreshing || scrolling || standaloneOperating || unsupported) return;
         const payload = composer?.getPayload({ attachment: '请选择文件' });
         if (!payload) return;
         if (!selectedName) { setStatus('请先选择聊天', true); return; }
         payload.chat_name = selectedName;
         sending = true;
+        updateStandaloneControls();
         const btn = $('consoleSendBtn');
         btn.disabled = true;
         btn.classList.add('loading');
@@ -331,6 +521,7 @@ window.consoleTab = (() => {
             btn.classList.remove('loading');
             btn.setAttribute('aria-busy', 'false');
             $('consoleCompose').classList.remove('sending');
+            updateStandaloneControls();
         }
     }
 
@@ -339,7 +530,7 @@ window.consoleTab = (() => {
             && !unsupported
             && document.visibilityState === 'visible'
             && $('section-console')?.classList.contains('active')
-            && !opening && !refreshing && !scrolling && !sending;
+            && !opening && !refreshing && !scrolling && !sending && !standaloneOperating;
     }
 
     async function poll() {
@@ -349,6 +540,7 @@ window.consoleTab = (() => {
             const r = await consoleApi('/api/console/state', {});
             if (r.status === 501) { showUnsupported(r.data?.detail); return; }
             if (!r.ok || !r.data?.available) return;
+            await refreshStandaloneWindowStatus({ quiet: true });
             if (selectedPath || selectedName) {
                 renderList(r.data.chat_list);
                 if (selectedName) await loadChatlogMessages(selectedName, { preserveScroll: true, quiet: true });
@@ -387,6 +579,11 @@ window.consoleTab = (() => {
             $('consoleBackBtn')?.addEventListener('click', () => showChatPane(false));
             $('consoleScrollUp')?.addEventListener('click', () => scroll('up'));
             $('consoleScrollDown')?.addEventListener('click', () => scroll('down'));
+            $('consoleWindowOpenBtn')?.addEventListener('click', () => runStandaloneOperation('open'));
+            $('consoleWindowCloseBtn')?.addEventListener('click', () => runStandaloneOperation('close'));
+            $('consoleWindowCacheBtn')?.addEventListener('click', () => runStandaloneOperation('cache'));
+            $('consoleWindowCacheViewBtn')?.addEventListener('click', showStandaloneCache);
+            $('consoleWindowRestoreBtn')?.addEventListener('click', () => runStandaloneOperation('restore'));
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') poll();
             });

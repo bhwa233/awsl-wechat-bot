@@ -14,6 +14,7 @@ from types import ModuleType
 from typing import Any
 
 DEFAULT_TIMEOUT = 400.0
+CHAT_LIST_TRAVERSAL_LIMIT = 80
 GATEWAY_CLI_PATH = (
     Path(__file__).resolve().parents[2]
     / "awsl-wechat-gateway"
@@ -52,17 +53,50 @@ def state(args: argparse.Namespace) -> dict[str, Any]:
     return data
 
 
+def scroll_state(args: argparse.Namespace, direction: str) -> dict[str, Any]:
+    data = request(args, "/api/console/scroll-chats", {
+        "direction": direction,
+        "max_nodes": args.max_nodes,
+    })
+    if not isinstance(data, dict) or not data.get("available"):
+        print_action(data)
+    return data
+
+
+def chat_list_signature(data: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    return tuple(
+        (str(item.get("path", "")), str(item.get("name", "")))
+        for item in data.get("chat_list", {}).get("items", [])
+    )
+
+
 def resolve_chat_path(args: argparse.Namespace) -> str:
-    items = state(args).get("chat_list", {}).get("items", [])
-    matches = [item for item in items if item.get("name") == args.chat]
-    if not matches:
-        raise SystemExit(f"Chat not found in the main-window list: {args.chat}")
-    if len(matches) > 1:
-        raise SystemExit(f"Multiple main-window chats have the same name: {args.chat}")
-    path = matches[0].get("path")
-    if not path:
-        raise SystemExit(f"Chat has no UIA path: {args.chat}")
-    return str(path)
+    current = state(args)
+    for _ in range(CHAT_LIST_TRAVERSAL_LIMIT):
+        previous_signature = chat_list_signature(current)
+        current = scroll_state(args, "up")
+        if chat_list_signature(current) == previous_signature:
+            break
+    else:
+        raise SystemExit("Could not confirm the top of the main-window chat list")
+
+    for _ in range(CHAT_LIST_TRAVERSAL_LIMIT):
+        items = current.get("chat_list", {}).get("items", [])
+        matches = [item for item in items if item.get("name") == args.chat]
+        if len(matches) > 1:
+            raise SystemExit(f"Multiple visible main-window chats have the same name: {args.chat}")
+        if matches:
+            path = matches[0].get("path")
+            if not path:
+                raise SystemExit(f"Chat has no UIA path: {args.chat}")
+            return str(path)
+
+        previous_signature = chat_list_signature(current)
+        current = scroll_state(args, "down")
+        if chat_list_signature(current) == previous_signature:
+            raise SystemExit(f"Chat not found in the main-window list: {args.chat}")
+
+    raise SystemExit("Could not confirm the bottom of the main-window chat list")
 
 
 def print_action(data: Any) -> None:
@@ -86,13 +120,7 @@ def print_chat_state(data: dict[str, Any]) -> None:
 
 
 def command_scroll(args: argparse.Namespace) -> None:
-    data = request(args, "/api/console/scroll-chats", {
-        "direction": args.direction,
-        "max_nodes": args.max_nodes,
-    })
-    if not isinstance(data, dict) or not data.get("available"):
-        print_action(data)
-    print_chat_state(data)
+    print_chat_state(scroll_state(args, args.direction))
 
 
 def command_send(args: argparse.Namespace) -> None:

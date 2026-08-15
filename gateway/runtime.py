@@ -5,11 +5,14 @@ import time
 from typing import Any
 
 from gateway.adapters import get_wechat_adapter
-from gateway.adapters.base import BaseWeChatAdapter
+from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
+from gateway.console.adapters.base import BaseConsoleAdapter
 from gateway.core.detector import MessageDetector
 from gateway.core.gateway import Gateway
 from gateway.core.models import SentMessageStore
 from gateway.core.sender import MessageSender
+from gateway.console.adapters import get_console_adapter
+from gateway.models import GroupInfo
 from gateway.storage.message_db import MessageDatabase
 
 logger = logging.getLogger(__name__)
@@ -20,8 +23,10 @@ SCAN_INTERVAL = 5
 class GatewayRuntime:
     def __init__(self):
         self.adapter: BaseWeChatAdapter = get_wechat_adapter()
+        self.console_adapter: BaseConsoleAdapter | None = get_console_adapter(self.adapter)
         self.db = MessageDatabase()
         self.group_windows: dict[str, Any] = {}
+        self._group_snapshots: dict[str, GroupInfo] = {}
         self.sent_store = SentMessageStore()
         self.gateway = Gateway(MessageSender(self.adapter, self.group_windows, self.sent_store))
         self._lock = threading.Lock()
@@ -33,6 +38,11 @@ class GatewayRuntime:
     def groups(self) -> list[str]:
         with self._lock:
             return list(self._detectors.keys())
+
+    @property
+    def group_snapshots(self) -> list[GroupInfo]:
+        with self._lock:
+            return [snapshot.model_copy() for snapshot in self._group_snapshots.values()]
 
     def start(self):
         self._running = True
@@ -47,6 +57,7 @@ class GatewayRuntime:
                 handle.detector.stop()
             self._detectors.clear()
             self.group_windows.clear()
+            self._group_snapshots.clear()
         self.gateway.stop()
         self.db.close()
         logger.info("Gateway 已停止")
@@ -60,20 +71,26 @@ class GatewayRuntime:
             time.sleep(SCAN_INTERVAL)
 
     def _sync_windows(self):
-        discovered = {w["title"]: w["window"] for w in self.adapter.find_all_wechat_windows()}
+        discovered = {item.title: item for item in self.adapter.find_all_wechat_windows()}
 
         with self._lock:
-            for title, window in discovered.items():
+            for title, item in discovered.items():
+                window = item.window
                 if title not in self._detectors:
                     self.group_windows[title] = window
                     self._detectors[title] = self._create_detector(title, window)
                     logger.info(f"发现新窗口: {title}")
+                self._group_snapshots[title] = self._group_snapshot(item)
 
             exited = [t for t, h in self._detectors.items() if not h.thread.is_alive()]
             for title in exited:
                 del self._detectors[title]
                 self.group_windows.pop(title, None)
+                self._group_snapshots.pop(title, None)
                 logger.info(f"检测线程已退出: {title}")
+
+    def _group_snapshot(self, window: DiscoveredWindow) -> GroupInfo:
+        return GroupInfo(name=window.title, active=True, debug_info=window.debug_info)
 
     def _create_detector(self, group_name: str, window) -> "_DetectorHandle":
         detector = MessageDetector(

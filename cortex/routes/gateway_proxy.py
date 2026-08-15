@@ -19,7 +19,7 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
     @router.get("/api/groups", dependencies=[Depends(verify_token)])
     async def proxy_groups():
         resp = await client.get("/api/groups")
-        return resp.json()
+        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
     @router.get("/api/gateway/health", dependencies=[Depends(verify_token)])
     async def proxy_gateway_health():
@@ -32,61 +32,34 @@ def create_routes(gateway_base_url: str, gateway_token: str) -> tuple[APIRouter,
         resp = await client.post("/api/send", json=body)
         return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
 
-    @router.post("/api/console/state", dependencies=[Depends(verify_token)])
-    async def proxy_console_state(request: Request):
-        body = await request.json()
-        try:
-            resp = await client.post("/api/console/state", json=body)
-        except httpx.HTTPError as e:
-            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+    @router.api_route(
+        "/api/console/{console_path:path}",
+        methods=["GET", "POST"],
+        dependencies=[Depends(verify_token)],
+    )
+    async def proxy_console(console_path: str, request: Request):
+        if not console_path or any(part in {".", ".."} for part in console_path.split("/")):
+            return JSONResponse(status_code=400, content={"detail": "无效 Console 路径"})
 
-    @router.post("/api/console/open-chat", dependencies=[Depends(verify_token)])
-    async def proxy_console_open_chat(request: Request):
-        body = await request.json()
-        try:
-            resp = await client.post("/api/console/open-chat", json=body)
-        except httpx.HTTPError as e:
-            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+        headers = {}
+        if content_type := request.headers.get("content-type"):
+            headers["content-type"] = content_type
+        kwargs = {
+            "params": request.query_params,
+            "headers": headers,
+            "timeout": httpx.Timeout(connect=5.0, read=400.0, write=120.0, pool=5.0),
+        }
+        if body := await request.body():
+            kwargs["content"] = body
 
-    @router.post("/api/console/scroll-chats", dependencies=[Depends(verify_token)])
-    async def proxy_console_scroll_chats(request: Request):
-        body = await request.json()
         try:
-            resp = await client.post("/api/console/scroll-chats", json=body)
+            resp = await client.request(request.method, f"/api/console/{console_path}", **kwargs)
         except httpx.HTTPError as e:
             return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
-
-    @router.post("/api/console/send-message", dependencies=[Depends(verify_token)])
-    async def proxy_console_send_message(request: Request):
-        body = await request.json()
-        try:
-            resp = await client.post(
-                "/api/console/send-message",
-                json=body,
-                timeout=httpx.Timeout(connect=5.0, read=400.0, write=120.0, pool=5.0),
-            )
-        except httpx.HTTPError as e:
-            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
-
-    @router.post("/api/console/debug/list", dependencies=[Depends(verify_token)])
-    async def proxy_console_debug_list():
-        try:
-            resp = await client.post("/api/console/debug/list")
-        except httpx.HTTPError as e:
-            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
-
-    @router.post("/api/console/debug/inspect", dependencies=[Depends(verify_token)])
-    async def proxy_console_debug_inspect(request: Request):
-        body = await request.json()
-        try:
-            resp = await client.post("/api/console/debug/inspect", json=body)
-        except httpx.HTTPError as e:
-            return JSONResponse(status_code=502, content={"detail": f"Gateway 请求失败: {e}"})
-        return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+        return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            headers={"content-type": resp.headers.get("content-type", "application/json")},
+        )
 
     return router, client

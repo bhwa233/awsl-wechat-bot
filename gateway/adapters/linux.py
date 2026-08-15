@@ -22,7 +22,7 @@ from typing import ClassVar
 import httpx
 
 from common.config import config
-from gateway.adapters.base import BaseWeChatAdapter
+from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
 
 logger = logging.getLogger(__name__)
 
@@ -155,14 +155,14 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._group_cache_at = now
         self._group_cache_retry_at = 0.0
 
-    def find_all_wechat_windows(self) -> list[dict]:
+    def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
         result = self._run_x11(["wmctrl", "-lx"], timeout=5)
         if result.returncode != 0:
             logger.warning("wmctrl 枚举窗口失败: %s", result.stderr.strip())
             return []
 
         self._refresh_group_cache()
-        windows: list[dict] = []
+        windows: list[DiscoveredWindow] = []
         for line in result.stdout.splitlines():
             parts = line.split(None, 4)
             if len(parts) < 5:
@@ -176,7 +176,13 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             if talker:
                 self._window_title_to_talker[title] = talker
             window = LinuxWeChatWindow(title=title, window_id=window_id, talker=talker)
-            windows.append({"title": title, "window": window, "class": window_class})
+            windows.append(
+                DiscoveredWindow(
+                    title=title,
+                    window=window,
+                    debug_info=None,
+                )
+            )
             logger.debug("发现 Linux 微信窗口: %s (%s, talker=%s)", title, window_id, talker)
 
         return windows

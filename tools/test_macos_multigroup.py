@@ -16,7 +16,7 @@ def main():
     windows = adapter.find_all_wechat_windows()
     print(f"发现 {len(windows)} 个聊天窗口:")
     for w in windows:
-        print(f"  - \"{w['title']}\" (index={w['window'].index})")
+        print(f"  - \"{w.title}\" (index={w.window.index})")
 
     if not windows:
         print("没有聊天窗口,请先双击打开一个群聊")
@@ -24,8 +24,8 @@ def main():
 
     # 逐个读取消息
     for w in windows:
-        title = w["title"]
-        win = w["window"]
+        title = w.title
+        win = w.window
         print(f"\n--- [{title}] 读取消息 ---")
         msgs = adapter.get_messages_from_window(win)
         print(f"获取到 {len(msgs)} 条消息")
@@ -35,8 +35,8 @@ def main():
     # 发送测试(可选,传 --send 参数)
     if "--send" in sys.argv:
         for w in windows:
-            title = w["title"]
-            win = w["window"]
+            title = w.title
+            win = w.window
             print(f"\n向 \"{title}\" 发送测试消息...")
             ok = adapter.send_text_to_window(win, f"[测试] 多群模式 - {title}")
             print(f"  发送结果: {ok}")

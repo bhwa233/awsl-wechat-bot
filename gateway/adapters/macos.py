@@ -9,7 +9,7 @@ import time
 import Quartz
 
 from common.config import config
-from gateway.adapters.base import BaseWeChatAdapter
+from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
 from gateway.utils.ocr import get_others_messages, screenshot_and_ocr
 
 logger = logging.getLogger(__name__)
@@ -132,7 +132,7 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                 result[title] = wid
         return result
 
-    def find_all_wechat_windows(self) -> list[dict]:
+    def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
         """枚举所有微信聊天窗口(排除主窗口)"""
         # 从 Quartz 获取窗口 ID 映射
         quartz_map = self._get_quartz_windows()
@@ -170,7 +170,13 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
             if not window_id:
                 logger.debug(f"窗口 {title} 未找到 Quartz 窗口 ID,跳过")
                 continue
-            windows.append({"title": title, "window": MacOSWindow(title, idx, window_id)})
+            windows.append(
+                DiscoveredWindow(
+                    title=title,
+                    window=MacOSWindow(title, idx, window_id),
+                    debug_info=None,
+                )
+            )
             logger.debug(f"发现窗口: {title} (index={idx}, wid={window_id})")
 
         logger.debug(f"扫描到 {len(windows)} 个聊天窗口")
