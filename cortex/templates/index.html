@@ -14,7 +14,7 @@
     <script>
         (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=202608150021">
+    <link rel="stylesheet" href="/static/style.css?v=202608150025">
 </head>
 <body>
     <div class="app" id="app">
@@ -231,6 +231,12 @@
                                 <h3 class="console-list-title">聊天列表</h3>
                                 <span class="console-count" id="consoleChatCount">0</span>
                                 <div class="console-list-actions">
+                                    <button class="btn btn-ghost btn-sm console-window-manager-trigger" id="consoleWindowManagerBtn" type="button" title="独立窗口管理" aria-label="独立窗口管理">
+                                        <svg viewBox="0 0 20 20" aria-hidden="true">
+                                            <path d="M3.5 12.5V4.75A1.75 1.75 0 0 1 5.25 3h7.25" />
+                                            <rect x="6" y="6" width="10.5" height="9.5" rx="1.75" />
+                                        </svg>
+                                    </button>
                                     <button class="btn btn-ghost btn-sm" id="consoleScrollUp" type="button" title="向上滚动">↑</button>
                                     <button class="btn btn-ghost btn-sm" id="consoleScrollDown" type="button" title="向下滚动">↓</button>
                                 </div>
@@ -245,19 +251,17 @@
                                     <span class="console-status" id="consoleStatus">等待加载主窗口状态</span>
                                 </div>
                                 <div class="chat-head-actions">
+                                    <button class="btn btn-green btn-sm console-window-chat-action" id="consoleWindowOpenBtn" type="button" title="打开独立窗口" aria-label="打开独立窗口" disabled>
+                                        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="6" width="11" height="10" rx="1.75"/><path d="M9 3h7v7M16 3 9 10"/></svg>
+                                        <span>打开独立窗口</span>
+                                    </button>
+                                    <button class="btn btn-ghost btn-sm console-window-chat-action" id="consoleWindowCloseBtn" type="button" title="关闭独立窗口" aria-label="关闭独立窗口" disabled>
+                                        <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.5" y="4" width="13" height="12" rx="1.75"/><path d="m8 8 4 4m0-4-4 4"/></svg>
+                                        <span>关闭独立窗口</span>
+                                    </button>
                                     <button class="btn btn-ghost btn-sm" id="consoleRefreshBtn" onclick="consoleTab.refresh()" type="button">刷新</button>
                                 </div>
                             </header>
-                            <div class="console-window-toolbar">
-                                <span class="console-window-state" id="consoleWindowState">未选择会话</span>
-                                <div class="console-window-actions">
-                                    <button class="btn btn-green btn-sm" id="consoleWindowOpenBtn" type="button" disabled>独立窗口打开</button>
-                                    <button class="btn btn-ghost btn-sm" id="consoleWindowCloseBtn" type="button" disabled>关闭独立窗口</button>
-                                    <button class="btn btn-ghost btn-sm" id="consoleWindowCacheBtn" type="button" disabled>更新窗口缓存</button>
-                                    <button class="btn btn-ghost btn-sm" id="consoleWindowCacheViewBtn" type="button" disabled>查看窗口缓存</button>
-                                    <button class="btn btn-ghost btn-sm" id="consoleWindowRestoreBtn" type="button" disabled>一键打开缓存</button>
-                                </div>
-                            </div>
                             <div class="messages" id="consoleMessages">
                                 <div class="chat-empty" id="consoleEmpty">
                                     <div class="chat-empty-icon">🖥️</div>
@@ -291,6 +295,47 @@
                         </section>
                     </div>
                 </section>
+
+                <div class="modal-overlay" id="consoleWindowManagerModal">
+                    <div class="modal-content console-window-manager-modal">
+                        <div class="modal-header">
+                            <div>
+                                <span>独立窗口管理</span>
+                                <small>保存并恢复全部独立窗口</small>
+                            </div>
+                            <button class="modal-close" id="consoleWindowManagerClose" type="button">✕</button>
+                        </div>
+                        <div class="modal-body console-window-manager-body" id="consoleWindowManagerBody">
+                            <div class="loading-hint">正在读取独立窗口状态…</div>
+                        </div>
+                        <div class="console-window-manager-footer">
+                            <button class="btn btn-ghost" id="consoleWindowCacheBtn" type="button" disabled>保存全部窗口</button>
+                            <button class="btn btn-green" id="consoleWindowRestoreBtn" type="button" disabled>一键恢复全部</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-overlay" id="consoleWindowConfirmModal" role="dialog" aria-modal="true" aria-labelledby="consoleWindowConfirmTitle">
+                    <div class="modal-content console-window-confirm-modal">
+                        <div class="modal-body console-window-confirm-body">
+                            <div class="console-window-confirm-icon" aria-hidden="true">
+                                <svg viewBox="0 0 20 20"><rect x="3" y="6" width="11" height="10" rx="1.75"/><path d="M9 3h7v7M16 3 9 10"/></svg>
+                            </div>
+                            <div class="console-window-confirm-copy">
+                                <h3 id="consoleWindowConfirmTitle">确认独立窗口操作</h3>
+                                <p id="consoleWindowConfirmMessage"></p>
+                                <div class="console-window-confirm-target">
+                                    <span>目标聊天</span>
+                                    <strong id="consoleWindowConfirmName"></strong>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer console-window-confirm-footer">
+                            <button class="btn btn-ghost" id="consoleWindowConfirmCancel" type="button">取消</button>
+                            <button class="btn btn-green" id="consoleWindowConfirmSubmit" type="button">确认</button>
+                        </div>
+                    </div>
+                </div>
 
                 <!-- ============ 定时任务 ============ -->
                 <section class="section" id="section-tasks">
@@ -489,8 +534,8 @@
 
     <script src="/static/app.js?v=202608150021"></script>
     <script src="/static/message_composer.js?v=202608150021"></script>
-    <script src="/static/chat.js?v=202608150021"></script>
-    <script src="/static/console.js?v=202608150023"></script>
+    <script src="/static/chat.js?v=202608150024"></script>
+    <script src="/static/console.js?v=202608150026"></script>
     <script src="/static/tasks.js?v=202608150021"></script>
     <script src="/static/custom_commands.js?v=202608150021"></script>
     <script src="/static/webhooks.js?v=202608150021"></script>

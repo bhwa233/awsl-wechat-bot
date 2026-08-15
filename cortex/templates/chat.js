@@ -183,7 +183,7 @@ async function loadChatlogGroups() {
     populateChatGroupList($('chatGroupSearch')?.value || '');
     const cached = localStorage.getItem('chatlogGroup');
     if (cached && chatlogGroups.some(g => g.username === cached)) {
-        selectChatlogGroup(cached);
+        selectChatlogGroup(cached, { openThread: !isMobile() });
     }
 }
 
@@ -195,8 +195,12 @@ function buildGroupMapping() {
     }
 }
 
-function selectChatlogGroup(username) {
-    if (!username || username === selectedChatlogGroup) return;
+function selectChatlogGroup(username, { openThread = true } = {}) {
+    if (!username) return;
+    if (username === selectedChatlogGroup) {
+        if (openThread) openChatThread();
+        return;
+    }
     selectedChatlogGroup = username;
     localStorage.setItem('chatlogGroup', username);
     chatPage = 0;
@@ -212,7 +216,7 @@ function selectChatlogGroup(username) {
         ? `在线窗口 · ${gw.name}`
         : `聊天记录 · ${chatlogBackend === 'v2' ? 'v2' : 'v1'}`;
     updateChatGroupActive();
-    openChatThread();
+    if (openThread) openChatThread();
     loadMessages(username);
 }
 
@@ -223,15 +227,17 @@ function updateSendState() {
 
 // ---------------------------------------------------------------- 消息加载
 async function loadMessages(chatlogId) {
-    await WECHAT_EMOJI_READY;
     const gen = ++loadGen;
+    $('messages').innerHTML = '<div class="loading-hint">加载中…</div>';
+    renderPagination(0, false);
+    await WECHAT_EMOJI_READY;
+    if (gen !== loadGen) return;
     const params = new URLSearchParams({
         group: chatlogId,
         limit: String(chatPageSize + 1),
         offset: String(chatPage * chatPageSize),
         desc: 'true',
     });
-    $('messages').innerHTML = '<div class="loading-hint">加载中…</div>';
     const r = await api('GET', `/api/chatlog/messages?${params}`);
     if (gen !== loadGen) return;
     if (!r.ok) {

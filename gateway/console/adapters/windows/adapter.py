@@ -128,49 +128,188 @@ class WindowsConsoleAdapter(
             if not self._activate_window_locked(window):
                 return self._action_error("激活微信主窗口失败", window=window)
 
-            nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
-            target_node = self._first_node(
-                nodes,
-                lambda node: (
-                    node["class_name"] == "mmui::ChatSessionCell"
-                    or node["automation_id"].startswith("session_item_")
-                )
-                and (
-                    node["automation_id"] == target_automation_id
-                    if target_automation_id
-                    else self._chat_name_from_raw(node["name"]) == expected_chat_name
-                ),
+            target_node = self._find_chat_session_node(
+                window,
+                target_automation_id=target_automation_id,
+                expected_chat_name=expected_chat_name,
+                max_nodes=max_nodes,
             )
             if target_node is None:
                 return self._action_error(f"激活后未找到聊天项「{expected_chat_name}」", window=window)
 
-            try:
-                target_node["_control"].Click(waitTime=0.35)
-            except Exception as e:
-                return self._action_error(f"选择聊天项失败: {e}", window=window)
+            selection_state = self._chat_session_selection_state(target_node["_control"])
+            if selection_state is None:
+                current_state = self.get_state(max_nodes=max_nodes)
+                chat_area = current_state.get("chat_area", {})
+                input_box = current_state.get("input_box", {})
+                chat_names = [
+                    item["name"]
+                    for item in current_state.get("chat_list", {}).get("items", [])
+                ]
+                if (
+                    chat_area.get("available")
+                    and input_box.get("available")
+                    and self._chat_names_match(
+                        expected_chat_name,
+                        chat_area.get("title", ""),
+                        chat_names,
+                    )
+                ):
+                    selection_state = True
+            if selection_state is not True:
+                selected_with_pattern = self._select_chat_session(target_node["_control"])
+                if selected_with_pattern:
+                    selection_state = self._wait_for_chat_selection(
+                        window,
+                        target_automation_id=target_automation_id,
+                        expected_chat_name=expected_chat_name,
+                        max_nodes=max_nodes,
+                        timeout=0.8,
+                    )
+                if selection_state is not True:
+                    target_node = self._find_chat_session_node(
+                        window,
+                        target_automation_id=target_automation_id,
+                        expected_chat_name=expected_chat_name,
+                        max_nodes=max_nodes,
+                    )
+                    if target_node is None:
+                        return self._action_error(
+                            f"选择前未找到聊天项「{expected_chat_name}」",
+                            window=window,
+                        )
+                    fresh_selection_state = self._chat_session_selection_state(
+                        target_node["_control"]
+                    )
+                    if fresh_selection_state is not True:
+                        if not selected_with_pattern or fresh_selection_state is False:
+                            try:
+                                target_node["_control"].Click(waitTime=0.35)
+                            except Exception as e:
+                                return self._action_error(f"选择聊天项失败: {e}", window=window)
 
             deadline = time.monotonic() + 2.0
             current_chat_name = ""
+            final_selection_state = selection_state
             while True:
-                self._focus_input(window)
                 result = self.get_state(max_nodes=max_nodes)
                 chat_area = result.get("chat_area", {})
                 input_box = result.get("input_box", {})
                 chat_names = [item["name"] for item in result.get("chat_list", {}).get("items", [])]
                 current_chat_name = chat_area.get("title", "")
-                if (
+                chat_ready = (
                     chat_area.get("available")
                     and input_box.get("available")
                     and self._chat_names_match(expected_chat_name, current_chat_name, chat_names)
-                ):
-                    return result
+                )
+                if chat_ready:
+                    self._focus_input(window)
+                    result = self.get_state(max_nodes=max_nodes)
+                    chat_area = result.get("chat_area", {})
+                    input_box = result.get("input_box", {})
+                    chat_names = [
+                        item["name"]
+                        for item in result.get("chat_list", {}).get("items", [])
+                    ]
+                    current_chat_name = chat_area.get("title", "")
+                    if (
+                        input_box.get("focused") is True
+                        and self._chat_names_match(
+                            expected_chat_name,
+                            current_chat_name,
+                            chat_names,
+                        )
+                    ):
+                        return result
+                target_node = self._find_chat_session_node(
+                    window,
+                    target_automation_id=target_automation_id,
+                    expected_chat_name=expected_chat_name,
+                    max_nodes=max_nodes,
+                )
+                if target_node is not None:
+                    final_selection_state = self._chat_session_selection_state(
+                        target_node["_control"]
+                    )
                 if time.monotonic() >= deadline:
                     break
                 time.sleep(0.1)
+            if final_selection_state is True:
+                return self._action_error(
+                    f"聊天已选中但输入区未就绪: 目标「{expected_chat_name}」，"
+                    f"当前「{current_chat_name or '未识别'}」",
+                    window=window,
+                )
             return self._action_error(
                 f"打开聊天失败: 目标「{expected_chat_name}」，当前「{current_chat_name or '未识别'}」",
                 window=window,
             )
+
+    def _find_chat_session_node(
+        self,
+        window,
+        *,
+        target_automation_id: str,
+        expected_chat_name: str,
+        max_nodes: int,
+    ) -> dict[str, Any] | None:
+        nodes = self._collect_nodes(window, max_depth=18, max_nodes=max_nodes)
+        return self._first_node(
+            nodes,
+            lambda node: (
+                node["class_name"] == "mmui::ChatSessionCell"
+                or node["automation_id"].startswith("session_item_")
+            )
+            and (
+                node["automation_id"] == target_automation_id
+                if target_automation_id
+                else self._chat_name_from_raw(node["name"]) == expected_chat_name
+            ),
+        )
+
+    def _chat_session_selection_state(self, control) -> bool | None:
+        pattern = self._safe_call(control, "GetSelectionItemPattern", default=None)
+        if pattern is None:
+            return None
+        selected = self._safe_attr(pattern, "IsSelected", None)
+        return selected if isinstance(selected, bool) else None
+
+    def _select_chat_session(self, control) -> bool:
+        pattern = self._safe_call(control, "GetSelectionItemPattern", default=None)
+        if pattern is None:
+            return False
+        try:
+            pattern.Select()
+        except Exception as e:
+            logger.debug("SelectionItemPattern.Select 失败,准备回退 Click: %s", e)
+            return False
+        return True
+
+    def _wait_for_chat_selection(
+        self,
+        window,
+        *,
+        target_automation_id: str,
+        expected_chat_name: str,
+        max_nodes: int,
+        timeout: float,
+    ) -> bool | None:
+        deadline = time.monotonic() + timeout
+        selection_state = None
+        while True:
+            target_node = self._find_chat_session_node(
+                window,
+                target_automation_id=target_automation_id,
+                expected_chat_name=expected_chat_name,
+                max_nodes=max_nodes,
+            )
+            if target_node is not None:
+                selection_state = self._chat_session_selection_state(target_node["_control"])
+                if selection_state is True:
+                    return True
+            if time.monotonic() >= deadline:
+                return selection_state
+            time.sleep(0.05)
 
     def _send_text_message(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
         auto = self._ensure_uia()

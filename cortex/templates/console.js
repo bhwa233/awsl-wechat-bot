@@ -16,15 +16,22 @@ window.consoleTab = (() => {
     let standaloneOperation = '';
     let standaloneKnown = false;
     let standaloneOpen = false;
+    let standaloneCacheExists = false;
     let polling = false;
     let pollTimer = null;
     let activated = false;
     let unsupported = false;
     let composer = null;
     let historyLoadGen = 0;
+    let standaloneConfirmResolver = null;
+    let standaloneConfirmTrigger = null;
 
     function showChatPane(show) {
         $('console-panel')?.classList.toggle('console-chat-open', show);
+    }
+
+    function isConsoleMobile() {
+        return window.matchMedia && window.matchMedia('(max-width: 720px)').matches;
     }
 
     function setStatus(text, error = false) {
@@ -52,10 +59,9 @@ window.consoleTab = (() => {
         const openBtn = $('consoleWindowOpenBtn');
         const closeBtn = $('consoleWindowCloseBtn');
         const cacheBtn = $('consoleWindowCacheBtn');
-        const cacheViewBtn = $('consoleWindowCacheViewBtn');
         const restoreBtn = $('consoleWindowRestoreBtn');
-        const state = $('consoleWindowState');
-        if (!openBtn || !closeBtn || !cacheBtn || !cacheViewBtn || !restoreBtn || !state) return;
+        const managerBtn = $('consoleWindowManagerBtn');
+        if (!openBtn || !closeBtn || !cacheBtn || !restoreBtn || !managerBtn) return;
 
         const chatId = selectedChatId();
         const busy = standaloneOperating || opening || refreshing || scrolling || sending;
@@ -63,8 +69,8 @@ window.consoleTab = (() => {
         openBtn.disabled = busy || !selected || standaloneOpen || unsupported;
         closeBtn.disabled = busy || !selected || !standaloneOpen || unsupported;
         cacheBtn.disabled = busy || unsupported || !standaloneKnown;
-        cacheViewBtn.disabled = busy || unsupported || !standaloneKnown;
-        restoreBtn.disabled = busy || unsupported || !standaloneKnown;
+        restoreBtn.disabled = busy || unsupported || !standaloneKnown || !standaloneCacheExists;
+        managerBtn.disabled = busy || unsupported || !standaloneKnown;
         if ($('consoleRefreshBtn')) $('consoleRefreshBtn').disabled = busy || unsupported;
         if ($('consoleScrollUp')) $('consoleScrollUp').disabled = busy || unsupported;
         if ($('consoleScrollDown')) $('consoleScrollDown').disabled = busy || unsupported;
@@ -81,50 +87,80 @@ window.consoleTab = (() => {
             button.setAttribute('aria-busy', loading ? 'true' : 'false');
         }
 
-        if (!standaloneKnown) state.textContent = '独立窗口状态尚未确认';
-        else if (!selectedName) state.textContent = '未选择会话';
-        else if (!chatId) state.textContent = '当前会话尚未匹配到 Chatlog';
-        else if (standaloneOpen) state.textContent = '独立窗口已打开';
-        else state.textContent = '独立窗口未打开';
+        openBtn.title = !selectedName ? '请先选择聊天' : '为当前聊天打开独立窗口';
+        closeBtn.title = !selectedName ? '请先选择聊天' : '关闭当前聊天的独立窗口';
+        managerBtn.title = '管理全部独立窗口与全局缓存';
     }
 
-    async function showStandaloneCache() {
-        if (standaloneOperating || opening || refreshing || scrolling || sending || unsupported) return;
-        const r = await api('GET', '/api/console/standalone-windows/cache');
-        if (r.status === 501) { showUnsupported(r.data?.detail); return; }
-        if (!r.ok || !r.data?.available) {
-            setStatus(r.data?.detail || r.data?.message || r.error || '读取窗口缓存失败', true);
+    function standaloneWindowList(windows, emptyText) {
+        if (!windows.length) return `<div class="console-window-empty">${escapeHtml(emptyText)}</div>`;
+        return `<div class="console-cache-list">${windows.map(windowInfo => `
+            <div class="console-cache-item">
+                <span class="console-window-dot"></span>
+                <strong>${escapeHtml(windowInfo.name || '未命名会话')}</strong>
+            </div>`).join('')}</div>`;
+    }
+
+    function standaloneManagerVisible() {
+        return $('consoleWindowManagerModal')?.style.display === 'flex';
+    }
+
+    function hideStandaloneWindowManager() {
+        const modal = $('consoleWindowManagerModal');
+        if (modal) modal.style.display = 'none';
+    }
+
+    async function loadStandaloneWindowManager() {
+        const body = $('consoleWindowManagerBody');
+        if (!body) return;
+        body.innerHTML = '<div class="loading-hint">正在读取全部独立窗口与全局缓存…</div>';
+
+        const [liveResult, cacheResult] = await Promise.all([
+            api('GET', '/api/console/standalone-windows'),
+            api('GET', '/api/console/standalone-windows/cache'),
+        ]);
+        if (liveResult.status === 501 || cacheResult.status === 501) {
+            hideStandaloneWindowManager();
+            showUnsupported(liveResult.data?.detail || cacheResult.data?.detail);
+            return;
+        }
+        if (!liveResult.ok || !liveResult.data?.available || !cacheResult.ok || !cacheResult.data?.available) {
+            const detail = liveResult.data?.detail || liveResult.data?.message || cacheResult.data?.detail
+                || cacheResult.data?.message || liveResult.error || cacheResult.error || '读取独立窗口管理数据失败';
+            body.innerHTML = `<div class="console-window-empty error">${escapeHtml(detail)}</div>`;
+            setStatus(detail, true);
             return;
         }
 
-        const windows = Array.isArray(r.data.windows) ? r.data.windows : [];
-        const updatedAt = r.data.updated_at ? formatTime(r.data.updated_at) : '尚未更新';
-        const body = windows.length
-            ? `<div class="console-cache-list">${windows.map(windowInfo => `
-                <div class="console-cache-item">
-                    <strong>${escapeHtml(windowInfo.name || '未命名会话')}</strong>
-                </div>`).join('')}</div>`
-            : '<div class="empty-hint">缓存中没有独立窗口</div>';
-        let modal = $('consoleWindowCacheModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'consoleWindowCacheModal';
-            modal.className = 'modal-overlay';
-            modal.addEventListener('click', event => {
-                if (event.target === modal) modal.style.display = 'none';
-            });
-            document.body.appendChild(modal);
-        }
-        modal.innerHTML = `<div class="modal-content">
-            <div class="modal-header"><span>独立窗口缓存</span><button class="modal-close" type="button">✕</button></div>
-            <div class="modal-body">
-                <div class="console-cache-meta">更新时间：${escapeHtml(updatedAt)} · ${windows.length} 个窗口</div>
-                ${body}
+        const liveWindows = Array.isArray(liveResult.data.windows) ? liveResult.data.windows : [];
+        const cachedWindows = Array.isArray(cacheResult.data.windows) ? cacheResult.data.windows : [];
+        standaloneCacheExists = !!cacheResult.data.exists;
+        const updatedAt = cacheResult.data.updated_at ? formatTime(cacheResult.data.updated_at) : '尚未保存';
+        body.innerHTML = `
+            <div class="console-window-manager-summary">
+                <span>全局窗口布局</span>
+                <strong>${liveWindows.length} 个已打开 · ${cachedWindows.length} 个已缓存</strong>
             </div>
-        </div>`;
-        modal.querySelector('.modal-close').addEventListener('click', () => { modal.style.display = 'none'; });
+            <div class="console-window-manager-grid">
+                <section class="console-window-manager-card">
+                    <header><span>当前全部窗口</span><b>${liveWindows.length}</b></header>
+                    ${standaloneWindowList(liveWindows, '当前没有独立窗口')}
+                </section>
+                <section class="console-window-manager-card">
+                    <header><span>全局缓存</span><b>${cachedWindows.length}</b></header>
+                    <div class="console-cache-meta">上次保存：${escapeHtml(updatedAt)}</div>
+                    ${standaloneWindowList(cachedWindows, '尚未保存全局窗口布局')}
+                </section>
+            </div>`;
+        updateStandaloneControls();
+    }
+
+    async function showStandaloneWindowManager() {
+        if (standaloneOperating || opening || refreshing || scrolling || sending || unsupported) return;
+        const modal = $('consoleWindowManagerModal');
+        if (!modal) return;
         modal.style.display = 'flex';
-        setStatus(r.data.message || '窗口缓存已读取');
+        await loadStandaloneWindowManager();
     }
 
     async function refreshStandaloneWindowStatus({ quiet = false } = {}) {
@@ -143,6 +179,37 @@ window.consoleTab = (() => {
         standaloneOpen = !!r.data.open;
         updateStandaloneControls();
         return true;
+    }
+
+    function closeStandaloneConfirmation(confirmed = false) {
+        const modal = $('consoleWindowConfirmModal');
+        if (modal) modal.style.display = 'none';
+        const resolve = standaloneConfirmResolver;
+        standaloneConfirmResolver = null;
+        resolve?.(confirmed);
+        standaloneConfirmTrigger?.focus?.();
+        standaloneConfirmTrigger = null;
+    }
+
+    function confirmStandaloneOperation(operation) {
+        const modal = $('consoleWindowConfirmModal');
+        const submit = $('consoleWindowConfirmSubmit');
+        if (!modal || !submit) return Promise.resolve(false);
+
+        const openingWindow = operation === 'open';
+        const chatName = selectedName || '当前聊天';
+        $('consoleWindowConfirmTitle').textContent = openingWindow ? '打开独立窗口？' : '关闭独立窗口？';
+        $('consoleWindowConfirmMessage').textContent = openingWindow
+            ? '微信将为这个聊天打开一个独立窗口。'
+            : '微信将关闭这个聊天当前的独立窗口，聊天记录不会删除。';
+        $('consoleWindowConfirmName').textContent = chatName;
+        submit.textContent = openingWindow ? '打开独立窗口' : '关闭独立窗口';
+        submit.className = `btn ${openingWindow ? 'btn-green' : 'btn-red'}`;
+        modal.querySelector('.console-window-confirm-modal')?.classList.toggle('is-close', !openingWindow);
+        standaloneConfirmTrigger = document.activeElement;
+        modal.style.display = 'flex';
+        window.requestAnimationFrame(() => submit.focus());
+        return new Promise(resolve => { standaloneConfirmResolver = resolve; });
     }
 
     async function runStandaloneOperation(operation) {
@@ -165,13 +232,15 @@ window.consoleTab = (() => {
             pendingStatus = '正在关闭独立窗口';
         } else if (operation === 'cache') {
             path = '/api/console/standalone-windows/cache';
-            pendingStatus = '正在更新独立窗口缓存';
+            pendingStatus = '正在保存全部独立窗口';
         } else if (operation === 'restore') {
             path = '/api/console/standalone-windows/open-cached';
-            pendingStatus = '正在按缓存打开独立窗口';
+            pendingStatus = '正在恢复全部缓存窗口';
         } else {
             return;
         }
+
+        if ((operation === 'open' || operation === 'close') && !await confirmStandaloneOperation(operation)) return;
 
         standaloneOperating = true;
         standaloneOperation = operation;
@@ -192,6 +261,9 @@ window.consoleTab = (() => {
                 if (stateResult.ok && stateResult.data?.available) renderList(stateResult.data.chat_list);
             }
             await refreshStandaloneWindowStatus({ quiet: true });
+            if (standaloneManagerVisible() && (operation === 'cache' || operation === 'restore')) {
+                await loadStandaloneWindowManager();
+            }
             standaloneOperating = false;
             standaloneOperation = '';
             setListBusy(false);
@@ -357,7 +429,7 @@ window.consoleTab = (() => {
             if (current) {
                 selectedName = current.name;
                 selectedPath = current.path || '';
-                showChatPane(true);
+                if (!isConsoleMobile()) showChatPane(true);
             }
         }
         renderList(data.chat_list);
@@ -562,6 +634,7 @@ window.consoleTab = (() => {
     function activate() {
         if (!activated) {
             activated = true;
+            if (isConsoleMobile()) showChatPane(false);
             composer = new MessageComposer({
                 typeId: 'consoleMsgType',
                 textGroupId: 'consoleTextInput',
@@ -582,8 +655,20 @@ window.consoleTab = (() => {
             $('consoleWindowOpenBtn')?.addEventListener('click', () => runStandaloneOperation('open'));
             $('consoleWindowCloseBtn')?.addEventListener('click', () => runStandaloneOperation('close'));
             $('consoleWindowCacheBtn')?.addEventListener('click', () => runStandaloneOperation('cache'));
-            $('consoleWindowCacheViewBtn')?.addEventListener('click', showStandaloneCache);
             $('consoleWindowRestoreBtn')?.addEventListener('click', () => runStandaloneOperation('restore'));
+            $('consoleWindowManagerBtn')?.addEventListener('click', showStandaloneWindowManager);
+            $('consoleWindowManagerClose')?.addEventListener('click', hideStandaloneWindowManager);
+            $('consoleWindowManagerModal')?.addEventListener('click', event => {
+                if (event.target.id === 'consoleWindowManagerModal') hideStandaloneWindowManager();
+            });
+            $('consoleWindowConfirmCancel')?.addEventListener('click', () => closeStandaloneConfirmation());
+            $('consoleWindowConfirmSubmit')?.addEventListener('click', () => closeStandaloneConfirmation(true));
+            $('consoleWindowConfirmModal')?.addEventListener('click', event => {
+                if (event.target.id === 'consoleWindowConfirmModal') closeStandaloneConfirmation();
+            });
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && standaloneConfirmResolver) closeStandaloneConfirmation();
+            });
             document.addEventListener('visibilitychange', () => {
                 if (document.visibilityState === 'visible') poll();
             });

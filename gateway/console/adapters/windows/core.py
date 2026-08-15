@@ -110,13 +110,20 @@ class WindowsUIAMixin:
         if input_control is None:
             return None
         try:
+            input_control.SetFocus()
+        except Exception as e:
+            logger.debug("聚焦主窗口输入框失败: %s", e)
+        time.sleep(0.05)
+        if self._safe_attr(input_control, "HasKeyboardFocus", False) is True:
+            return input_control
+        try:
             input_control.Click(waitTime=0)
         except Exception as e:
             logger.debug("点击主窗口输入框失败: %s", e)
         try:
             input_control.SetFocus()
         except Exception as e:
-            logger.debug("聚焦主窗口输入框失败: %s", e)
+            logger.debug("点击后聚焦主窗口输入框失败: %s", e)
         time.sleep(0.15)
         return input_control
 
