@@ -21,6 +21,7 @@ const chatlogContactPending = new Map();
 const chatlogMemberCache = new Map();
 const chatlogMemberPending = new Map();
 const lazyMediaObservers = new WeakMap();
+const messageScrollStates = new WeakMap();
 
 function resetChatlogCaches() {
     chatlogContactCache.clear();
@@ -36,7 +37,34 @@ function resetChatlogCaches() {
     buildGroupMapping();
 }
 
-function observeLazyMedia(container) {
+function messageScrollState(container) {
+    let state = messageScrollStates.get(container);
+    if (state) return state;
+    state = { followBottom: false, programmatic: false };
+    container.addEventListener('scroll', () => {
+        if (state.programmatic) return;
+        state.followBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+    }, { passive: true });
+    messageScrollStates.set(container, state);
+    return state;
+}
+
+function isMessageListNearBottom(container) {
+    return messageScrollState(container).followBottom
+        || container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+}
+
+function scrollMessageListToBottom(container) {
+    const state = messageScrollState(container);
+    state.followBottom = true;
+    state.programmatic = true;
+    container.scrollTop = container.scrollHeight;
+    window.requestAnimationFrame(() => { state.programmatic = false; });
+}
+
+function observeLazyMedia(container, { followBottom = false } = {}) {
+    const scrollState = messageScrollState(container);
+    scrollState.followBottom = followBottom;
     const previous = lazyMediaObservers.get(container);
     if (previous) previous.disconnect();
     const elements = [...container.querySelectorAll('[data-lazy-src]')];
@@ -44,6 +72,16 @@ function observeLazyMedia(container) {
     const load = element => {
         const src = element.dataset.lazySrc;
         if (!src) return;
+        if (element.tagName === 'IMG') {
+            const keepBottomVisible = () => {
+                if (!scrollState.followBottom) return;
+                window.requestAnimationFrame(() => {
+                    if (scrollState.followBottom) scrollMessageListToBottom(container);
+                });
+            };
+            element.addEventListener('load', keepBottomVisible, { once: true });
+            element.addEventListener('error', keepBottomVisible, { once: true });
+        }
         element.src = src;
         element.removeAttribute('data-lazy-src');
     };
@@ -256,7 +294,7 @@ async function loadMessages(chatlogId) {
         ensureChatlogMembers(chatlogId),
     ]).then(() => {
         if (gen !== loadGen) return;
-        renderMessages(msgs);
+        renderMessages(msgs, { preserveScroll: true });
     });
 }
 
@@ -666,11 +704,13 @@ function isSystemLike(m) {
     return false;
 }
 
-function renderMessages(msgs) {
+function renderMessages(msgs, options = {}) {
     const box = $('messages');
+    const wasNearBottom = isMessageListNearBottom(box);
+    const oldScrollTop = box.scrollTop;
     if (!msgs.length) {
         box.innerHTML = '<div class="empty-hint">暂无消息</div>';
-        observeLazyMedia(box);
+        observeLazyMedia(box, { followBottom: true });
         return;
     }
     let lastDate = '';
@@ -688,8 +728,13 @@ function renderMessages(msgs) {
         }
     }
     box.innerHTML = html;
-    box.scrollTop = box.scrollHeight;
-    observeLazyMedia(box);
+    if (options.preserveScroll && !wasNearBottom) {
+        box.scrollTop = oldScrollTop;
+        observeLazyMedia(box);
+        return;
+    }
+    scrollMessageListToBottom(box);
+    observeLazyMedia(box, { followBottom: true });
 }
 
 // ---------------------------------------------------------------- 发送

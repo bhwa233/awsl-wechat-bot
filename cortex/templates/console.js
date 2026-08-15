@@ -349,11 +349,11 @@ window.consoleTab = (() => {
 
     function renderChatlogMessages(msgs, options = {}) {
         const box = $('consoleMessages');
-        const wasNearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+        const wasNearBottom = isMessageListNearBottom(box);
         const oldScrollTop = box.scrollTop;
         if (!msgs.length) {
             box.innerHTML = '<div class="empty-hint">暂无 Chatlog 消息</div>';
-            observeLazyMedia(box);
+            observeLazyMedia(box, { followBottom: true });
             return;
         }
         let lastDate = '';
@@ -382,8 +382,8 @@ window.consoleTab = (() => {
             observeLazyMedia(box);
             return;
         }
-        box.scrollTop = box.scrollHeight;
-        observeLazyMedia(box);
+        scrollMessageListToBottom(box);
+        observeLazyMedia(box, { followBottom: true });
     }
 
     async function loadChatlogMessages(name, options = {}) {
