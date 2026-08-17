@@ -3,7 +3,7 @@
 // 数据走 /api/console/* (Cortex 代理 Gateway)，仅 Windows Gateway 可用。
 // ============================================================================
 
-const CONSOLE_POLL_INTERVAL_MS = 3000;
+const CONSOLE_POLL_INTERVAL_MS = 5000;
 
 window.consoleTab = (() => {
     let selectedPath = '';
@@ -352,7 +352,7 @@ window.consoleTab = (() => {
         const wasNearBottom = isMessageListNearBottom(box);
         const oldScrollTop = box.scrollTop;
         if (!msgs.length) {
-            box.innerHTML = '<div class="empty-hint">暂无 Chatlog 消息</div>';
+            if (!replaceMessageListHtml(box, '<div class="empty-hint">暂无 Chatlog 消息</div>')) return;
             observeLazyMedia(box, { followBottom: true });
             return;
         }
@@ -376,7 +376,7 @@ window.consoleTab = (() => {
                 html += `<div class="msg other">${renderMessageAvatar(msg, name)}<div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(msg)}<div class="msg-time">${time}</div></div></div>`;
             }
         }
-        box.innerHTML = html;
+        if (!replaceMessageListHtml(box, html)) return;
         if (options.preserveScroll && !wasNearBottom) {
             box.scrollTop = oldScrollTop;
             observeLazyMedia(box);

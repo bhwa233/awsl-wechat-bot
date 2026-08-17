@@ -594,6 +594,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .msg-link a { color: var(--link); text-decoration: underline; text-underline-offset: 2px; }
 
 .mention-link { display: inline; padding: 0 3px; margin: 0 1px; border: 0; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font: inherit; font-weight: 600; line-height: inherit; cursor: pointer; }
+.msg-bubble.self .mention-link { background: rgba(255, 255, 255, 0.36); color: var(--bubble-self-text); }
 .mention-link:hover { text-decoration: underline; }
 
 .msg-bubble:has(> .msg-card) { background: var(--panel); padding: 0; overflow: hidden; box-shadow: var(--shadow-sm); }

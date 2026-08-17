@@ -12,9 +12,11 @@ let _recordContents = {};
 let _recordSeq = 0;
 let chatPage = 0;
 const chatPageSize = 100;
+const CHAT_POLL_INTERVAL_MS = 5000;
 let chatGroupPage = 0;
 const chatGroupPageSize = 40;
 let loadGen = 0;
+let chatPolling = false;
 const CHATLOG_CONTACT_BATCH_SIZE = 200;
 const chatlogContactCache = new Map();
 const chatlogContactPending = new Map();
@@ -95,6 +97,14 @@ function observeLazyMedia(container, { followBottom = false } = {}) {
     }, { root: container, threshold: 0.01 });
     lazyMediaObservers.set(container, observer);
     elements.forEach(element => observer.observe(element));
+}
+
+function replaceMessageListHtml(container, html) {
+    if (container._renderedHtml === html && container._renderedFirstElement === container.firstElementChild) return false;
+    container.innerHTML = html;
+    container._renderedHtml = html;
+    container._renderedFirstElement = container.firstElementChild;
+    return true;
 }
 
 function onChatEnter() {
@@ -264,10 +274,14 @@ function updateSendState() {
 }
 
 // ---------------------------------------------------------------- 消息加载
-async function loadMessages(chatlogId) {
+async function loadMessages(chatlogId, { background = false, quiet = false } = {}) {
     const gen = ++loadGen;
-    $('messages').innerHTML = '<div class="loading-hint">加载中…</div>';
-    renderPagination(0, false);
+    const box = $('messages');
+    if (!background) {
+        box.innerHTML = '<div class="loading-hint">加载中…</div>';
+        box._renderedHtml = null;
+        renderPagination(0, false);
+    }
     await WECHAT_EMOJI_READY;
     if (gen !== loadGen) return;
     const params = new URLSearchParams({
@@ -279,7 +293,12 @@ async function loadMessages(chatlogId) {
     const r = await api('GET', `/api/chatlog/messages?${params}`);
     if (gen !== loadGen) return;
     if (!r.ok) {
-        $('messages').innerHTML = `<div class="empty-hint">${r.error || '加载失败'}</div>`;
+        if (background) {
+            if (!quiet) toast(r.error || '刷新失败', 'error');
+            return;
+        }
+        box.innerHTML = `<div class="empty-hint">${r.error || '加载失败'}</div>`;
+        box._renderedHtml = null;
         renderPagination(0, false);
         return;
     }
@@ -287,7 +306,7 @@ async function loadMessages(chatlogId) {
     const hasMore = msgs.length > chatPageSize;
     if (hasMore) msgs.pop();
     msgs.reverse();
-    renderMessages(msgs);
+    renderMessages(msgs, { preserveScroll: background });
     renderPagination(msgs.length, hasMore);
     Promise.allSettled([
         ensureChatlogSenderContacts(msgs),
@@ -308,7 +327,7 @@ function renderPagination(count, hasMore) {
     if (hasMore) html += `<button class="btn btn-ghost btn-sm" onclick="chatPageNext()">↑ 加载更早消息</button>`;
     html += `<span class="page-info">第 ${chatPage + 1} 页 · ${count} 条</span>`;
     if (hasPrev) html += `<button class="btn btn-ghost btn-sm" onclick="chatJumpLatest()">回到最新</button>`;
-    el.innerHTML = html;
+    if (el.innerHTML !== html) el.innerHTML = html;
 }
 
 function chatPagePrev() {
@@ -709,7 +728,7 @@ function renderMessages(msgs, options = {}) {
     const wasNearBottom = isMessageListNearBottom(box);
     const oldScrollTop = box.scrollTop;
     if (!msgs.length) {
-        box.innerHTML = '<div class="empty-hint">暂无消息</div>';
+        if (!replaceMessageListHtml(box, '<div class="empty-hint">暂无消息</div>')) return;
         observeLazyMedia(box, { followBottom: true });
         return;
     }
@@ -727,7 +746,7 @@ function renderMessages(msgs, options = {}) {
             html += `<div class="msg other">${renderMessageAvatar(m, name)}<div class="msg-bubble other"><div class="msg-sender">${escapeHtml(name)}</div>${formatMsgContent(m)}<div class="msg-time">${time}</div></div></div>`;
         }
     }
-    box.innerHTML = html;
+    if (!replaceMessageListHtml(box, html)) return;
     if (options.preserveScroll && !wasNearBottom) {
         box.scrollTop = oldScrollTop;
         observeLazyMedia(box);
@@ -777,7 +796,9 @@ async function sendChatMessage() {
             if (type === 'text' || type === 'voice') $('msgInput').value = '';
             if (!['text', 'voice'].includes(type)) chatMessageComposer.resetUpload();
             toast('已发送', 'success');
-            if (selectedChatlogGroup) setTimeout(() => loadMessages(selectedChatlogGroup), 1000);
+            if (selectedChatlogGroup) {
+                setTimeout(() => loadMessages(selectedChatlogGroup, { background: true, quiet: true }), 1000);
+            }
         } else {
             toast(r.data?.detail || r.error || '发送失败', 'error');
         }
@@ -804,8 +825,27 @@ async function decryptChatlog() {
 function refreshCurrentChat() {
     if (!selectedChatlogGroup) return;
     chatPage = 0;
-    loadMessages(selectedChatlogGroup);
+    loadMessages(selectedChatlogGroup, { background: true });
 }
+
+function shouldPollCurrentChat() {
+    return document.visibilityState === 'visible'
+        && chatPage === 0
+        && !!selectedChatlogGroup
+        && $('section-chat')?.classList.contains('active');
+}
+
+async function pollCurrentChat() {
+    if (chatPolling || !shouldPollCurrentChat()) return;
+    chatPolling = true;
+    try {
+        await loadMessages(selectedChatlogGroup, { background: true, quiet: true });
+    } finally {
+        chatPolling = false;
+    }
+}
+
+window.setInterval(pollCurrentChat, CHAT_POLL_INTERVAL_MS);
 
 // ---------------------------------------------------------------- 大图灯箱
 const imageLightboxState = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0, originX: 0, originY: 0 };
