@@ -133,7 +133,7 @@ class TaskScheduler:
                     return
                 logger.warning(f"[Scheduler] 群聊总结失败: {result.message}")
 
-            result = self._summary_service.start_summary_async(config, on_complete)
+            result = self._summary_service.start_summary_async(config, on_complete, source="scheduler")
             if not result.success:
                 logger.warning(f"[Scheduler] 群聊总结启动失败: {result.message}")
             return result.success

@@ -13,41 +13,51 @@ class GatewayMetrics(ServiceMetrics):
         self._define_gauge("send_queue_depth", "Messages waiting to be sent to WeChat.")
         self._define_counter(
             "detected_messages_total",
-            "Detected WeChat messages by processing result.",
-            ("result",),
+            "Detected WeChat messages by group and processing result.",
+            ("group", "result"),
         )
         self._define_counter(
             "broadcast_messages_total",
-            "Gateway messages broadcast by result.",
-            ("result",),
+            "Gateway messages broadcast by group and result.",
+            ("group", "result"),
         )
-        self._define_counter("broadcast_deliveries_total", "WebSocket message deliveries scheduled.")
+        self._define_counter(
+            "broadcast_deliveries_total",
+            "WebSocket message deliveries by group, client and result.",
+            ("group", "client", "result"),
+        )
         self._define_counter(
             "send_enqueue_total",
-            "WeChat send tasks submitted by message type and result.",
-            ("message_type", "result"),
+            "WeChat send tasks submitted by group, message type and result.",
+            ("group", "message_type", "result"),
         )
         self._define_counter(
             "sends_total",
-            "WeChat send tasks processed by message type.",
-            ("message_type",),
+            "WeChat send tasks processed by group, message type and result.",
+            ("group", "message_type", "result"),
         )
         self._define_histogram(
             "send_duration_seconds",
-            "WeChat send task processing duration by message type.",
-            ("message_type",),
+            "WeChat send task processing duration by group, message type and result.",
+            ("group", "message_type", "result"),
             buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120),
         )
         self._define_counter(
             "voice_synthesis_runs_total",
-            "Successful voice synthesis runs.",
+            "Voice synthesis runs by group and result.",
+            ("group", "result"),
         )
         self._define_histogram(
             "voice_synthesis_duration_seconds",
-            "Voice synthesis duration.",
+            "Voice synthesis duration by group and result.",
+            ("group", "result"),
             buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 180),
         )
-        self._define_counter("detector_errors_total", "Message detector errors.")
+        self._define_counter(
+            "detector_errors_total",
+            "Message detector errors by group and reason.",
+            ("group", "reason"),
+        )
         self._define_counter(
             "window_scans_total",
             "WeChat window discovery scans by result.",

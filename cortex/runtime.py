@@ -140,16 +140,31 @@ class CortexRuntime(MessageListener):
             return
 
         if self._is_rate_limited(msg.group_name):
-            metrics.increment("trigger_tasks_total", trigger_type=task.trigger_type.value, result="rate_limited")
+            metrics.increment(
+                "trigger_tasks_total",
+                group=msg.group_name,
+                trigger_type=task.trigger_type.value,
+                result="rate_limited",
+            )
             return
 
         self._trigger_times.setdefault(msg.group_name, deque()).append(time.time())
 
         try:
             self._task_queue.put_nowait(task)
-            metrics.increment("trigger_tasks_total", trigger_type=task.trigger_type.value, result="accepted")
+            metrics.increment(
+                "trigger_tasks_total",
+                group=msg.group_name,
+                trigger_type=task.trigger_type.value,
+                result="accepted",
+            )
         except queue.Full:
-            metrics.increment("trigger_tasks_total", trigger_type=task.trigger_type.value, result="queue_full")
+            metrics.increment(
+                "trigger_tasks_total",
+                group=msg.group_name,
+                trigger_type=task.trigger_type.value,
+                result="queue_full",
+            )
             logger.warning(f"[{msg.group_name}] Cortex 处理队列已满,丢弃触发任务")
 
     def _worker_loop(self):
@@ -167,13 +182,26 @@ class CortexRuntime(MessageListener):
 
             started = time.perf_counter()
             trigger_type = task.trigger_type.value
-            metrics.increment("workers_busy")
+            processing_result = "error"
+            metrics.increment("workers_busy", group=task.group_name)
             try:
                 self._process_and_reply(task)
-                metrics.increment("trigger_tasks_total", trigger_type=trigger_type, result="processed")
+                processing_result = "processed"
+                metrics.increment(
+                    "trigger_tasks_total",
+                    group=task.group_name,
+                    trigger_type=trigger_type,
+                    result=processing_result,
+                )
             finally:
-                metrics.observe("trigger_duration_seconds", time.perf_counter() - started, trigger_type=trigger_type)
-                metrics.decrement("workers_busy")
+                metrics.observe(
+                    "trigger_duration_seconds",
+                    time.perf_counter() - started,
+                    group=task.group_name,
+                    trigger_type=trigger_type,
+                    result=processing_result,
+                )
+                metrics.decrement("workers_busy", group=task.group_name)
                 self._task_queue.task_done()
 
     def _process_and_reply(self, task: TriggerTask):
@@ -192,8 +220,20 @@ class CortexRuntime(MessageListener):
                 logger.info(f"[{group_name}] AI 请求: {task.content[:50]}")
                 ai_started = time.perf_counter()
                 ans = self.ai_service.ask(task.content)
-                metrics.increment("ai_requests_total", result="success" if ans else "failed")
-                metrics.observe("ai_request_duration_seconds", time.perf_counter() - ai_started)
+                ai_result = "success" if ans else "failed"
+                metrics.increment(
+                    "ai_requests_total",
+                    group=group_name,
+                    model=config.OPENAI_MODEL,
+                    result=ai_result,
+                )
+                metrics.observe(
+                    "ai_request_duration_seconds",
+                    time.perf_counter() - ai_started,
+                    group=group_name,
+                    model=config.OPENAI_MODEL,
+                    result=ai_result,
+                )
                 msg = ans or "抱歉,我现在无法回答这个问题"
 
             elif task.trigger_type == TriggerType.COMMAND and self.command_service:

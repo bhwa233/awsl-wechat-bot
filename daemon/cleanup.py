@@ -101,19 +101,26 @@ class WeChatLogCleanupService:
 
     def cleanup(self, dry_run: bool = True, source: str = "manual") -> WeChatLogCleanupResult:
         started = time.perf_counter()
+        metric_source = source if source in {"manual", "preview", "scheduled"} else "other"
         with self._cleanup_lock:
             result = self._scan_and_delete(dry_run)
             self._record(source, result)
             metrics.increment(
                 "cleanup_runs_total",
-                source=source,
+                source=metric_source,
                 dry_run=str(dry_run).lower(),
                 result="success" if result.ok else "failed",
             )
-            metrics.observe("cleanup_duration_seconds", time.perf_counter() - started)
+            metrics.observe(
+                "cleanup_duration_seconds",
+                time.perf_counter() - started,
+                source=metric_source,
+                dry_run=str(dry_run).lower(),
+                result="success" if result.ok else "failed",
+            )
             if not dry_run:
-                metrics.increment("cleanup_files_deleted_total", result.deleted_count)
-                metrics.increment("cleanup_bytes_deleted_total", result.deleted_bytes)
+                metrics.increment("cleanup_files_deleted_total", result.deleted_count, source=metric_source)
+                metrics.increment("cleanup_bytes_deleted_total", result.deleted_bytes, source=metric_source)
             return result
 
     def _scan_and_delete(self, dry_run: bool) -> WeChatLogCleanupResult:

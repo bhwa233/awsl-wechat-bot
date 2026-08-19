@@ -64,6 +64,7 @@ class VoiceSynthesisWorker:
                 break
 
             started = time.perf_counter()
+            synthesis_result = "cancelled"
             try:
                 if not self._running:
                     continue
@@ -75,9 +76,20 @@ class VoiceSynthesisWorker:
                 })
                 if self._running:
                     self._on_ready(prepared)
-                    metrics.increment("voice_synthesis_runs_total")
-                    metrics.observe("voice_synthesis_duration_seconds", time.perf_counter() - started)
+                    synthesis_result = "success"
             except Exception as e:
+                synthesis_result = "error"
                 logger.error(f"[{task.group_name}] 生成语音失败: {e}")
             finally:
+                metrics.increment(
+                    "voice_synthesis_runs_total",
+                    group=task.group_name,
+                    result=synthesis_result,
+                )
+                metrics.observe(
+                    "voice_synthesis_duration_seconds",
+                    time.perf_counter() - started,
+                    group=task.group_name,
+                    result=synthesis_result,
+                )
                 self._queue.task_done()

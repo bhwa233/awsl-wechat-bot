@@ -60,10 +60,20 @@ class MessageSender:
         message_type = task.message_type.value
         try:
             self.send_queue.put_nowait(task)
-            metrics.increment("send_enqueue_total", message_type=message_type, result="accepted")
+            metrics.increment(
+                "send_enqueue_total",
+                group=task.group_name,
+                message_type=message_type,
+                result="accepted",
+            )
             return True
         except queue.Full:
-            metrics.increment("send_enqueue_total", message_type=message_type, result="queue_full")
+            metrics.increment(
+                "send_enqueue_total",
+                group=task.group_name,
+                message_type=message_type,
+                result="queue_full",
+            )
             logger.warning(f"[{task.group_name}] 发送队列已满,丢弃消息")
             return False
 
@@ -82,13 +92,16 @@ class MessageSender:
 
             started = time.perf_counter()
             message_type = task.message_type.value
+            send_result = "error"
             try:
                 window = self.group_windows.get(task.group_name)
                 if not window:
+                    send_result = "group_not_found"
                     logger.warning(f"[{task.group_name}] 群组不存在,跳过发送")
                     continue
 
                 if not window.Exists(0.5):
+                    send_result = "window_closed"
                     logger.warning(f"[{task.group_name}] 窗口已关闭,跳过发送")
                     continue
 
@@ -99,12 +112,16 @@ class MessageSender:
                     preview = "[图片]"
                 elif task.message_type == MessageType.FILE:
                     if not task.filename:
+                        send_result = "invalid"
                         logger.warning(f"[{task.group_name}] 文件消息缺少文件名,跳过发送")
                         continue
                     send_ok = self.adapter.send_file_to_window(window, task.message, task.filename)
                     preview = f"[文件] {task.filename}"
                 elif task.message_type == MessageType.VOICE:
-                    if not self.voice_synthesis_worker or not self.voice_synthesis_worker.enqueue(task):
+                    if self.voice_synthesis_worker and self.voice_synthesis_worker.enqueue(task):
+                        send_result = "voice_queued"
+                    else:
+                        send_result = "queue_full"
                         logger.warning(f"[{task.group_name}] 语音合成任务入队失败")
                     continue
                 elif task.message_type == MessageType.VOICE_FILE:
@@ -119,6 +136,7 @@ class MessageSender:
                     preview = f"{task.message[:50]}..."
 
                 if send_ok:
+                    send_result = "success"
                     self._last_send_time = time.time()
                     if task.message_type == MessageType.TEXT:
                         self.sent_store.record(task.group_name, task.message)
@@ -126,13 +144,25 @@ class MessageSender:
                         self.sent_store.record(task.group_name, task.filename)
                     logger.info(f"[{task.group_name}] 已发送: {preview}")
                 else:
+                    send_result = "failed"
                     logger.warning(f"[{task.group_name}] 发送失败: {preview}")
 
             except Exception as e:
                 logger.error(f"[{task.group_name}] 发送出错: {e}", exc_info=True)
             finally:
-                metrics.increment("sends_total", message_type=message_type)
-                metrics.observe("send_duration_seconds", time.perf_counter() - started, message_type=message_type)
+                metrics.increment(
+                    "sends_total",
+                    group=task.group_name,
+                    message_type=message_type,
+                    result=send_result,
+                )
+                metrics.observe(
+                    "send_duration_seconds",
+                    time.perf_counter() - started,
+                    group=task.group_name,
+                    message_type=message_type,
+                    result=send_result,
+                )
                 self.send_queue.task_done()
 
     def _wait_for_rate_limit(self):

@@ -29,16 +29,19 @@ class DaemonMetrics(ServiceMetrics):
         )
         self._define_histogram(
             "cleanup_duration_seconds",
-            "WeChat log cleanup duration.",
+            "WeChat log cleanup duration by source, mode and result.",
+            ("source", "dry_run", "result"),
             buckets=(0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60),
         )
         self._define_counter(
             "cleanup_files_deleted_total",
-            "WeChat log files deleted.",
+            "WeChat log files deleted by source.",
+            ("source",),
         )
         self._define_counter(
             "cleanup_bytes_deleted_total",
-            "WeChat log bytes deleted.",
+            "WeChat log bytes deleted by source.",
+            ("source",),
         )
 
 

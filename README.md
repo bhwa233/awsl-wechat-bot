@@ -346,7 +346,7 @@ GET :7999/metrics  # Cortex
 GET :8001/metrics  # Daemon
 ```
 
-`/metrics` 使用与 REST API 相同的 `Authorization: Bearer <HTTP_API_TOKEN>` 认证。HTTP 请求由公共 FastAPI 中间件按 method、路由模板和 status code 统计请求量、进行中请求和延迟。指标记录异常会被隔离，不会中断业务请求；标签只使用固定枚举和路由模板，不包含时间戳、query、群名或消息内容。
+`/metrics` 使用与 REST API 相同的 `Authorization: Bearer <HTTP_API_TOKEN>` 认证。HTTP 请求由公共 FastAPI 中间件按 method、路由模板和 status code 统计请求量、进行中请求和延迟。业务指标使用群名以及 `result`、`client`、`message_type`、`reason`、`mode`、`model`、`source` 等有限标签，不包含 ID、时间戳、query 或消息内容。指标记录异常会被隔离，不会中断业务请求。
 
 ```yaml
 scrape_configs:

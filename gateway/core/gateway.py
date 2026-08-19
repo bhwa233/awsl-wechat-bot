@@ -115,14 +115,14 @@ class Gateway:
             except queue.Empty:
                 continue
             except Exception as e:
-                metrics.increment("broadcast_messages_total", result="error")
+                metrics.increment("broadcast_messages_total", group="unknown", result="error")
                 logger.error(f"Gateway 消费出错: {e}", exc_info=True)
                 continue
 
             try:
                 self._broadcast(msg)
             except Exception as e:
-                metrics.increment("broadcast_messages_total", result="error")
+                metrics.increment("broadcast_messages_total", group=msg.group_name, result="error")
                 logger.error(f"Gateway 广播出错: {e}", exc_info=True)
 
         logger.info("Gateway 队列消费线程退出")
@@ -130,7 +130,7 @@ class Gateway:
     def _broadcast(self, msg: GatewayMessage):
         """按优先级广播:passive 客户端始终收到,非 passive 只推送给最高优先级"""
         if not self._loop:
-            metrics.increment("broadcast_messages_total", result="no_event_loop")
+            metrics.increment("broadcast_messages_total", group=msg.group_name, result="no_event_loop")
             return
 
         payload = WSMessageBroadcast(
@@ -163,7 +163,7 @@ class Gateway:
 
         send_to = passive_matched + active_matched
         if not send_to:
-            metrics.increment("broadcast_messages_total", result="no_subscriber")
+            metrics.increment("broadcast_messages_total", group=msg.group_name, result="no_subscriber")
             return
 
         names = [sub.client_name or "anonymous" for _, sub in send_to]
@@ -172,15 +172,27 @@ class Gateway:
             f"[{msg.group_name}] 广播到 {names}: {content_preview}"
         )
         scheduled_count = 0
-        for ws, _ in send_to:
+        for ws, sub in send_to:
+            client = sub.client_name or "anonymous"
             try:
                 asyncio.run_coroutine_threadsafe(ws.send_text(payload), self._loop)
                 scheduled_count += 1
-                metrics.increment("broadcast_deliveries_total")
+                metrics.increment(
+                    "broadcast_deliveries_total",
+                    group=msg.group_name,
+                    client=client,
+                    result="scheduled",
+                )
             except Exception as e:
+                metrics.increment(
+                    "broadcast_deliveries_total",
+                    group=msg.group_name,
+                    client=client,
+                    result="schedule_error",
+                )
                 logger.warning(f"WS 发送失败: {e}")
         result = "scheduled" if scheduled_count else "schedule_error"
-        metrics.increment("broadcast_messages_total", result=result)
+        metrics.increment("broadcast_messages_total", group=msg.group_name, result=result)
 
     @staticmethod
     def _matches(sub: WSSubscription, group_name: str, content: str) -> bool:

@@ -97,7 +97,13 @@ class SummaryService:
 
     def run_summary(self, config: SummaryConfig) -> SummaryResult:
         if not self._running_lock.acquire(blocking=False):
-            metrics.increment("summary_runs_total", result="busy")
+            metrics.increment(
+                "summary_runs_total",
+                mode="standard",
+                source="direct",
+                model=app_config.OPENAI_MODEL,
+                result="busy",
+            )
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
         started = time.perf_counter()
@@ -111,9 +117,22 @@ class SummaryService:
             logger.exception("[Summary] 总结执行失败")
             return SummaryResult(success=False, message=f"总结执行失败: {e}")
         finally:
-            metrics.increment("summary_runs_total", result=outcome)
+            metrics.increment(
+                "summary_runs_total",
+                mode="standard",
+                source="direct",
+                model=app_config.OPENAI_MODEL,
+                result=outcome,
+            )
             metrics.set_value("summary_running", 0)
-            metrics.observe("summary_duration_seconds", time.perf_counter() - started)
+            metrics.observe(
+                "summary_duration_seconds",
+                time.perf_counter() - started,
+                mode="standard",
+                source="direct",
+                model=app_config.OPENAI_MODEL,
+                result=outcome,
+            )
             self._is_running = False
             self._running_lock.release()
 
@@ -123,9 +142,17 @@ class SummaryService:
         on_complete: Callable | None = None,
         *,
         decrypt_first: bool = True,
+        source: str = "api",
     ) -> SummaryResult:
+        metric_source = source if source in {"api", "scheduler", "trigger"} else "other"
         if not self._running_lock.acquire(blocking=False):
-            metrics.increment("summary_runs_total", result="busy")
+            metrics.increment(
+                "summary_runs_total",
+                mode="standard",
+                source=metric_source,
+                model=app_config.OPENAI_MODEL,
+                result="busy",
+            )
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
         metrics.set_value("summary_running", 1)
@@ -141,7 +168,13 @@ class SummaryService:
                     logger.exception("[Summary] 总结执行失败")
                     result = SummaryResult(success=False, message=f"总结执行失败: {e}")
 
-                metrics.increment("summary_runs_total", result=outcome)
+                metrics.increment(
+                    "summary_runs_total",
+                    mode="standard",
+                    source=metric_source,
+                    model=app_config.OPENAI_MODEL,
+                    result=outcome,
+                )
                 if on_complete:
                     try:
                         on_complete(result)
@@ -149,7 +182,14 @@ class SummaryService:
                         logger.exception("[Summary] 完成回调执行失败")
             finally:
                 metrics.set_value("summary_running", 0)
-                metrics.observe("summary_duration_seconds", time.perf_counter() - started)
+                metrics.observe(
+                    "summary_duration_seconds",
+                    time.perf_counter() - started,
+                    mode="standard",
+                    source=metric_source,
+                    model=app_config.OPENAI_MODEL,
+                    result=outcome,
+                )
                 self._is_running = False
                 self._running_lock.release()
 
@@ -199,7 +239,7 @@ class SummaryService:
                 return
             logger.warning(f"{log_prefix} 群聊总结失败: {result.message}")
 
-        result = self.start_summary_async(config, on_complete, decrypt_first=False)
+        result = self.start_summary_async(config, on_complete, decrypt_first=False, source="trigger")
         if not result.success:
             logger.warning(f"{log_prefix} 群聊总结启动失败: {result.message}")
         return result
@@ -244,26 +284,47 @@ class SummaryService:
             return SummaryResult(success=False, message=f"chatlog 群聊缺少 username: {group_name}")
 
         if not self._running_lock.acquire(blocking=False):
-            metrics.increment("summary_runs_total", result="busy")
+            metrics.increment(
+                "summary_runs_total",
+                mode="topic",
+                source="trigger",
+                model=app_config.OPENAI_MODEL,
+                result="busy",
+            )
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
         metrics.set_value("summary_running", 1)
 
         def run_and_release():
             started = time.perf_counter()
+            outcome = "error"
             try:
                 result = self._execute_topic_summary(group_id, group_name, topic)
-                metrics.increment("summary_runs_total", result="success" if result.success else "failed")
+                outcome = "success" if result.success else "failed"
                 if result.success:
                     logger.info(f"{log_prefix} 主题总结完成: {result.message}")
                     return
                 logger.warning(f"{log_prefix} 主题总结失败: {result.message}")
             except Exception as e:
-                metrics.increment("summary_runs_total", result="error")
                 logger.exception("[Summary] 主题总结执行失败")
             finally:
+                metrics.increment(
+                    "summary_runs_total",
+                    mode="topic",
+                    source="trigger",
+                    model=app_config.OPENAI_MODEL,
+                    result=outcome,
+                )
+                metrics.increment("summary_groups_total", group=group_name, result=outcome)
                 metrics.set_value("summary_running", 0)
-                metrics.observe("summary_duration_seconds", time.perf_counter() - started)
+                metrics.observe(
+                    "summary_duration_seconds",
+                    time.perf_counter() - started,
+                    mode="topic",
+                    source="trigger",
+                    model=app_config.OPENAI_MODEL,
+                    result=outcome,
+                )
                 self._is_running = False
                 self._running_lock.release()
 
@@ -379,6 +440,7 @@ class SummaryService:
         for group in config.groups:
             group_result = {"success": False, "message": "", "msg_count": 0}
             display_name = group.group_name
+            group_outcome = "error"
 
             try:
                 # 取群显示名(chatlog 提供)
@@ -401,6 +463,7 @@ class SummaryService:
                 logger.info(f"[Summary] 获取到 {len(msg_dicts)} 条消息")
 
                 if not msg_dicts:
+                    group_outcome = "skipped"
                     group_result["message"] = "没有消息记录"
                     results["groups"][group.group_id] = group_result
                     skip_count += 1
@@ -416,6 +479,7 @@ class SummaryService:
                 messages_text, valid_count, sender_stats = format_messages_for_llm(msg_dicts, members)
                 group_result["msg_count"] = valid_count
                 if valid_count == 0:
+                    group_outcome = "skipped"
                     group_result["message"] = "没有有效消息"
                     results["groups"][group.group_id] = group_result
                     skip_count += 1
@@ -436,6 +500,7 @@ class SummaryService:
                         client=self._llm_client,
                     )
                 except Exception as e:
+                    group_outcome = "failed"
                     logger.error(f"[Summary] LLM 总结失败: {e}")
                     group_result["message"] = f"LLM 总结失败: {e}"
                     results["groups"][group.group_id] = group_result
@@ -443,6 +508,7 @@ class SummaryService:
                     continue
 
                 if not summary or len(summary.strip()) < 50:
+                    group_outcome = "failed"
                     group_result["message"] = "LLM 返回内容无效"
                     results["groups"][group.group_id] = group_result
                     fail_count += 1
@@ -461,12 +527,14 @@ class SummaryService:
                 output_image = os.path.join(output_dir, f"summary_{safe_group_id}_{file_date_str}.png")
 
                 if not render_to_image(summary, message_date_str, valid_count, gen_time, output_image, display_name):
+                    group_outcome = "failed"
                     group_result["message"] = "图片渲染失败"
                     results["groups"][group.group_id] = group_result
                     fail_count += 1
                     continue
 
                 if not os.path.exists(output_image):
+                    group_outcome = "failed"
                     group_result["message"] = "图片文件不存在"
                     results["groups"][group.group_id] = group_result
                     fail_count += 1
@@ -492,6 +560,7 @@ class SummaryService:
 
                 group_result["success"] = True
                 group_result["message"] = "成功"
+                group_outcome = "success"
                 results["groups"][group.group_id] = group_result
                 success_count += 1
                 logger.info(f"[Summary] 群聊 {display_name} 总结完成")
@@ -501,6 +570,12 @@ class SummaryService:
                 group_result["message"] = str(e)
                 results["groups"][group.group_id] = group_result
                 fail_count += 1
+            finally:
+                metrics.increment(
+                    "summary_groups_total",
+                    group=group.group_name,
+                    result=group_outcome,
+                )
 
         total = len(config.groups)
         if success_count == 0 and fail_count == 0:
