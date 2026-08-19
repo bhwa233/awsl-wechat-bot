@@ -12,6 +12,7 @@ from gateway.core.gateway import Gateway
 from gateway.core.models import SentMessageStore
 from gateway.core.sender import MessageSender
 from gateway.console.adapters import get_console_adapter
+from gateway.metrics import metrics
 from gateway.models import GroupInfo
 from gateway.storage.message_db import MessageDatabase
 
@@ -32,6 +33,9 @@ class GatewayRuntime:
         self._lock = threading.Lock()
         self._detectors: dict[str, _DetectorHandle] = {}
         self._running = False
+        metrics.bind("groups_active", lambda: len(self.groups))
+        metrics.bind("message_queue_depth", self.gateway.gateway_queue.qsize)
+        metrics.bind("send_queue_depth", self.gateway.sender.send_queue.qsize)
         logger.info("Gateway 初始化完成")
 
     @property
@@ -66,7 +70,9 @@ class GatewayRuntime:
         while self._running:
             try:
                 self._sync_windows()
+                metrics.increment("window_scans_total", result="success")
             except Exception as e:
+                metrics.increment("window_scans_total", result="error")
                 logger.error(f"窗口扫描出错: {e}")
             time.sleep(SCAN_INTERVAL)
 

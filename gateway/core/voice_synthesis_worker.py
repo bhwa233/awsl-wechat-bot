@@ -3,10 +3,12 @@
 import logging
 import queue
 import threading
+import time
 from collections.abc import Callable
 
 from common.models import MessageType
 from gateway.core.models import SendTask
+from gateway.metrics import metrics
 from gateway.utils.voice_synthesis import synthesize_voice
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,7 @@ class VoiceSynthesisWorker:
                 self._queue.task_done()
                 break
 
+            started = time.perf_counter()
             try:
                 if not self._running:
                     continue
@@ -72,6 +75,8 @@ class VoiceSynthesisWorker:
                 })
                 if self._running:
                     self._on_ready(prepared)
+                    metrics.increment("voice_synthesis_runs_total")
+                    metrics.observe("voice_synthesis_duration_seconds", time.perf_counter() - started)
             except Exception as e:
                 logger.error(f"[{task.group_name}] 生成语音失败: {e}")
             finally:

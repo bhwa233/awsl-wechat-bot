@@ -16,6 +16,7 @@ from pathlib import Path
 import httpx
 
 from common.config import config
+from daemon.metrics import metrics
 
 logger = logging.getLogger("daemon")
 
@@ -41,6 +42,9 @@ class BotProcessManager:
         self._health_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._health_failures = 0
+        metrics.bind("bot_running", lambda: int(self.get_status()["running"]))
+        metrics.bind("bot_uptime_seconds", lambda: self.get_status()["uptime_seconds"] or 0)
+        metrics.bind("bot_health_consecutive_failures", lambda: self.get_status()["health_failures"])
 
     def start_bot(self, reason: str = "manual") -> dict:
         with self._lock:
@@ -63,6 +67,7 @@ class BotProcessManager:
             self._terminate()
             self._launch(reason)
             self._restart_count += 1
+            metrics.increment("bot_restarts_total", reason="manual")
             logger.info(f"bot 已重启 (pid={self._process.pid}, reason={reason})")
             return {"ok": True, "message": "bot 已重启", "pid": self._process.pid}
 
@@ -246,6 +251,7 @@ class BotProcessManager:
                     continue
                 consecutive_failures += 1
                 self._restart_count += 1
+                metrics.increment("bot_restarts_total", reason="crash")
                 reason = f"崩溃自动重启 (exit_code={exit_code}, attempt={consecutive_failures})"
                 self._last_restart_reason = reason
                 logger.warning(
@@ -273,6 +279,7 @@ class BotProcessManager:
                 if self._process is None or self._process.poll() is not None:
                     continue
             healthy = self._ping_health()
+            metrics.increment("bot_health_checks_total", result="success" if healthy else "failed")
             with self._lock:
                 if not self._auto_restart or self._process is None:
                     continue
@@ -287,6 +294,7 @@ class BotProcessManager:
                         logger.error(f"bot 连续 {HEALTH_CHECK_MAX_FAILURES} 次 health check 失败,强制重启")
                         self._terminate()
                         self._restart_count += 1
+                        metrics.increment("bot_restarts_total", reason="health_check")
                         reason = f"health check 失败重启 (连续 {HEALTH_CHECK_MAX_FAILURES} 次无响应)"
                         self._last_restart_reason = reason
                         self._launch(reason)

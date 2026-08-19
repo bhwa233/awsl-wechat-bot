@@ -7,6 +7,7 @@ from common.config import config
 from common.models import GatewayMessage
 from gateway.adapters.base import BaseWeChatAdapter
 from gateway.core.models import SentMessageStore
+from gateway.metrics import metrics
 from gateway.storage.message_db import MessageDatabase
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ class MessageDetector:
                 time.sleep(config.CHECK_INTERVAL)
 
             except Exception as e:
+                metrics.increment("detector_errors_total")
                 logger.error(f"[{self.group_name}] 检测出错: {e}")
                 time.sleep(1)
 
@@ -85,6 +87,7 @@ class MessageDetector:
             logger.debug(f"[{self.group_name}] 已标记 {len(messages)} 条初始消息")
             return True
         except Exception as e:
+            metrics.increment("detector_errors_total")
             logger.error(f"[{self.group_name}] 初始化失败: {e}")
             return False
 
@@ -128,12 +131,14 @@ class MessageDetector:
             self.db.mark_processed(msg_hash, self.group_name)
 
             if not can_trigger:
+                metrics.increment("detected_messages_total", result="not_triggerable")
                 if config.DEBUG:
                     logger.debug(
                         f"[{self.group_name}] 非最新消息,跳过触发: {msg[:30]}...")
                 continue
 
             if self.sent_store and self.sent_store.is_self_sent(self.group_name, msg):
+                metrics.increment("detected_messages_total", result="self_filtered")
                 logger.debug(f"[{self.group_name}] 跳过自己发送的消息: {msg[:30]}...")
                 continue
 
@@ -143,5 +148,7 @@ class MessageDetector:
                     content=msg,
                     timestamp=time.time(),
                 ))
+                metrics.increment("detected_messages_total", result="queued")
             except queue.Full:
+                metrics.increment("detected_messages_total", result="queue_full")
                 logger.warning(f"[{self.group_name}] gateway 队列已满")

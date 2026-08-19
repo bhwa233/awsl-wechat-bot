@@ -7,6 +7,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -16,6 +17,7 @@ import httpx
 from common.config import config as app_config
 from common.models import MessageType, OutgoingMessage
 from cortex.gateway_client import GatewayClient
+from cortex.metrics import metrics
 from cortex.services.chatlog_client import ChatlogClient
 from cortex.services.summary import (
     build_summary_text,
@@ -95,14 +97,23 @@ class SummaryService:
 
     def run_summary(self, config: SummaryConfig) -> SummaryResult:
         if not self._running_lock.acquire(blocking=False):
+            metrics.increment("summary_runs_total", result="busy")
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
+        started = time.perf_counter()
+        metrics.set_value("summary_running", 1)
+        outcome = "error"
         try:
-            return self._execute(config)
+            result = self._execute(config)
+            outcome = "success" if result.success else "failed"
+            return result
         except Exception as e:
             logger.exception("[Summary] 总结执行失败")
             return SummaryResult(success=False, message=f"总结执行失败: {e}")
         finally:
+            metrics.increment("summary_runs_total", result=outcome)
+            metrics.set_value("summary_running", 0)
+            metrics.observe("summary_duration_seconds", time.perf_counter() - started)
             self._is_running = False
             self._running_lock.release()
 
@@ -114,19 +125,31 @@ class SummaryService:
         decrypt_first: bool = True,
     ) -> SummaryResult:
         if not self._running_lock.acquire(blocking=False):
+            metrics.increment("summary_runs_total", result="busy")
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
+        metrics.set_value("summary_running", 1)
 
         def run_and_release():
+            started = time.perf_counter()
             try:
-                result = self._execute(config, decrypt_first=decrypt_first)
+                try:
+                    result = self._execute(config, decrypt_first=decrypt_first)
+                    outcome = "success" if result.success else "failed"
+                except Exception as e:
+                    outcome = "error"
+                    logger.exception("[Summary] 总结执行失败")
+                    result = SummaryResult(success=False, message=f"总结执行失败: {e}")
+
+                metrics.increment("summary_runs_total", result=outcome)
                 if on_complete:
-                    on_complete(result)
-            except Exception as e:
-                logger.exception("[Summary] 总结执行失败")
-                if on_complete:
-                    on_complete(SummaryResult(success=False, message=f"总结执行失败: {e}"))
+                    try:
+                        on_complete(result)
+                    except Exception:
+                        logger.exception("[Summary] 完成回调执行失败")
             finally:
+                metrics.set_value("summary_running", 0)
+                metrics.observe("summary_duration_seconds", time.perf_counter() - started)
                 self._is_running = False
                 self._running_lock.release()
 
@@ -221,19 +244,26 @@ class SummaryService:
             return SummaryResult(success=False, message=f"chatlog 群聊缺少 username: {group_name}")
 
         if not self._running_lock.acquire(blocking=False):
+            metrics.increment("summary_runs_total", result="busy")
             return SummaryResult(success=False, message="已有总结任务正在运行,请稍后再试")
         self._is_running = True
+        metrics.set_value("summary_running", 1)
 
         def run_and_release():
+            started = time.perf_counter()
             try:
                 result = self._execute_topic_summary(group_id, group_name, topic)
+                metrics.increment("summary_runs_total", result="success" if result.success else "failed")
                 if result.success:
                     logger.info(f"{log_prefix} 主题总结完成: {result.message}")
                     return
                 logger.warning(f"{log_prefix} 主题总结失败: {result.message}")
             except Exception as e:
+                metrics.increment("summary_runs_total", result="error")
                 logger.exception("[Summary] 主题总结执行失败")
             finally:
+                metrics.set_value("summary_running", 0)
+                metrics.observe("summary_duration_seconds", time.perf_counter() - started)
                 self._is_running = False
                 self._running_lock.release()
 

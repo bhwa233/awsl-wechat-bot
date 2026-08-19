@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from common.config import config
 from common.logging import setup_uvicorn_logging
+from cortex.metrics import metrics
 from cortex.routes import chatlog_proxy, custom_commands, gateway_proxy, health, remote_commands, summary, tasks, webhooks, webui
 from cortex.runtime import CortexRuntime
 from cortex.scheduler import TaskScheduler
@@ -73,7 +74,9 @@ def create_app(cortex_app: CortexRuntime) -> FastAPI:
         title="AWSL Cortex API",
         version="1.0.0",
         lifespan=lifespan,
+        middleware=[metrics.middleware],
     )
+    app.include_router(metrics.router)
     app.include_router(webui.create_routes())
     app.include_router(health.create_routes(cortex_app))
     app.include_router(tasks.create_routes(task_service))

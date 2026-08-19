@@ -10,6 +10,7 @@ import httpx
 
 from common.models import OutgoingMessage, TaskType
 from cortex.gateway_client import GatewayClient
+from cortex.metrics import metrics
 from cortex.services.scheduled_task import ScheduledTaskService
 from cortex.services.summary_service import SummaryConfig, SummaryGroup, SummaryResult, SummaryService
 
@@ -79,12 +80,14 @@ class TaskScheduler:
             if task.id in self.executing_tasks:
                 return
             self.executing_tasks.add(task.id)
+        metric_result = "success"
         try:
             logger.info(f"[Scheduler] 执行定时任务: {task.name} - {task.message_type}")
             self.task_service.update_last_run(task.id)
 
             if task.task_type == TaskType.SUMMARY:
-                self._execute_summary_task(task)
+                if not self._execute_summary_task(task):
+                    metric_result = "failed"
                 return
 
             try:
@@ -102,7 +105,11 @@ class TaskScheduler:
                     message=task.message,
                     filename=task.filename or None,
                 ))
+        except Exception:
+            metric_result = "error"
+            raise
         finally:
+            metrics.increment("scheduler_tasks_total", task_type=task.task_type.value, result=metric_result)
             self._cleanup_executing_task(task.id)
 
     def _execute_summary_task(self, task):
@@ -118,7 +125,7 @@ class TaskScheduler:
             )
             if not config.groups:
                 logger.warning("[Scheduler] 群聊总结启动失败: 未配置群聊")
-                return
+                return False
 
             def on_complete(result: SummaryResult):
                 if result.success:
@@ -129,8 +136,10 @@ class TaskScheduler:
             result = self._summary_service.start_summary_async(config, on_complete)
             if not result.success:
                 logger.warning(f"[Scheduler] 群聊总结启动失败: {result.message}")
+            return result.success
         except Exception as e:
             logger.error(f"[Scheduler] 总结任务执行失败: {e}")
+            return False
 
     def _get_active_groups(self) -> list[str]:
         try:

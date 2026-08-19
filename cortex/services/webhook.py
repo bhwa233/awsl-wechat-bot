@@ -24,6 +24,7 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 from common.config import config
 from common.models import MAX_REGEX_LEN, OutgoingMessage, WSMessageBroadcast
 from common.sqlite_migrator import SQLiteMigrator
+from cortex.metrics import metrics
 from cortex.models import MessageListener
 
 logger = logging.getLogger(__name__)
@@ -326,28 +327,33 @@ class WebhookService(MessageListener):
     def _enqueue_send(self, wh: Webhook, group_name: str, message: str) -> bool:
         webhook_id = wh.id
         if webhook_id is None:
+            metrics.increment("webhook_enqueues_total", result="invalid")
             logger.warning(f"Webhook [{wh.name}] 缺少 ID,丢弃任务: {group_name}")
             return False
 
         task: WebhookTask = (wh, group_name, message)
         with self._dispatch_lock:
             if self._queued_task_count >= config.WEBHOOK_QUEUE_SIZE:
+                metrics.increment("webhook_enqueues_total", result="queue_full")
                 logger.warning(f"Webhook [{wh.name}] 队列已满,丢弃任务: {group_name}")
                 return False
 
             if webhook_id in self._active_webhooks:
                 self._pending_tasks.setdefault(webhook_id, deque()).append(task)
                 self._queued_task_count += 1
+                metrics.increment("webhook_enqueues_total", result="accepted")
                 return True
 
             try:
                 self._task_queue.put_nowait(task)
             except queue.Full:
+                metrics.increment("webhook_enqueues_total", result="queue_full")
                 logger.warning(f"Webhook [{wh.name}] worker 队列已满,丢弃任务: {group_name}")
                 return False
 
             self._active_webhooks.add(webhook_id)
             self._queued_task_count += 1
+            metrics.increment("webhook_enqueues_total", result="accepted")
             return True
 
     def fire(self, group_name: str, message: str):
@@ -396,9 +402,11 @@ class WebhookService(MessageListener):
 
             while True:
                 wh, group_name, message = task
+                metrics.increment("webhook_workers_busy")
                 try:
                     self._send(wh, group_name, message)
                 finally:
+                    metrics.decrement("webhook_workers_busy")
                     next_task = self._finish_task(wh.id)
                 if next_task is None:
                     break
@@ -478,6 +486,7 @@ class WebhookService(MessageListener):
         return expr
 
     def _send(self, wh: Webhook, group_name: str, message: str):
+        started = time.perf_counter()
         try:
             reply_mode = wh.reply_mode or ReplyMode.NONE.value
             request_timeout = (
@@ -489,18 +498,22 @@ class WebhookService(MessageListener):
             body_str = self._replace_placeholders(wh.body_template, group_name, message)
             body = self._parse_json_payload(body_str, f"body_template({wh.id})")
             if body is _INVALID_JSON:
+                metrics.increment("webhook_dispatches_total", result="invalid_payload")
                 return
 
             headers_str = self._replace_placeholders(wh.headers, group_name, message)
             headers = self._parse_json_payload(headers_str, f"headers({wh.id})", dict)
             if headers is _INVALID_JSON:
+                metrics.increment("webhook_dispatches_total", result="invalid_payload")
                 return
             headers = self._coerce_headers(headers)
             if headers is None:
+                metrics.increment("webhook_dispatches_total", result="invalid_payload")
                 return
 
             resp = self._http_client.post(wh.url, json=body, headers=headers, timeout=request_timeout)
             resp.raise_for_status()
+            metrics.increment("webhook_dispatches_total", result="success")
 
             logger.debug(
                 f"Webhook [{wh.name}] 发送成功: {resp.status_code} -> "
@@ -549,14 +562,20 @@ class WebhookService(MessageListener):
                 except Exception as send_err:
                     logger.error(f"Webhook [{wh.name}] 回复发送失败: {send_err}")
         except httpx.TimeoutException as e:
+            metrics.increment("webhook_dispatches_total", result="timeout")
             logger.warning(f"Webhook [{wh.name}] 请求超时: {e}")
         except httpx.HTTPStatusError as e:
+            metrics.increment("webhook_dispatches_total", result="http_error")
             preview = _preview_text(e.response.text, self._REPLY_PREVIEW_LEN)
             logger.warning(f"Webhook [{wh.name}] HTTP 响应失败 {e.response.status_code}: {preview}")
         except httpx.RequestError as e:
+            metrics.increment("webhook_dispatches_total", result="network_error")
             logger.warning(f"Webhook [{wh.name}] 网络请求失败: {e}")
         except Exception as e:
+            metrics.increment("webhook_dispatches_total", result="error")
             logger.warning(f"Webhook [{wh.name}] 发送失败: {e}")
+        finally:
+            metrics.observe("webhook_dispatch_duration_seconds", time.perf_counter() - started)
 
     def close(self):
         self._running = False

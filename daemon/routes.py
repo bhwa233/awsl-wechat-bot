@@ -15,6 +15,7 @@ from common.logging import setup_uvicorn_logging
 
 from .cleanup import WeChatLogCleanupRequest, WeChatLogCleanupService
 from .manager import BotProcessManager
+from .metrics import metrics
 
 logger = logging.getLogger("daemon")
 
@@ -42,7 +43,13 @@ async def lifespan(application: FastAPI):
     manager.shutdown()
 
 
-app = FastAPI(title="AWSL Daemon Controller", version="1.0.0", lifespan=lifespan)
+app = FastAPI(
+    title="AWSL Daemon Controller",
+    version="1.0.0",
+    lifespan=lifespan,
+    middleware=[metrics.middleware],
+)
+app.include_router(metrics.router)
 
 
 @app.get("/", response_class=HTMLResponse)

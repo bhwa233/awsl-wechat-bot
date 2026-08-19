@@ -10,6 +10,7 @@ from common.models import MessageType
 from gateway.adapters.base import BaseWeChatAdapter
 from gateway.core.models import SendTask, SentMessageStore
 from gateway.core.voice_synthesis_worker import VoiceSynthesisWorker
+from gateway.metrics import metrics
 
 logger = logging.getLogger(__name__)
 _STOP_SENDER = object()
@@ -56,10 +57,13 @@ class MessageSender:
             self._thread.join(timeout=2)
 
     def enqueue(self, task: SendTask):
+        message_type = task.message_type.value
         try:
             self.send_queue.put_nowait(task)
+            metrics.increment("send_enqueue_total", message_type=message_type, result="accepted")
             return True
         except queue.Full:
+            metrics.increment("send_enqueue_total", message_type=message_type, result="queue_full")
             logger.warning(f"[{task.group_name}] 发送队列已满,丢弃消息")
             return False
 
@@ -76,6 +80,8 @@ class MessageSender:
                 self.send_queue.task_done()
                 break
 
+            started = time.perf_counter()
+            message_type = task.message_type.value
             try:
                 window = self.group_windows.get(task.group_name)
                 if not window:
@@ -125,6 +131,8 @@ class MessageSender:
             except Exception as e:
                 logger.error(f"[{task.group_name}] 发送出错: {e}", exc_info=True)
             finally:
+                metrics.increment("sends_total", message_type=message_type)
+                metrics.observe("send_duration_seconds", time.perf_counter() - started, message_type=message_type)
                 self.send_queue.task_done()
 
     def _wait_for_rate_limit(self):

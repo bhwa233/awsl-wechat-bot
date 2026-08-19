@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from common.logging import setup_uvicorn_logging
+from gateway.metrics import metrics
 from gateway.routes import console, groups, health, messages, ws
 
 
@@ -19,7 +20,9 @@ def create_app(gateway_app) -> FastAPI:
         title="AWSL Gateway API",
         version="1.0.0",
         lifespan=lifespan,
+        middleware=[metrics.middleware],
     )
+    app.include_router(metrics.router)
     app.include_router(health.create_routes(gateway_app))
     app.include_router(console.create_routes(gateway_app))
     app.include_router(groups.create_routes(gateway_app))

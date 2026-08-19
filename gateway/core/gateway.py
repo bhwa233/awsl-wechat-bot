@@ -17,6 +17,7 @@ from common.models import (
 )
 from gateway.core.models import SendTask
 from gateway.core.sender import MessageSender
+from gateway.metrics import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -56,12 +57,18 @@ class Gateway:
         """注册 WS 连接(无过滤,需 subscribe 后才收消息)"""
         with self._lock:
             self._ws_clients[ws] = WSSubscription()
+            connection_count = len(self._ws_clients)
+        metrics.set_value("websocket_connections", connection_count)
         logger.info(f"WS 客户端已连接 (当前 {len(self._ws_clients)} 个)")
 
     def ws_disconnect(self, ws: WebSocket):
         """移除 WS 连接"""
         with self._lock:
             self._ws_clients.pop(ws, None)
+            connection_count = len(self._ws_clients)
+            subscription_count = sum(subscription.subscribed for subscription in self._ws_clients.values())
+        metrics.set_value("websocket_connections", connection_count)
+        metrics.set_value("websocket_subscriptions", subscription_count)
         logger.info(f"WS 客户端已断开 (当前 {len(self._ws_clients)} 个)")
 
     def ws_subscribe(self, ws: WebSocket, msg: WSSubscribe) -> str | None:
@@ -73,6 +80,8 @@ class Gateway:
         with self._lock:
             if ws in self._ws_clients:
                 self._ws_clients[ws] = sub
+            subscription_count = sum(subscription.subscribed for subscription in self._ws_clients.values())
+        metrics.set_value("websocket_subscriptions", subscription_count)
         name = msg.client_name or "anonymous"
         logger.info(
             f"WS 客户端已订阅 [{name}]: priority={msg.priority} passive={msg.passive} "
@@ -85,6 +94,8 @@ class Gateway:
         with self._lock:
             if ws in self._ws_clients:
                 self._ws_clients[ws] = WSSubscription()
+            subscription_count = sum(subscription.subscribed for subscription in self._ws_clients.values())
+        metrics.set_value("websocket_subscriptions", subscription_count)
 
     def send_message(self, task: SendTask) -> bool:
         """发送消息到微信(所有调用者统一入口)"""
@@ -104,12 +115,14 @@ class Gateway:
             except queue.Empty:
                 continue
             except Exception as e:
+                metrics.increment("broadcast_messages_total", result="error")
                 logger.error(f"Gateway 消费出错: {e}", exc_info=True)
                 continue
 
             try:
                 self._broadcast(msg)
             except Exception as e:
+                metrics.increment("broadcast_messages_total", result="error")
                 logger.error(f"Gateway 广播出错: {e}", exc_info=True)
 
         logger.info("Gateway 队列消费线程退出")
@@ -117,6 +130,7 @@ class Gateway:
     def _broadcast(self, msg: GatewayMessage):
         """按优先级广播:passive 客户端始终收到,非 passive 只推送给最高优先级"""
         if not self._loop:
+            metrics.increment("broadcast_messages_total", result="no_event_loop")
             return
 
         payload = WSMessageBroadcast(
@@ -149,6 +163,7 @@ class Gateway:
 
         send_to = passive_matched + active_matched
         if not send_to:
+            metrics.increment("broadcast_messages_total", result="no_subscriber")
             return
 
         names = [sub.client_name or "anonymous" for _, sub in send_to]
@@ -156,11 +171,16 @@ class Gateway:
         logger.debug(
             f"[{msg.group_name}] 广播到 {names}: {content_preview}"
         )
+        scheduled_count = 0
         for ws, _ in send_to:
             try:
                 asyncio.run_coroutine_threadsafe(ws.send_text(payload), self._loop)
+                scheduled_count += 1
+                metrics.increment("broadcast_deliveries_total")
             except Exception as e:
                 logger.warning(f"WS 发送失败: {e}")
+        result = "scheduled" if scheduled_count else "schedule_error"
+        metrics.increment("broadcast_messages_total", result=result)
 
     @staticmethod
     def _matches(sub: WSSubscription, group_name: str, content: str) -> bool:

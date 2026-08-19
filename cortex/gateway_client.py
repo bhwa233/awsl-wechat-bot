@@ -25,6 +25,7 @@ from common.models import (
     WSType,
     parse_server_message,
 )
+from cortex.metrics import metrics
 from cortex.models import MessageListener
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,7 @@ class GatewayClient:
         """通过 WS 发送消息到 Gateway(线程安全)"""
         ws, loop = self._ws, self._loop
         if not loop or not ws or self._state != ConnectionState.SUBSCRIBED:
+            metrics.increment("gateway_send_attempts_total", result="disconnected")
             logger.warning(f"GatewayClient 未连接,无法发送消息到 {outgoing.group_name}")
             return
         msg = WSSendMessage(
@@ -87,7 +89,9 @@ class GatewayClient:
         )
         try:
             asyncio.run_coroutine_threadsafe(ws.send(msg.model_dump_json()), loop)
+            metrics.increment("gateway_send_attempts_total", result="scheduled")
         except RuntimeError:
+            metrics.increment("gateway_send_attempts_total", result="loop_closed")
             logger.warning(f"GatewayClient 事件循环已关闭,消息未发送到 {outgoing.group_name}")
 
     def start(self):
@@ -124,10 +128,12 @@ class GatewayClient:
                     delay = RECONNECT_BASE_DELAY
 
                     if not await self._authenticate(ws):
+                        metrics.increment("gateway_reconnects_total")
                         self._ws = None
                         continue
 
                     if not await self._subscribe(ws):
+                        metrics.increment("gateway_reconnects_total")
                         self._ws = None
                         continue
 
@@ -135,6 +141,8 @@ class GatewayClient:
                     logger.info("GatewayClient 已连接并订阅")
                     await self._receive_loop(ws)
                     self._ws = None
+                    if not self._stop_event.is_set():
+                        metrics.increment("gateway_reconnects_total")
 
             except asyncio.CancelledError:
                 break
@@ -143,6 +151,7 @@ class GatewayClient:
                 if self._stop_event.is_set():
                     break
                 self._state = ConnectionState.DISCONNECTED
+                metrics.increment("gateway_reconnects_total")
                 logger.warning(f"GatewayClient 连接断开: {e}, {delay:.1f}s 后重连")
 
                 try:
@@ -205,6 +214,7 @@ class GatewayClient:
                 if isinstance(msg, WSError):
                     logger.warning(f"Gateway 错误: {msg.detail}")
                 elif isinstance(msg, WSMessageBroadcast):
+                    metrics.increment("gateway_messages_received_total")
                     for listener in self._listeners:
                         listener.on_message(msg)
             except Exception as e:

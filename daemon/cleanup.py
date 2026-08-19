@@ -3,11 +3,14 @@
 import os
 import platform
 import threading
+import time
 from collections import deque
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from pydantic import BaseModel, Field
+
+from daemon.metrics import metrics
 
 WECHAT_LOG_CLEANUP_TIME = "03:30"
 
@@ -97,9 +100,20 @@ class WeChatLogCleanupService:
         )
 
     def cleanup(self, dry_run: bool = True, source: str = "manual") -> WeChatLogCleanupResult:
+        started = time.perf_counter()
         with self._cleanup_lock:
             result = self._scan_and_delete(dry_run)
             self._record(source, result)
+            metrics.increment(
+                "cleanup_runs_total",
+                source=source,
+                dry_run=str(dry_run).lower(),
+                result="success" if result.ok else "failed",
+            )
+            metrics.observe("cleanup_duration_seconds", time.perf_counter() - started)
+            if not dry_run:
+                metrics.increment("cleanup_files_deleted_total", result.deleted_count)
+                metrics.increment("cleanup_bytes_deleted_total", result.deleted_bytes)
             return result
 
     def _scan_and_delete(self, dry_run: bool) -> WeChatLogCleanupResult:

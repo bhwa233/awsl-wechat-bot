@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from chatlog.metrics import metrics
 from chatlog.routes import create_routes
 from chatlog.routes_v2 import create_v2_router
 from common.config import config
@@ -19,7 +20,9 @@ def create_app() -> FastAPI:
         title="AWSL Chatlog API",
         version="1.0.0",
         lifespan=lifespan,
+        middleware=[metrics.middleware],
     )
+    app.include_router(metrics.router)
     v1_pycrypto_router = create_routes()
     v2_dll_router = create_v2_router()
 
