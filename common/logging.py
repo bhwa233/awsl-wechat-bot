@@ -5,7 +5,7 @@ import re
 
 _NOISY_ACCESS_RE = re.compile(
     r'"(?:GET|HEAD) '
-    r'(?:/health|/api/health|/status|/logs(?:\?[^ ]*)?|/|/manifest\.json|/[^/ ?]+\.(?:css|js|map|ico|png|svg|woff2?))'
+    r'(?:/metrics|(?:/[^ ?]+)*/health|/status|/logs(?:\?[^ ]*)?|/|/manifest\.json|/[^/ ?]+\.(?:css|js|map|ico|png|svg|woff2?))'
     r'(?:\?[^ ]*)? '
 )
 
@@ -14,7 +14,7 @@ _TOKEN_QUERY_RE = re.compile(r"([?&])token=[^& \"]+")
 
 
 class HealthFilter(logging.Filter):
-    """过滤高频轮询端点的 access log(health/status/logs/index)"""
+    """过滤高频轮询端点的 access log(metrics/health/status/logs/index)"""
 
     def filter(self, record: logging.LogRecord) -> bool:
         return not _NOISY_ACCESS_RE.search(record.getMessage())
