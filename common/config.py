@@ -85,6 +85,7 @@ class Config(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 500
     OPENAI_TEMPERATURE: float = 0.7
+    SUMMARY_LLM_TIMEOUT: float = 180.0
 
     # Gateway HTTP API 服务配置
     HTTP_API_HOST: str = "0.0.0.0"

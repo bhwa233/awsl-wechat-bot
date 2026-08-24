@@ -519,6 +519,7 @@ def summarize_with_llm(
     api_key: str,
     model: str = "gpt-4o-mini",
     client: httpx.Client | None = None,
+    timeout: float = 180.0,
 ) -> str:
     """使用 LLM 生成聊天记录总结"""
     system_prompt = """你是一个专业的群聊记录分析助手.请分析提供的聊天记录,生成结构化的 Markdown 格式总结.
@@ -596,9 +597,9 @@ def summarize_with_llm(
     }
 
     if client:
-        response = client.post("/chat/completions", json=payload, timeout=60)
+        response = client.post("/chat/completions", json=payload, timeout=timeout)
     else:
-        response = httpx.post(f"{api_url}/chat/completions", headers=headers, json=payload, timeout=60)
+        response = httpx.post(f"{api_url}/chat/completions", headers=headers, json=payload, timeout=timeout)
     response.raise_for_status()
     data = response.json()
     return data["choices"][0]["message"]["content"].strip()
@@ -611,6 +612,7 @@ def summarize_topic_with_llm(
     date_str: str,
     model: str = "gpt-4o-mini",
     client: httpx.Client | None = None,
+    timeout: float = 180.0,
 ) -> str:
     """使用 LLM 按主题生成聊天记录总结"""
     system_prompt = """你是群聊记录检索整理助手.用户会给一个主题、问题或分析目标,请只根据聊天记录生成一份围绕该目标的中文 Markdown 答案.
@@ -669,7 +671,7 @@ def summarize_topic_with_llm(
             "max_tokens": 1600,
             "temperature": 0.2,
         },
-        timeout=60,
+        timeout=timeout,
     )
     response.raise_for_status()
     data = response.json()

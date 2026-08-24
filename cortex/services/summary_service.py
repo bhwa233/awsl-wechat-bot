@@ -80,7 +80,12 @@ class SummaryService:
                     "Authorization": f"Bearer {app_config.OPENAI_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0),
+                timeout=httpx.Timeout(
+                    connect=10.0,
+                    read=app_config.SUMMARY_LLM_TIMEOUT,
+                    write=10.0,
+                    pool=10.0,
+                ),
             )
 
     @property
@@ -363,6 +368,7 @@ class SummaryService:
             date_str=message_date_str,
             model=app_config.OPENAI_MODEL,
             client=self._llm_client,
+            timeout=app_config.SUMMARY_LLM_TIMEOUT,
         )
         if not summary or len(summary.strip()) < 20:
             return SummaryResult(success=False, message="LLM 返回内容无效")
@@ -498,6 +504,7 @@ class SummaryService:
                         api_key=app_config.OPENAI_API_KEY,
                         model=app_config.OPENAI_MODEL,
                         client=self._llm_client,
+                        timeout=app_config.SUMMARY_LLM_TIMEOUT,
                     )
                 except Exception as e:
                     group_outcome = "failed"
