@@ -5,11 +5,13 @@ import html
 import logging
 import os
 import re
-import shutil
 import time
+from pathlib import Path
 from string import Template
 
 import httpx
+
+from common.config import config
 
 logger = logging.getLogger(__name__)
 
@@ -888,7 +890,7 @@ def render_to_image(
     group_name: str = "",
     title_override: str | None = None,
 ) -> bool:
-    """使用 html2image 将总结渲染为图片,自动裁剪空白"""
+    """使用配置的浏览器将总结渲染为图片,自动裁剪空白"""
     try:
         from html2image import Html2Image
     except ImportError:
@@ -899,6 +901,15 @@ def render_to_image(
         from PIL import Image
     except ImportError:
         logger.error("缺少依赖 Pillow: uv add Pillow")
+        return False
+
+    browser_executable = config.BROWSER_EXECUTABLE.strip()
+    if not browser_executable:
+        logger.error("渲染图片失败: BROWSER_EXECUTABLE 未配置")
+        return False
+    browser_path = os.path.abspath(os.path.expandvars(os.path.expanduser(browser_executable)))
+    if not os.path.isfile(browser_path):
+        logger.error("渲染图片失败: BROWSER_EXECUTABLE 文件不存在: %s", browser_path)
         return False
 
     html_content = markdown_to_html(summary)
@@ -925,18 +936,6 @@ def render_to_image(
     )
 
     try:
-        browser_path = None
-        edge_paths = [
-            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-            r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-        ]
-        if not shutil.which("chrome") and not shutil.which("google-chrome"):
-            for edge_path in edge_paths:
-                if os.path.exists(edge_path):
-                    browser_path = edge_path
-                    logger.info(f"使用 Edge 浏览器: {edge_path}")
-                    break
-
         output_dir = os.path.dirname(output_path) or os.getcwd()
         output_dir = os.path.abspath(output_dir)
         os.makedirs(output_dir, exist_ok=True)
@@ -944,11 +943,6 @@ def render_to_image(
         output_name = os.path.basename(output_path)
         if not output_name.endswith('.png'):
             output_name += '.png'
-
-        if browser_path:
-            hti = Html2Image(size=(900, render_height), browser_executable=browser_path, output_path=output_dir)
-        else:
-            hti = Html2Image(size=(900, render_height), output_path=output_dir)
 
         temp_name = f"_temp_{output_name}"
         temp_path = os.path.join(output_dir, temp_name)
@@ -961,7 +955,13 @@ def render_to_image(
         with open(html_file_path, "w", encoding="utf-8") as f:
             f.write(full_html)
 
-        file_url = f"file:///{html_file_path.replace(os.sep, '/')}"
+        file_url = Path(html_file_path).as_uri()
+        logger.info("使用配置的浏览器渲染: %s", browser_path)
+        hti = Html2Image(
+            size=(900, render_height),
+            browser_executable=browser_path,
+            output_path=output_dir,
+        )
         hti.screenshot(url=file_url, save_as=temp_name)
 
         for _ in range(10):
@@ -970,7 +970,7 @@ def render_to_image(
             time.sleep(0.5)
 
         if not os.path.exists(temp_path):
-            logger.error(f"渲染图片失败: 临时文件未生成 {temp_path}")
+            logger.error("渲染图片失败: 临时文件未生成 %s", temp_path)
             return False
 
         img = Image.open(temp_path)

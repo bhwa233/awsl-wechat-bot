@@ -86,6 +86,8 @@ class Config(BaseSettings):
     OPENAI_MAX_TOKENS: int = 500
     OPENAI_TEMPERATURE: float = 0.7
     SUMMARY_LLM_TIMEOUT: float = 180.0
+    # 群聊总结 HTML 截图浏览器; 不自动探测或回退
+    BROWSER_EXECUTABLE: str = ""
 
     # Gateway HTTP API 服务配置
     HTTP_API_HOST: str = "0.0.0.0"
