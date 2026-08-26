@@ -6,7 +6,7 @@ const $ = id => document.getElementById(id);
 
 let authEnabled = false;
 let allGroups = [];
-let gatewayCapabilities = { voice: false };
+let gatewayCapabilities = { voice: false, maxBinaryFileBytes: 0 };
 const groupsLoadedHandlers = [];
 let chatlogBackend = null; // 由 chat.js 维护，app 里只作为全局状态声明
 
@@ -146,6 +146,7 @@ async function loadServerInfo() {
 async function loadGatewayCapabilities() {
     const r = await api('GET', '/api/gateway/health');
     gatewayCapabilities.voice = !!(r.ok && r.data?.capabilities?.voice);
+    gatewayCapabilities.maxBinaryFileBytes = Number(r.data?.capabilities?.max_binary_file_bytes) || 0;
     document.querySelectorAll('select option[value="voice"], select option[value="voice_file"]').forEach(option => {
         option.disabled = !gatewayCapabilities.voice;
         option.hidden = !gatewayCapabilities.voice;

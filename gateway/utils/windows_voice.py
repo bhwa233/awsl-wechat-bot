@@ -16,8 +16,8 @@ def prepare_voice_file(file_base64: str, filename: str) -> tuple[np.ndarray, int
         audio_data = base64.b64decode(file_base64, validate=True)
     except (binascii.Error, ValueError) as e:
         raise ValueError("语音 MP3 不是有效的 Base64") from e
-    if len(audio_data) > config.WINDOWS_VOICE_MAX_FILE_BYTES:
-        raise ValueError(f"语音 MP3 不能超过 {config.WINDOWS_VOICE_MAX_FILE_BYTES} 字节")
+    if len(audio_data) > config.BINARY_MAX_FILE_BYTES:
+        raise ValueError(f"语音 MP3 不能超过 {config.BINARY_MAX_FILE_BYTES} 字节")
     return _decode_voice(io.BytesIO(audio_data))
 
 

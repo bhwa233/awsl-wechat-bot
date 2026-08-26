@@ -129,6 +129,12 @@ class MessageComposer {
     loadFile(file) {
         if (!file) return;
         const type = this.getType();
+        const maxBytes = gatewayCapabilities.maxBinaryFileBytes;
+        if (maxBytes > 0 && file.size > maxBytes) {
+            toast(`文件不能超过 ${formatComposerFileSize(maxBytes)}`, 'error');
+            this.resetUpload();
+            return;
+        }
         if (type === 'image' && !file.type.startsWith('image/')) {
             toast('请选择图片文件', 'error');
             return;

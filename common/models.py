@@ -39,9 +39,20 @@ class TaskType(StrEnum):
     SUMMARY = "summary"
 
 
+MAX_TEXT_MESSAGE_LENGTH = 10_000_000
+MAX_BINARY_BASE64_LENGTH = 4 * ((config.BINARY_MAX_FILE_BYTES + 2) // 3)
+
+
+def binary_payload_too_large(value: str) -> bool:
+    if len(value) > MAX_BINARY_BASE64_LENGTH:
+        return True
+    padding = 2 if value.endswith("==") else 1 if value.endswith("=") else 0
+    return len(value) * 3 // 4 - padding > config.BINARY_MAX_FILE_BYTES
+
+
 class MessagePayload(BaseModel):
     message_type: MessageType = MessageType.TEXT
-    message: str | None = Field(None, max_length=10_000_000)
+    message: str | None = None
     filename: str | None = None
 
     @model_validator(mode="after")
@@ -50,6 +61,13 @@ class MessagePayload(BaseModel):
             raise ValueError(f"{self.message_type.value} 类型必须提供 filename")
         if not self.message:
             raise ValueError("message 不能为空")
+        if self.message_type in {MessageType.IMAGE, MessageType.FILE, MessageType.VOICE_FILE}:
+            if binary_payload_too_large(self.message):
+                raise ValueError(
+                    f"{self.message_type.value} 文件不能超过 {config.BINARY_MAX_FILE_BYTES} 字节"
+                )
+        elif len(self.message) > MAX_TEXT_MESSAGE_LENGTH:
+            raise ValueError(f"message 不能超过 {MAX_TEXT_MESSAGE_LENGTH} 字符")
         if self.message_type == MessageType.VOICE:
             if self.filename:
                 raise ValueError("voice 文本类型不接受 filename, MP3 请使用 voice_file")

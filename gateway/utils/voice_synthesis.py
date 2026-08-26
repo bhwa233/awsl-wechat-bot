@@ -42,8 +42,8 @@ def _synthesize_localai(text: str) -> str:
     content_type = response.headers.get("content-type", "").partition(";")[0].strip().lower()
     if content_type not in {"audio/mpeg", "audio/mp3"} or not response.content:
         raise RuntimeError(f"LocalAI TTS 返回了无效 MP3: {content_type or 'unknown'}")
-    if len(response.content) > config.WINDOWS_VOICE_MAX_FILE_BYTES:
-        raise ValueError(f"LocalAI TTS MP3 不能超过 {config.WINDOWS_VOICE_MAX_FILE_BYTES} 字节")
+    if len(response.content) > config.BINARY_MAX_FILE_BYTES:
+        raise ValueError(f"LocalAI TTS MP3 不能超过 {config.BINARY_MAX_FILE_BYTES} 字节")
     return base64.b64encode(response.content).decode("ascii")
 
 

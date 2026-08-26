@@ -8,6 +8,7 @@ let scrollingChats = false;
 let sendingMessage = false;
 let pollingState = false;
 let pollTimer = null;
+let maxBinaryFileBytes = 0;
 let attachment = { message: '', filename: '', preview: '' };
 
 function showChatPanel(show) {
@@ -225,6 +226,11 @@ function formatFileSize(bytes) {
 
 function loadAttachmentFile(file) {
     if (!file) return;
+    if (maxBinaryFileBytes > 0 && file.size > maxBinaryFileBytes) {
+        setStatus(`文件不能超过 ${formatFileSize(maxBinaryFileBytes)}`, true);
+        resetAttachment();
+        return;
+    }
     const type = getMessageType();
     if (type === 'image' && !file.type.startsWith('image/')) {
         setStatus('请选择图片文件', true);
@@ -254,6 +260,16 @@ function loadAttachmentFile(file) {
         $('fileInfo').textContent = `${file.name}${size ? ` (${size})` : ''}`;
     };
     reader.readAsDataURL(file);
+}
+
+async function loadCapabilities() {
+    try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        maxBinaryFileBytes = Number(data?.capabilities?.max_binary_file_bytes) || 0;
+    } catch {
+        maxBinaryFileBytes = 0;
+    }
 }
 
 function buildMessagePayload() {
@@ -481,6 +497,7 @@ function init() {
         }
     });
     syncComposerType(false);
+    loadCapabilities();
     refreshState();
     startPolling();
 }

@@ -36,6 +36,7 @@ def create_routes(gateway_app):
             "auth_enabled": bool(config.HTTP_API_TOKEN),
             "capabilities": {
                 "voice": gateway_app.adapter.SUPPORTS_VOICE,
+                "max_binary_file_bytes": config.BINARY_MAX_FILE_BYTES,
             },
         }
         return JSONResponse(content=content, status_code=200 if healthy else 503)

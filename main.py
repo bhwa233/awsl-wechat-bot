@@ -30,6 +30,7 @@ async def main():
         host=config.HTTP_API_HOST,
         port=config.HTTP_API_PORT,
         log_level="info",
+        ws_max_size=config.WS_MAX_SIZE,
     )
     chatlog_config = uvicorn.Config(
         create_chatlog_app(),

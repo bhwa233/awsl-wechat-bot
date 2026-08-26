@@ -12,7 +12,7 @@ from croniter import croniter
 from pydantic import BaseModel
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from common.models import MessageType, TaskType
+from common.models import MessageType, TaskType, binary_payload_too_large
 from common.sqlite_migrator import SQLiteMigrator
 
 logger = logging.getLogger(__name__)
@@ -302,6 +302,11 @@ class ScheduledTaskService:
         if task_type == TaskType.SUMMARY:
             return bool(message.strip())
         if not message.strip():
+            return False
+        if (
+            message_type in {MessageType.IMAGE, MessageType.FILE, MessageType.VOICE_FILE}
+            and binary_payload_too_large(message)
+        ):
             return False
         return not (
             message_type in {MessageType.FILE, MessageType.VOICE_FILE}

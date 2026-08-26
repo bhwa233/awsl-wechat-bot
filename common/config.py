@@ -3,7 +3,7 @@ AWSL 微信机器人配置 - 使用 Pydantic Settings
 支持从环境变量读取配置
 """
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,7 +45,7 @@ class Config(BaseSettings):
     WINDOWS_VOICE_RECORDING_DEVICE: str = "CABLE Output (VB-Audio Virtual Cable)"
     WINDOWS_VOICE_SAMPLE_RATE: int = 48_000
     WINDOWS_VOICE_MAX_TEXT_LENGTH: int = 1_000
-    WINDOWS_VOICE_MAX_FILE_BYTES: int = 7_000_000
+    BINARY_MAX_FILE_BYTES: int = 32 * 1024 * 1024
     WINDOWS_VOICE_MAX_DURATION: float = 60.0
     WINDOWS_VOICE_TIMEOUT: float = 90.0
 
@@ -94,6 +94,7 @@ class Config(BaseSettings):
     HTTP_API_PORT: int = 8000
     HTTP_API_TOKEN: str = ""  # Bearer Token 认证,为空则不启用认证
     HTTP_API_BASE_URL: str = "http://localhost:8000"  # 内部回调地址
+    WS_MAX_SIZE: int = 64 * 1024 * 1024
 
     # Handler HTTP API 服务配置
     CORTEX_HTTP_HOST: str = "0.0.0.0"
@@ -136,6 +137,17 @@ class Config(BaseSettings):
         if not isinstance(v, int) or not (0 <= v <= 255):
             raise ValueError(f"IMAGE_XOR_KEY 必须是 0..255 范围的整数, 收到: {v!r}")
         return v
+
+    @model_validator(mode="after")
+    def _validate_binary_limits(self):
+        if self.BINARY_MAX_FILE_BYTES <= 0:
+            raise ValueError("BINARY_MAX_FILE_BYTES 必须大于 0")
+        required_ws_size = 4 * ((self.BINARY_MAX_FILE_BYTES + 2) // 3) + 65_536
+        if self.WS_MAX_SIZE < required_ws_size:
+            raise ValueError(
+                f"WS_MAX_SIZE 至少需要 {required_ws_size} 字节，才能承载 Base64 二进制消息"
+            )
+        return self
 
     # Linux 微信 Gateway 配置
     LINUX_WECHAT_DISPLAY: str = ":10"

@@ -10,7 +10,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field as PydanticField
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
-from common.models import MessageType, OutgoingMessage
+from common.models import MessageType, OutgoingMessage, binary_payload_too_large
 from common.sqlite_migrator import SQLiteMigrator
 from cortex.models import CommandMatch
 from cortex.services.summary_service import SummaryService
@@ -171,6 +171,16 @@ class CustomCommandService:
         if action_type == CustomCommandActionType.SUMMARY:
             return True
         if not message.strip():
+            return False
+        if (
+            action_type
+            in {
+                CustomCommandActionType.IMAGE,
+                CustomCommandActionType.FILE,
+                CustomCommandActionType.VOICE_FILE,
+            }
+            and binary_payload_too_large(message)
+        ):
             return False
         return not (
             action_type in {CustomCommandActionType.FILE, CustomCommandActionType.VOICE_FILE}

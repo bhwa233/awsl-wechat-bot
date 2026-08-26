@@ -16,7 +16,12 @@ def main():
     from gateway.runtime import GatewayRuntime
 
     setup_uvicorn_logging()
-    uvicorn.run(create_app(GatewayRuntime()), host=config.HTTP_API_HOST, port=config.HTTP_API_PORT)
+    uvicorn.run(
+        create_app(GatewayRuntime()),
+        host=config.HTTP_API_HOST,
+        port=config.HTTP_API_PORT,
+        ws_max_size=config.WS_MAX_SIZE,
+    )
 
 
 if __name__ == "__main__":
