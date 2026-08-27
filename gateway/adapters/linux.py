@@ -61,10 +61,6 @@ def _x11_env() -> dict[str, str]:
 class LinuxWeChatAdapter(BaseWeChatAdapter):
     _TEMP_CLEANUP_DELAY: ClassVar[float] = 15.0
     _CHATLOG_RETRY_INTERVAL: ClassVar[float] = 5.0
-    # 必须 >= gateway.storage.message_db.MessageDB.hash_message_with_context 的 context_size,
-    # 否则同一短文本 (如 'ss') 在不同轮次出现时 hash 上下文相同, 会被 detector db 永久拦截.
-    _HASH_CONTEXT_SIZE: ClassVar[int] = 2
-    _LAST_TEXTS_KEEP: ClassVar[int] = 4
 
     def __init__(self) -> None:
         self._send_lock = threading.Lock()
@@ -77,29 +73,21 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._group_cache_retry_at = 0.0
         self._title_to_talker: dict[str, str] = {}
         self._window_title_to_talker: dict[str, str] = {}
-        # 每个 talker 上次拉取结果: (last_time_iso, last_messages_list).
-        # 下次拉消息用 last_time 作 start 边界 + last_messages 作为 hash 上下文前缀,
-        # 避免"重复出现的同一短文本(如 ss)永远撞同一 hash 被 detector db 拦"的问题.
-        self._last_pull: dict[str, tuple[str, list[str]]] = {}
-        # detector 是 per-group 线程, 多群并发. 用 threading.local 让
-        # get_messages_from_window → messages_to_check 同线程内传递 "本轮 prefix 长度",
-        # 避免跨线程互相覆盖.
-        self._tls = threading.local()
+        self._last_pull: dict[str, str] = {}
         self._seen_lock = threading.Lock()
         self._ensure_tools()
 
     def close(self) -> None:
         self._chatlog.close()
 
-    def messages_to_check(self, messages: list[str]) -> list[str]:
-        # get_messages_from_window 返回的 list 前 N 条是上一轮已处理的上下文前缀
-        # (仅让本轮新消息算 hash 时上下文不同, 自身不应再次触发). detector 通过本切片
-        # 跳过前缀的触发循环, prefix 仍能进 hash db 兜底.
-        n = getattr(self._tls, "prefix_len", 0)
-        return messages[n:] if n else messages
-
-    def can_trigger_message(self, messages_to_check: list[str], index: int) -> bool:
-        return True
+    def select_new_messages(
+        self,
+        window: LinuxWeChatWindow,
+        messages: list[str],
+        *,
+        initialize: bool = False,
+    ) -> list[str]:
+        return [] if initialize else messages
 
     def _ensure_tools(self) -> None:
         missing = [cmd for cmd in ("wmctrl", "xdotool", "xclip", "xwininfo") if not shutil.which(cmd)]
@@ -193,7 +181,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             raise RuntimeError(f"[{window.title}] 未匹配 chatlog talker")
 
         with self._seen_lock:
-            last_time, last_texts = self._last_pull.get(talker, ("", []))
+            last_time = self._last_pull.get(talker, "")
 
         params: dict = {
             "group": talker,
@@ -234,19 +222,9 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         if not new_texts:
             return []
 
-        # 上下文前缀: 用上次返回过的最后 _HASH_CONTEXT_SIZE 条, 让同一短文本在不同轮次
-        # 出现时, detector hash 上下文不同 → 不撞 db. 前缀本身被 can_trigger_message 拦掉
-        # 不会重复触发, 但 detector 仍会把它的 hash 写进 db (无害).
-        prefix = last_texts[-self._HASH_CONTEXT_SIZE:] if last_texts else []
-        result = prefix + new_texts
-
         with self._seen_lock:
-            # 保留最近 N 条做下次的上下文前缀, 防止内存无限增长
-            tail = (last_texts + new_texts)[-self._LAST_TEXTS_KEEP:]
-            self._last_pull[talker] = (new_last_time, tail)
-        # per-thread 传递 prefix 长度到下一步 messages_to_check, 避免多群并发覆盖
-        self._tls.prefix_len = len(prefix)
-        return result
+            self._last_pull[talker] = new_last_time
+        return new_texts
 
     def _resolve_talker(self, window: LinuxWeChatWindow) -> str | None:
         if window.talker:

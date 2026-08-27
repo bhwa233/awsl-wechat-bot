@@ -1,9 +1,12 @@
 import contextlib
+import hashlib
 import logging
 import os
 import re
 import threading
 import time
+from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import ClassVar
 
 from pydantic import computed_field
@@ -19,6 +22,20 @@ from gateway.models import GroupDebugInfo  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class _MessageRecord:
+    message: str | None
+    runtime_id: tuple[int, ...] | None
+    fingerprint: str
+
+
+@dataclass(slots=True)
+class _MessageState:
+    observed: list[_MessageRecord] = field(default_factory=list)
+    previous: list[_MessageRecord] | None = None
+    seen_ids: dict[tuple[int, ...], str] = field(default_factory=dict)
+
+
 class WindowsGroupDebugInfo(GroupDebugInfo):
     window_id: int | None = None
     automation_id: str | None = None
@@ -32,6 +49,7 @@ class WindowsGroupDebugInfo(GroupDebugInfo):
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     SUPPORTS_VOICE = True
     STANDALONE_AUTOMATION_PREFIX: ClassVar[str] = "ChatSingleWindow"
+    _SEEN_RUNTIME_IDS_LIMIT = 256
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
     _RESERVED_NAMES: ClassVar[set[str]] = {
         "CON", "PRN", "AUX", "NUL",
@@ -71,6 +89,118 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
     def __init__(self):
         self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口+剪贴板+按键)
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
+        self._message_states: dict[str, _MessageState] = {}
+        self._message_state_lock = threading.Lock()
+
+    def select_new_messages(
+        self,
+        window,
+        messages: list[str],
+        *,
+        initialize: bool = False,
+    ) -> list[str]:
+        key = self._message_state_key(window)
+        with self._message_state_lock:
+            state = self._message_states.setdefault(key, _MessageState())
+            current = state.observed
+            if initialize:
+                self._set_message_baseline(state, current)
+                return []
+            if state.previous is None:
+                self._set_message_baseline(state, current)
+                return []
+            if not current:
+                return []
+
+            new_start = self._find_new_message_start(state, current)
+            self._set_message_baseline(state, current)
+        if new_start is None:
+            latest = next((record.message for record in reversed(current) if record.message), None)
+            return [latest] if latest else []
+        return [record.message for record in current[new_start:] if record.message is not None]
+
+    def _find_new_message_start(
+        self,
+        state: _MessageState,
+        current: list[_MessageRecord],
+    ) -> int | None:
+        previous = state.previous or []
+        previous_ids = {
+            record.runtime_id: (index, record.fingerprint)
+            for index, record in enumerate(previous)
+            if record.runtime_id is not None
+        }
+        direct_matches = []
+        for current_index, record in enumerate(current):
+            match = previous_ids.get(record.runtime_id)
+            if match is not None and match[1] == record.fingerprint:
+                direct_matches.append((current_index, match[0]))
+
+        boundary = 0
+        if direct_matches:
+            current_index, previous_index = max(direct_matches)
+            boundary = current_index + 1
+            while boundary < len(current) and previous_index + 1 < len(previous):
+                previous_index += 1
+                if current[boundary].fingerprint != previous[previous_index].fingerprint:
+                    break
+                boundary += 1
+
+        for index, record in enumerate(current):
+            if record.runtime_id is not None and state.seen_ids.get(record.runtime_id) == record.fingerprint:
+                boundary = max(boundary, index + 1)
+
+        if not boundary:
+            previous_hashes = [record.fingerprint for record in previous]
+            current_hashes = [record.fingerprint for record in current]
+            blocks = SequenceMatcher(
+                None,
+                previous_hashes,
+                current_hashes,
+                autojunk=False,
+            ).get_matching_blocks()
+            boundary = max((block.b + block.size for block in blocks if block.size), default=0)
+
+        return boundary if boundary else None
+
+    def _set_message_baseline(self, state: _MessageState, records: list[_MessageRecord]) -> None:
+        state.previous = records
+        for record in records:
+            if record.runtime_id is not None:
+                state.seen_ids[record.runtime_id] = record.fingerprint
+        while len(state.seen_ids) > self._SEEN_RUNTIME_IDS_LIMIT:
+            state.seen_ids.pop(next(iter(state.seen_ids)))
+
+    @classmethod
+    def _message_state_key(cls, window) -> str:
+        automation_id = cls._automation_id(window)
+        conversation_id = cls.standalone_conversation_id(automation_id)
+        if conversation_id:
+            return conversation_id
+        window_id = cls._native_window_handle(window)
+        return automation_id or f"window:{window_id or id(window)}"
+
+    @staticmethod
+    def _message_runtime_id(control) -> tuple[int, ...] | None:
+        try:
+            runtime_id = tuple(int(part) for part in control.GetRuntimeId())
+        except Exception:
+            return None
+        return runtime_id or None
+
+    @staticmethod
+    def _message_fingerprint(text: str, class_name: str) -> str:
+        return hashlib.sha256(f"{class_name}\0{text}".encode()).hexdigest()[:16]
+
+    @staticmethod
+    def _triggerable_message(text: str, class_name: str) -> str | None:
+        if class_name == 'mmui::ChatVoiceItemView' or not text or len(text) < 2:
+            return None
+        if text in ['[图片]', '[表情]', '[视频]', '[文件]', 'Animated Stickers']:
+            return None
+        if re.match(r'^[\d:]+$', text):
+            return None
+        return text
 
     @property
     def ui_operation_lock(self) -> threading.Lock:
@@ -445,6 +575,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             list[str]: 消息列表
         """
         self._ensure_uia()
+        state_key = self._message_state_key(window)
         # 读取不需要锁:每个线程有独立 UIA/COM 上下文,读不同窗口可并行
         logger.debug("正在查找消息列表...")
         # 方案1:通过名称查找
@@ -456,37 +587,33 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
         if not msg_list.Exists(0):
             logger.warning("在当前窗口中未找到任何消息列表控件.")
+            with self._message_state_lock:
+                self._message_states.setdefault(state_key, _MessageState()).observed = []
             return []
 
         logger.debug("成功定位消息列表,正在提取消息...")
-        messages = []
+        records: list[_MessageRecord] = []
         try:
             # 遍历消息列表的子项
             for item in msg_list.GetChildren():
                 # 新版微信的消息内容在子控件的 Name 属性里
-                if item.ControlTypeName == 'ListItemControl':
-                    if item.ClassName == 'mmui::ChatVoiceItemView':
-                        continue
-                    text_control = item.TextControl()
-                    # 有些消息是图片或表情,没有文本控件
-                    if text_control.Exists(0):
-                         messages.append(text_control.Name)
-                    else: # 尝试直接获取 ListItemControl 的 Name
-                        messages.append(item.Name)
+                if item.ControlTypeName != 'ListItemControl':
+                    continue
+                text_control = item.TextControl()
+                content = text_control.Name if text_control.Exists(0) else item.Name
+                class_name = item.ClassName
+                records.append(_MessageRecord(
+                    message=self._triggerable_message(content or "", class_name or ""),
+                    runtime_id=self._message_runtime_id(item),
+                    fingerprint=self._message_fingerprint(content or "", class_name or ""),
+                ))
 
-            # 过滤噪音
-            filtered_messages = []
-            for text in messages:
-                if not text or len(text) < 2:
-                    continue
-                if text in ['[图片]', '[表情]', '[视频]', '[文件]', 'Animated Stickers']:
-                    continue
-                if re.match(r'^[\d:]+$', text):  # 纯时间戳
-                    continue
-                filtered_messages.append(text)
-
-            return filtered_messages
+            with self._message_state_lock:
+                self._message_states.setdefault(state_key, _MessageState()).observed = records
+            return [record.message for record in records if record.message is not None]
         except Exception as e:
+            with self._message_state_lock:
+                self._message_states.setdefault(state_key, _MessageState()).observed = []
             logger.error(f"提取消息时出错: {e}")
             return []
 

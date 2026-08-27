@@ -78,7 +78,7 @@ per group                              │ 广播
 - `runtime.py` - GatewayRuntime：自动窗口发现（5s 扫描），管理 detectors/sender/gateway
 - `asgi.py` - FastAPI app 工厂，lifespan 管理生命周期
 - `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播 + subscribe regex 校验
-- `core/detector.py` - MessageDetector：per-group 消息检测线程，SHA256 上下文哈希去重
+- `core/detector.py` - MessageDetector：per-group 消息检测线程，消费平台适配器筛出的新消息
 - `core/models.py` - SendTask + SentMessageStore（自消息检测：精确/前缀/包含/相似度 4 层匹配）
 - `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
 - `core/voice_synthesis_worker.py` - VoiceSynthesisWorker：独立线程将 voice 合成为 voice_file 后加入发送队列
@@ -90,7 +90,6 @@ per group                              │ 广播
 - `utils/ocr.py` - macOS Vision OCR 封装
 - `utils/screenshot.py` - 截图工具
 - `utils/accessibility.py` - macOS 辅助功能权限检查
-- `storage/message_db.py` - SQLModel ORM 消息去重 (SQLite)
 - `routes/` - REST (health, groups, messages) + WS 端点 (`ws.py`)
 
 **chatlog/** - 聊天记录独立服务（纯数据层，不依赖 Gateway/Cortex）
@@ -150,7 +149,7 @@ per group                              │ 广播
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`；Console 另用操作锁防止慢速 TTS 期间切换聊天，合成本身不占 UI 锁
 - **Windows 语音发送**: `voice` 在独立线程中优先用 OpenAI 兼容 LocalAI TTS 合成 MP3，失败时回退 EdgeTTS，完成后回到发送队列；`voice_file` 接收 Base64 MP3。两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
 - **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog HTTP 查询最近文本消息；发送依赖 X11 工具 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
-- **消息去重**: SHA256(前2条消息 + 当前消息 + 群名)，只触发窗口中最后一条消息
+- **消息去重**: 各平台适配器按会话维护进程内状态；Windows 优先 UIA RuntimeId、hash 序列回退，macOS 使用 SHA256 上下文哈希且只触发最后一条，Linux 使用 Chatlog 时间游标
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
 - **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，发送载荷统一为 `message_type + message + filename`

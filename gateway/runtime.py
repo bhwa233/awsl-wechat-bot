@@ -14,7 +14,6 @@ from gateway.core.sender import MessageSender
 from gateway.console.adapters import get_console_adapter
 from gateway.metrics import metrics
 from gateway.models import GroupInfo
-from gateway.storage.message_db import MessageDatabase
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,6 @@ class GatewayRuntime:
     def __init__(self):
         self.adapter: BaseWeChatAdapter = get_wechat_adapter()
         self.console_adapter: BaseConsoleAdapter | None = get_console_adapter(self.adapter)
-        self.db = MessageDatabase()
         self.group_windows: dict[str, Any] = {}
         self._group_snapshots: dict[str, GroupInfo] = {}
         self.sent_store = SentMessageStore()
@@ -63,7 +61,6 @@ class GatewayRuntime:
             self.group_windows.clear()
             self._group_snapshots.clear()
         self.gateway.stop()
-        self.db.close()
         logger.info("Gateway 已停止")
 
     def _scan_loop(self):
@@ -103,7 +100,6 @@ class GatewayRuntime:
             group_name=group_name,
             window=window,
             wechat_adapter=self.adapter,
-            db=self.db,
             gateway_queue=self.gateway.gateway_queue,
             sent_store=self.sent_store,
         )

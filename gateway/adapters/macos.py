@@ -1,4 +1,5 @@
 import contextlib
+import hashlib
 import logging
 import os
 import subprocess
@@ -30,12 +31,46 @@ class MacOSWindow:
 
 
 class MacOSWeChatAdapter(BaseWeChatAdapter):
+    _MESSAGE_HASH_LIMIT = 200
+
     def __init__(self):
         self.process_name = self._detect_wechat_process()
         if not self.process_name:
             raise RuntimeError("微信未运行,请先启动微信")
         self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口)
+        self._message_hashes: dict[str, dict[str, None]] = {}
+        self._message_hash_lock = threading.Lock()
         logger.info(f"检测到微信进程: {self.process_name}")
+
+    @staticmethod
+    def _message_hash(messages: list[str], index: int, group_name: str) -> str:
+        context = "|".join(messages[max(0, index - 2):index + 1])
+        return hashlib.sha256(f"{group_name}:{context}".encode()).hexdigest()[:16]
+
+    def select_new_messages(
+        self,
+        window: MacOSWindow,
+        messages: list[str],
+        *,
+        initialize: bool = False,
+    ) -> list[str]:
+        with self._message_hash_lock:
+            seen = self._message_hashes.setdefault(window.title, {})
+            if initialize:
+                for index in range(len(messages)):
+                    seen[self._message_hash(messages, index, window.title)] = None
+                while len(seen) > self._MESSAGE_HASH_LIMIT:
+                    seen.pop(next(iter(seen)))
+                return []
+
+            recent = range(max(0, len(messages) - 3), len(messages))
+            hashes = [self._message_hash(messages, index, window.title) for index in recent]
+            last_is_new = bool(hashes) and hashes[-1] not in seen
+            for message_hash in hashes:
+                seen.setdefault(message_hash, None)
+            while len(seen) > self._MESSAGE_HASH_LIMIT:
+                seen.pop(next(iter(seen)))
+        return messages[-1:] if last_is_new else []
 
     def _detect_wechat_process(self) -> str | None:
         """检测微信进程名称"""
