@@ -193,6 +193,22 @@ function updateCustomCommandTargetGroupsCheckboxes(selectedValues = null) {
     }).join('');
 }
 
+function updateCustomCommandGroupFilterOptions() {
+    const select = $('customCommandGroupFilter');
+    if (!select) return;
+    const selected = select.value || '__all__';
+    const groups = new Set(allGroups.map(groupDisplayName).filter(Boolean));
+    customCommandCrud.items.forEach(command => {
+        (command.target_groups || []).filter(Boolean).forEach(group => groups.add(group));
+    });
+    select.replaceChildren(
+        new Option('全部命令', '__all__'),
+        new Option('仅全局命令', '__global__'),
+        ...Array.from(groups).sort((a, b) => a.localeCompare(b, 'zh-CN')).map(group => new Option(group, group)),
+    );
+    select.value = Array.from(select.options).some(option => option.value === selected) ? selected : '__all__';
+}
+
 const customCommandCrud = {
     apiPath: '/api/custom-commands',
     items: [],
@@ -226,10 +242,21 @@ const customCommandCrud = {
         </div>`;
     },
 
+    filteredItems() {
+        const group = $('customCommandGroupFilter')?.value || '__all__';
+        if (group === '__all__') return this.items;
+        if (group === '__global__') return this.items.filter(cmd => !cmd.target_groups?.length);
+        return this.items.filter(cmd => !cmd.target_groups?.length || cmd.target_groups.includes(group));
+    },
+
     render() {
         const el = $('customCommandsList');
+        const items = this.filteredItems();
+        const count = $('customCommandFilterCount');
+        if (count) count.textContent = `${items.length} / ${this.items.length}`;
         if (!this.items.length) el.innerHTML = '<div class="empty-hint">暂无自定义命令</div>';
-        else el.innerHTML = this.items.map(item => this.renderItem(item)).join('');
+        else if (!items.length) el.innerHTML = '<div class="empty-hint">该筛选条件下暂无自定义命令</div>';
+        else el.innerHTML = items.map(item => this.renderItem(item)).join('');
     },
 
     async load() {
@@ -237,6 +264,7 @@ const customCommandCrud = {
         const r = await api('GET', this.apiPath);
         if (!r.ok) { toast(r.data?.detail || r.error || '加载自定义命令失败', 'error'); return; }
         this.items = Array.isArray(r.data) ? r.data : [];
+        updateCustomCommandGroupFilterOptions();
         this.render();
     },
 
@@ -387,5 +415,7 @@ registerGroupsLoadedHandler(() => {
     if (remoteCommandPolicy.loaded && remoteCommandPolicy.editing) {
         updateRemoteCommandBypassGroups(remoteCommandPolicy.bypassGroups);
     }
+    updateCustomCommandGroupFilterOptions();
+    customCommandCrud.render();
     if ($('customCommandFormHost')?.style.display !== 'none') updateCustomCommandTargetGroupsCheckboxes();
 });

@@ -60,11 +60,9 @@ class TriggerMatcher:
                 group_name=group_name,
             )
 
-        # 自定义命令列表(keyword 为空则跳过)
-        if keyword_lower and content_lower in {
-            f"{keyword_lower} 自定义命令",
-            f"{keyword_lower} custom commands",
-        }:
+        # 自定义命令列表
+        list_trigger = config.CUSTOM_COMMAND_LIST_TRIGGER.strip().lower()
+        if list_trigger and content_lower == list_trigger:
             return TriggerTask(
                 trigger_type=TriggerType.CUSTOM_COMMAND_LIST,
                 group_name=group_name,

@@ -14,7 +14,7 @@
     <script>
         (function(){var s=localStorage.getItem('bot_theme');if(!s&&matchMedia('(prefers-color-scheme:dark)').matches)s='dark';if(s)document.documentElement.setAttribute('data-theme',s)})();
     </script>
-    <link rel="stylesheet" href="/static/style.css?v=202608170002">
+    <link rel="stylesheet" href="/static/style.css?v=202608270001">
 </head>
 <body>
     <div class="app" id="app">
@@ -461,6 +461,17 @@
                             </div>
                         </div>
                     </div>
+                    <div class="command-filter-bar">
+                        <div class="command-filter-copy">
+                            <span class="command-filter-label">适用群</span>
+                            <span class="command-filter-hint">指定群会同时显示全局命令</span>
+                        </div>
+                        <select id="customCommandGroupFilter" class="command-filter-select" aria-label="按适用群筛选" onchange="customCommandCrud.render()">
+                            <option value="__all__">全部命令</option>
+                            <option value="__global__">仅全局命令</option>
+                        </select>
+                        <span id="customCommandFilterCount" class="command-filter-count"></span>
+                    </div>
                     <div id="customCommandsList"></div>
                 </section>
 
@@ -537,7 +548,7 @@
     <script src="/static/chat.js?v=202608170002"></script>
     <script src="/static/console.js?v=202608170002"></script>
     <script src="/static/tasks.js?v=202608150021"></script>
-    <script src="/static/custom_commands.js?v=202608150021"></script>
+    <script src="/static/custom_commands.js?v=202608270001"></script>
     <script src="/static/webhooks.js?v=202608150021"></script>
 </body>
 </html>

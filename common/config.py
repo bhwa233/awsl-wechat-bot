@@ -12,6 +12,7 @@ class Config(BaseSettings):
 
     # 触发关键词
     TRIGGER_KEYWORD: str = "awsl"
+    CUSTOM_COMMAND_LIST_TRIGGER: str = "自定义命令"
 
     # OCR 自定义词汇表
     OCR_CUSTOM_WORDS: list[str] = ["awsl"]
