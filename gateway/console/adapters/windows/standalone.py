@@ -176,7 +176,7 @@ class WindowsStandaloneMixin:
             return {**result, "status": "failed", "message": "主窗口聊天列表中未找到缓存会话"}
 
         try:
-            target.DoubleClick(waitTime=0.35)
+            self._double_click_chat_session(target)
         except Exception as e:
             return {**result, "status": "failed", "message": f"双击聊天项失败: {e}"}
 
@@ -362,7 +362,7 @@ class WindowsStandaloneMixin:
                 )
 
             try:
-                target_node["_control"].DoubleClick(waitTime=0.35)
+                self._double_click_chat_session(target_node["_control"])
             except Exception as e:
                 return self._action_error(f"双击聊天项失败: {e}", window=main_window)
 
@@ -384,6 +384,11 @@ class WindowsStandaloneMixin:
                     break
                 time.sleep(0.1)
             return self._action_error(f"等待独立窗口「{expected_chat_name}」出现超时", window=main_window)
+
+    @staticmethod
+    def _double_click_chat_session(control) -> None:
+        control.Click(simulateMove=False, waitTime=0.05)
+        control.Click(simulateMove=False, waitTime=0.15)
 
     def close_standalone_window(
         self,
