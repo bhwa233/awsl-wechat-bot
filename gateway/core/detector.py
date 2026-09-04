@@ -6,7 +6,6 @@ import time
 from common.config import config
 from common.models import GatewayMessage
 from gateway.adapters.base import BaseWeChatAdapter
-from gateway.core.models import SentMessageStore
 from gateway.metrics import metrics
 
 logger = logging.getLogger(__name__)
@@ -22,13 +21,11 @@ class MessageDetector:
         wechat_adapter: BaseWeChatAdapter,
         *,
         gateway_queue: queue.Queue,
-        sent_store: SentMessageStore | None = None,
     ):
         self.group_name = group_name
         self.window = window
         self.adapter = wechat_adapter
         self.gateway_queue = gateway_queue
-        self.sent_store = sent_store
         self._running = False
         self._initialized = False
 
@@ -91,11 +88,6 @@ class MessageDetector:
         for i, msg in enumerate(new_messages):
             if config.DEBUG:
                 logger.debug(f"[{self.group_name}] 新消息[{i}]: {msg[:30]}...")
-
-            if self.sent_store and self.sent_store.is_self_sent(self.group_name, msg):
-                metrics.increment("detected_messages_total", group=self.group_name, result="self_filtered")
-                logger.debug(f"[{self.group_name}] 跳过自己发送的消息: {msg[:30]}...")
-                continue
 
             try:
                 self.gateway_queue.put_nowait(GatewayMessage(

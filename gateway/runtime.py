@@ -9,7 +9,6 @@ from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
 from gateway.console.adapters.base import BaseConsoleAdapter
 from gateway.core.detector import MessageDetector
 from gateway.core.gateway import Gateway
-from gateway.core.models import SentMessageStore
 from gateway.core.sender import MessageSender
 from gateway.console.adapters import get_console_adapter
 from gateway.metrics import metrics
@@ -26,8 +25,7 @@ class GatewayRuntime:
         self.console_adapter: BaseConsoleAdapter | None = get_console_adapter(self.adapter)
         self.group_windows: dict[str, Any] = {}
         self._group_snapshots: dict[str, GroupInfo] = {}
-        self.sent_store = SentMessageStore()
-        self.gateway = Gateway(MessageSender(self.adapter, self.group_windows, self.sent_store))
+        self.gateway = Gateway(MessageSender(self.adapter, self.group_windows))
         self._lock = threading.Lock()
         self._detectors: dict[str, _DetectorHandle] = {}
         self._running = False
@@ -101,7 +99,6 @@ class GatewayRuntime:
             window=window,
             wechat_adapter=self.adapter,
             gateway_queue=self.gateway.gateway_queue,
-            sent_store=self.sent_store,
         )
         thread = threading.Thread(target=detector.run, daemon=True, name=f"detector-{group_name}")
         thread.start()

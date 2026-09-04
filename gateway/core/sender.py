@@ -8,7 +8,7 @@ from typing import Any
 from common.config import config
 from common.models import MessageType
 from gateway.adapters.base import BaseWeChatAdapter
-from gateway.core.models import SendTask, SentMessageStore
+from gateway.core.models import SendTask
 from gateway.core.voice_synthesis_worker import VoiceSynthesisWorker
 from gateway.metrics import metrics
 
@@ -19,11 +19,9 @@ _STOP_SENDER = object()
 class MessageSender:
     """串行消息发送器,支持全局限速"""
 
-    def __init__(self, adapter: BaseWeChatAdapter, group_windows: dict[str, Any],
-                 sent_store: SentMessageStore | None = None):
+    def __init__(self, adapter: BaseWeChatAdapter, group_windows: dict[str, Any]):
         self.adapter = adapter
         self.group_windows = group_windows
-        self.sent_store = sent_store or SentMessageStore()
         self.send_queue: queue.Queue[SendTask | object] = queue.Queue(maxsize=config.SEND_QUEUE_SIZE)
         self.voice_synthesis_worker = (
             VoiceSynthesisWorker(
@@ -138,10 +136,6 @@ class MessageSender:
                 if send_ok:
                     send_result = "success"
                     self._last_send_time = time.time()
-                    if task.message_type == MessageType.TEXT:
-                        self.sent_store.record(task.group_name, task.message)
-                    elif task.message_type == MessageType.FILE:
-                        self.sent_store.record(task.group_name, task.filename)
                     logger.info(f"[{task.group_name}] 已发送: {preview}")
                 else:
                     send_result = "failed"

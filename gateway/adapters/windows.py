@@ -5,6 +5,7 @@ import os
 import re
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import ClassVar
@@ -17,9 +18,80 @@ import uiautomation as auto  # noqa: E402
 
 from common.config import config  # noqa: E402
 from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow  # noqa: E402
+from gateway.metrics import metrics  # noqa: E402
 from gateway.models import GroupDebugInfo  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+_WS_RE = re.compile(r'\s+')
+_QUOTE_RE = re.compile(r"引用\s+(.+?)\s+的消息\s*[:：]\s*(.+)$", re.S)
+_SIMILARITY_THRESHOLD = 0.75
+_SIMILARITY_MIN_LEN = 6
+
+
+def _normalize_message(text: str) -> str:
+    return _WS_RE.sub(' ', text.strip())
+
+
+def _is_similar_message(a: str, b: str) -> bool:
+    if not a or not b:
+        return False
+    ratio = len(a) / len(b) if len(b) > 0 else 0
+    if ratio < 0.5 or ratio > 2.0:
+        return False
+    return SequenceMatcher(None, a, b).ratio() >= _SIMILARITY_THRESHOLD
+
+
+class _SentMessageStore:
+    def __init__(self, ttl: float = 120.0, maxlen: int = 200):
+        self._lock = threading.Lock()
+        self._records: deque[tuple[object, float, str, str, str]] = deque(maxlen=maxlen)
+        self._ttl = ttl
+
+    def record(self, conversation_key: str, content: str) -> object:
+        with self._lock:
+            now = time.time()
+            while self._records and now - self._records[0][1] > self._ttl:
+                self._records.popleft()
+            token = object()
+            self._records.append((token, now, conversation_key, content, _normalize_message(content)))
+            return token
+
+    def discard(self, token: object) -> None:
+        with self._lock:
+            for record in self._records:
+                if record[0] is token:
+                    self._records.remove(record)
+                    return
+
+    def is_self_sent(self, conversation_key: str, content: str) -> bool:
+        now = time.time()
+        norm = _normalize_message(content)
+        if not norm:
+            return False
+        with self._lock:
+            for _, ts, stored_key, stored_content, stored_norm in reversed(self._records):
+                if now - ts > self._ttl or stored_key != conversation_key:
+                    continue
+                if stored_content == content or stored_norm == norm:
+                    return True
+                if len(stored_norm) >= 8 and len(norm) >= 8 and (
+                    stored_norm.startswith(norm) or norm.startswith(stored_norm)
+                ):
+                    return True
+                if (
+                    len(stored_norm) >= _SIMILARITY_MIN_LEN
+                    and len(norm) >= _SIMILARITY_MIN_LEN
+                    and (stored_norm in norm or norm in stored_norm)
+                ):
+                    return True
+                if (
+                    len(stored_norm) >= _SIMILARITY_MIN_LEN
+                    and len(norm) >= _SIMILARITY_MIN_LEN
+                    and _is_similar_message(stored_norm, norm)
+                ):
+                    return True
+        return False
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,9 +160,17 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
     def __init__(self):
         self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口+剪贴板+按键)
+        self._sent_messages = _SentMessageStore()
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
         self._message_states: dict[str, _MessageState] = {}
         self._message_state_lock = threading.Lock()
+
+    def _is_self_sent_message(self, state_key: str, content: str) -> bool:
+        content = content.strip()
+        match = _QUOTE_RE.search(content)
+        if match and match.group(1).strip() and match.group(2).strip():
+            content = content[:match.start()].strip()
+        return self._sent_messages.is_self_sent(state_key, content)
 
     def select_new_messages(
         self,
@@ -116,8 +196,18 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             self._set_message_baseline(state, current)
         if new_start is None:
             latest = next((record.message for record in reversed(current) if record.message), None)
-            return [latest] if latest else []
-        return [record.message for record in current[new_start:] if record.message is not None]
+            candidates = [latest] if latest else []
+        else:
+            candidates = [record.message for record in current[new_start:] if record.message is not None]
+
+        new_messages = []
+        for message in candidates:
+            if self._is_self_sent_message(key, message):
+                metrics.increment("detected_messages_total", group=window.Name, result="self_filtered")
+                logger.debug(f"[{window.Name}] 跳过自己发送的消息: {message[:30]}...")
+                continue
+            new_messages.append(message)
+        return new_messages
 
     def _find_new_message_start(
         self,
@@ -332,12 +422,16 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         time.sleep(0.2)
         return target
 
-    @staticmethod
-    def _send_file_paste_and_enter(target):
+    def _send_file_paste_and_enter(self, target, conversation_key: str, filename: str):
         time.sleep(0.3)
         target.SendKeys('{CTRL}v', waitTime=0.5)
         time.sleep(1.0)
-        target.SendKeys('{ENTER}', waitTime=0.5)
+        token = self._sent_messages.record(conversation_key, filename)
+        try:
+            target.SendKeys('{ENTER}', waitTime=0.5)
+        except Exception:
+            self._sent_messages.discard(token)
+            raise
 
     _AT_PREFIX_RE = re.compile(r'^((?:@[^\s@,，;；:：]+\s+)+)(.*)', re.DOTALL)
     _AT_POPOVER_TIMEOUT = 0.5
@@ -693,8 +787,12 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     target.SendKeys('{CTRL}v', waitTime=0.2)
 
                 # 发送消息
-                target.SendKeys('{ENTER}', waitTime=0.2)
-
+                token = self._sent_messages.record(self._message_state_key(window), text)
+                try:
+                    target.SendKeys('{ENTER}', waitTime=0.2)
+                except Exception:
+                    self._sent_messages.discard(token)
+                    raise
                 logger.debug(f"✓ 发送成功到 [{window.Name}]: {text[:20]}...")
                 return True
             except Exception as e:
@@ -782,7 +880,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 file_data = base64.b64decode(file_base64)
                 temp_path, temp_dir = self._write_temp_file(file_data, filename=filename, default_name="attachment.bin")
                 self._paste_file_to_window(window, temp_path)
-                self._send_file_paste_and_enter(target)
+                self._send_file_paste_and_enter(target, self._message_state_key(window), filename)
                 self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=self._DROPFILE_CLEANUP_DELAY)
                 temp_path = None
                 temp_dir = None
