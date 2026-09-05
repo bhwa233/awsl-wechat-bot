@@ -103,8 +103,6 @@ class Gateway:
 
     def get_send_error(self, task: SendTask) -> str | None:
         """返回当前平台无法发送该消息的原因。"""
-        if task.reply_to_message and not self.sender.adapter.SUPPORTS_REPLY:
-            return "当前平台不支持引用回复"
         if task.message_type in {MessageType.VOICE, MessageType.VOICE_FILE} and not self.sender.adapter.SUPPORTS_VOICE:
             return "当前平台不支持语音发送"
         return None

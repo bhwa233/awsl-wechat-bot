@@ -91,7 +91,6 @@ class GatewayClient:
             message_type=outgoing.message_type,
             message=outgoing.message,
             filename=outgoing.filename,
-            reply_to_message=outgoing.reply_to_message,
         )
         try:
             asyncio.run_coroutine_threadsafe(ws.send(msg.model_dump_json()), loop)

@@ -223,10 +223,8 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         ocr_results = screenshot_and_ocr(window.window_id)
         return [ReceivedMessage(content=text) for text in get_others_messages(ocr_results)]
 
-    def send_text_to_window(self, window: MacOSWindow, text: str, *, reply_to_message: str | None = None) -> bool:
+    def send_text_to_window(self, window: MacOSWindow, text: str) -> bool:
         """向指定窗口发送文本"""
-        if reply_to_message:
-            return False
         with self._send_lock:
             return self._send_text(window, text)
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Discriminator, Field, Tag, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, Discriminator, Tag, TypeAdapter, field_validator, model_validator
 
 from common.config import config
 
@@ -54,17 +54,9 @@ class MessagePayload(BaseModel):
     message_type: MessageType = MessageType.TEXT
     message: str | None = None
     filename: str | None = None
-    reply_to_message: str | None = Field(default=None, max_length=MAX_TEXT_MESSAGE_LENGTH)
-
-    @field_validator("reply_to_message")
-    @classmethod
-    def validate_reply_to_message(cls, value: str | None) -> str | None:
-        return value if value and value.strip() else None
 
     @model_validator(mode="after")
     def check_content(self):
-        if self.reply_to_message is not None and self.message_type != MessageType.TEXT:
-            raise ValueError("reply_to_message 当前仅支持文本回复")
         if self.message_type in {MessageType.FILE, MessageType.VOICE_FILE} and not self.filename:
             raise ValueError(f"{self.message_type.value} 类型必须提供 filename")
         if not self.message:
@@ -133,7 +125,6 @@ class WSSendMessage(MessagePayload):
             message_type=self.message_type,
             message=self.message,
             filename=self.filename,
-            reply_to_message=self.reply_to_message,
         )
 
 

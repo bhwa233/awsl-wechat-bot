@@ -5,10 +5,10 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from common.auth import verify_token
-from common.models import MessagePayload
+from common.models import MAX_TEXT_MESSAGE_LENGTH, MessagePayload, MessageType
 from gateway.console.adapters.base import BaseConsoleAdapter
 
 router = APIRouter()
@@ -56,6 +56,18 @@ class ConsoleStandaloneCloseRequest(BaseModel):
 class ConsoleSendMessageRequest(MessagePayload):
     chat_name: str = Field(min_length=1, max_length=256)
     max_nodes: int = Field(default=5000, ge=1, le=10000)
+    reply_to_message: str | None = Field(default=None, max_length=MAX_TEXT_MESSAGE_LENGTH)
+
+    @field_validator("reply_to_message")
+    @classmethod
+    def validate_reply_to_message(cls, value: str | None) -> str | None:
+        return value if value and value.strip() else None
+
+    @model_validator(mode="after")
+    def check_reply(self):
+        if self.reply_to_message is not None and self.message_type != MessageType.TEXT:
+            raise ValueError("reply_to_message 当前仅支持文本回复")
+        return self
 
 
 def create_routes(gateway_app):

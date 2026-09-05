@@ -38,7 +38,6 @@ export function Chat({ active }) {
         chosen.current = true;
         clearTimeout(sendTimer.current);
         setSelected(username);
-        setMessage((value) => ({ ...value, reply_to_message: undefined }));
         setPage(0);
         setThread(showThread);
         localStorage.setItem('chatlogGroup', username);
@@ -64,7 +63,7 @@ export function Chat({ active }) {
                 toast(data.message || '总结已启动', 'success');
             } else {
                 await api('POST', '/api/send', { body: { group_name: target, ...payload } });
-                setMessage((value) => ({ ...value, message: '', filename: '', reply_to_message: undefined }));
+                setMessage((value) => ({ ...value, message: '', filename: '' }));
                 toast('已提交发送', 'success');
                 sendTimer.current = setTimeout(messages.reload, 1000);
             }
@@ -234,10 +233,6 @@ export function Chat({ active }) {
                 ),
             h(MessageList, {
                 resource: messages, group: selected, page, caps: chatlog.data?.health.media,
-                onReply: capabilities.reply && !busy && target === name ? (reply_to_message) => {
-                    setMessage((value) => ({ ...emptyMessage(), message: value.message_type === 'text' ? value.message : '', reply_to_message }));
-                    requestAnimationFrame(() => document.getElementById('chat-composer-text')?.focus());
-                } : null,
             }),
             h(
                 MessageComposer,
@@ -257,7 +252,7 @@ export function Chat({ active }) {
                     'aria-label': '发送目标',
                     value: onlineNames.has(target) ? target : '',
                     disabled: busy,
-                    onValue: (target) => { setTargetOverride(target); setMessage((value) => ({ ...value, reply_to_message: undefined })); },
+                    onValue: setTargetOverride,
                     options: [['', '发送到…'], ...online.map((g) => [groupName(g), groupName(g)])],
                 })
             )

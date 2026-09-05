@@ -11,6 +11,7 @@ from common.models import GatewayMessage, ReceivedMessage, WSSubscription, parse
 from gateway.adapters.linux import LinuxWeChatAdapter, LinuxWeChatWindow
 from gateway.core.detector import MessageDetector
 from gateway.core.gateway import Gateway
+from gateway.routes.console import ConsoleSendMessageRequest
 
 with patch.dict(sys.modules, {'uiautomation': SimpleNamespace(Keys=SimpleNamespace(VK_RMENU=165))}):
     from gateway.adapters.windows import WindowsWeChatAdapter, _MessageRecord, _MessageState
@@ -55,14 +56,20 @@ class MessageMetadataTest(unittest.TestCase):
         self.assertEqual(received[0].sender_name, first.sender_name)
         self.assertEqual(received[0].at_users, first.at_users)
 
-    def test_old_protocol_and_reply_to_message_round_trip(self):
+    def test_gateway_payload_has_no_reply_and_console_keeps_reply(self):
         old = parse_server_message(json.dumps({'type': 'message', 'content': '正文', 'group_name': '群', 'timestamp': 1}))
         self.assertEqual(old.sender, '')
         self.assertNotIn('quote', old.model_dump())
         request = parse_client_message(json.dumps({
             'type': 'send_message', 'group_name': '群', 'message': '回复', 'reply_to_message': '原文',
         }))
-        self.assertEqual(request.to_outgoing_message().reply_to_message, '原文')
+        self.assertNotIn('reply_to_message', request.model_dump())
+        self.assertNotIn('reply_to_message', request.to_outgoing_message().model_dump())
+        console = ConsoleSendMessageRequest(chat_name='Bruce', message='回复', reply_to_message='原文')
+        self.assertEqual(console.reply_to_message, '原文')
+        self.assertIsNone(ConsoleSendMessageRequest(chat_name='Bruce', message='回复', reply_to_message='  ').reply_to_message)
+        with self.assertRaises(ValueError):
+            ConsoleSendMessageRequest(chat_name='Bruce', message_type='image', message='YQ==', reply_to_message='原文')
         event = GatewayMessage(group_name='群', timestamp=1, **ReceivedMessage(
             content='正文', sender='wxid_a',
         ).model_dump())
@@ -119,35 +126,25 @@ class MessageMetadataTest(unittest.TestCase):
             self.fail('已有草稿时不进入发送')
         adapter.clear_reply.assert_not_called()
 
-    def test_text_send_continues_after_cleanup_failure_and_retries_next_time(self):
+    def test_standalone_send_never_checks_or_clears_quotes(self):
         adapter = WindowsWeChatAdapter()
-        window = Mock(NativeWindowHandle=123, Name='Bruce')
-        window.EditControl.return_value.Name = 'Bruce'
-        target, preview = Mock(), Mock()
-        button = preview.ButtonControl.return_value
-        button.Exists.return_value = False
-        button.IsOffscreen = False
-        state = {'quote': True}
-        button.Click.side_effect = lambda **kwargs: state.update(quote=False)
+        window, target = Mock(Name='Bruce'), Mock()
         adapter._ensure_uia = Mock()
         adapter.activate_specific_window = Mock(return_value=True)
-        adapter._wait_for_reply = lambda predicate: predicate()
-        adapter._reply_preview = lambda window: preview if state['quote'] else None
+        adapter.clear_reply = Mock(side_effect=AssertionError('独立窗口不应清理引用'))
+        adapter.reply_context = Mock(side_effect=AssertionError('独立窗口不应引用消息'))
         adapter._focus_send_target = Mock(return_value=target)
         adapter._count_at_popovers = Mock(return_value=0)
         adapter._message_state_key = Mock(return_value='Bruce')
         automation = Mock()
         automation.GetClipboardText.return_value = '回复'
         with patch('gateway.adapters.windows.auto', automation):
-            with self.assertLogs('gateway.adapters.windows', level='WARNING'):
+            for _ in range(2):
                 self.assertTrue(adapter.send_text_to_window(window, '回复'))
-            self.assertTrue(state['quote'])
-            button.Exists.return_value = True
-            self.assertTrue(adapter.send_text_to_window(window, '回复'))
-            self.assertFalse(state['quote'])
-            self.assertTrue(adapter.send_text_to_window(window, '回复'))
-        button.Click.assert_called_once()
-        self.assertEqual(sum(call.args[0] == '{ENTER}' for call in target.SendKeys.call_args_list), 3)
+        adapter.clear_reply.assert_not_called()
+        adapter.reply_context.assert_not_called()
+        self.assertEqual(sum(call.args[0] == '{CTRL}a{DELETE}' for call in target.SendKeys.call_args_list), 2)
+        self.assertEqual(sum(call.args[0] == '{ENTER}' for call in target.SendKeys.call_args_list), 2)
 
     def test_quote_cleanup_skips_changed_chat_or_missing_preview(self):
         adapter = WindowsWeChatAdapter()

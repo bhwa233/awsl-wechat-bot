@@ -429,6 +429,9 @@ class WindowsConsoleAdapter(
             if not self._chat_names_match(chat_name, current_chat_name, chat_names):
                 return self._chat_name_error(chat_name, current_chat_name, window)
 
+            if message_type != "text":
+                self._wechat_adapter.clear_reply(window)
+
         if message_type == "text":
             return self._send_text_message(text=message, chat_name=chat_name, max_nodes=max_nodes, reply_to_message=reply_to_message)
 

@@ -121,7 +121,6 @@ class WindowsGroupDebugInfo(GroupDebugInfo):
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     SUPPORTS_VOICE = True
-    SUPPORTS_REPLY = True
     STANDALONE_AUTOMATION_PREFIX: ClassVar[str] = "ChatSingleWindow"
     _SEEN_RUNTIME_IDS_LIMIT = 256
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -793,7 +792,6 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             return False
 
     def clear_input(self, window):
-        self.clear_reply(window)
         target = self._focus_send_target(window)
         target.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
         return target
@@ -873,7 +871,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             if clicked:
                 self.clear_reply(window, key)
 
-    def send_text_to_window(self, window, text: str, *, reply_to_message: str | None = None) -> bool:
+    def send_text_to_window(self, window, text: str) -> bool:
         """向指定窗口发送文本消息
 
         Args:
@@ -884,7 +882,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         self._ensure_uia()
-        with self._send_lock, contextlib.ExitStack() as cleanup:
+        with self._send_lock:
             logger.debug(f"[send_text_to_window] 向窗口 {window.Name} 发送: {text[:20]}...")
 
             # 激活窗口
@@ -892,8 +890,6 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 return False
             try:
                 target = self.clear_input(window)
-                if cleanup.enter_context(self.reply_context(window, reply_to_message)):
-                    target = self._focus_send_target(window)
 
                 # 开头 @ 名字逐个走「@ → 等新 popover → 粘名字 → Enter → 等 popover 关闭」
                 # popover 未弹/异常则清空，fallback 整条原文按字面发出

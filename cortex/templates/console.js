@@ -222,7 +222,7 @@ export function Console({ active }) {
             else if (operation === 'send') {
                 if (!current.name) throw new Error('请先选择聊天');
                 path = '/api/console/send-message';
-                body = { ...messagePayload(message, capabilities), chat_name: current.name };
+                body = { ...messagePayload(message, { ...capabilities, reply: !unsupported }), chat_name: current.name };
             } else return;
             const data = await api('POST', path, { body, timeout: 180000 });
             if (!data?.available) throw new Error(data?.message || '控制台操作失败');
@@ -452,7 +452,7 @@ export function Console({ active }) {
                 }),
             h(MessageList, {
                 id: 'consoleMessages',
-                onReply: capabilities.reply && (!busy || polling) && !unsupported ? (reply_to_message) => {
+                onReply: (!busy || polling) && !unsupported ? (reply_to_message) => {
                     setMessage((value) => ({ ...emptyMessage(), message: value.message_type === 'text' ? value.message : '', reply_to_message }));
                     requestAnimationFrame(() => document.getElementById('console-composer-text')?.focus());
                 } : null,

@@ -270,9 +270,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         title = root.findtext(".//title")
         return title.strip() if title else ""
 
-    def send_text_to_window(self, window: LinuxWeChatWindow, text: str, *, reply_to_message: str | None = None) -> bool:
-        if reply_to_message:
-            return False
+    def send_text_to_window(self, window: LinuxWeChatWindow, text: str) -> bool:
         with self._send_lock:
             clipboard_owner: subprocess.Popen | bool | None = None
             if not self._activate_window(window):

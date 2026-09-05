@@ -19,7 +19,6 @@ class BaseWeChatAdapter(ABC):
     """微信操作适配器基类"""
 
     SUPPORTS_VOICE = False
-    SUPPORTS_REPLY = False
 
     @abstractmethod
     def select_new_messages(
@@ -43,7 +42,7 @@ class BaseWeChatAdapter(ABC):
         pass
 
     @abstractmethod
-    def send_text_to_window(self, window: Any, text: str, *, reply_to_message: str | None = None) -> bool:
+    def send_text_to_window(self, window: Any, text: str) -> bool:
         """向指定窗口发送文本"""
         pass
 

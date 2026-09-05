@@ -130,7 +130,7 @@ class MessageSender:
                     )
                     preview = f"[语音] {task.filename}"
                 else:
-                    send_ok = self.adapter.send_text_to_window(window, task.message, reply_to_message=task.reply_to_message)
+                    send_ok = self.adapter.send_text_to_window(window, task.message)
                     preview = f"{task.message[:50]}..."
 
                 if send_ok:

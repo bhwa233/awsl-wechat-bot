@@ -50,31 +50,14 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
         await page.locator('[data-username="room0@chatroom"]').click();
         await page.waitForFunction(() => document.querySelector('#sendWindowSelect').value === '开发群');
     });
-    await check('右键引用、取消、发送与切换会话清理', async () => {
+    await check('独立窗口不提供引用且普通发送正常', async () => {
         const original = page.locator('#messages').getByText('开发群最新消息', { exact: true });
         await original.click({ button: 'right' });
-        await page.getByRole('menuitem', { name: '引用', exact: true }).click();
-        await page.locator('#chat-composer .composer-reply').waitFor();
-        assert.equal(await page.locator('#chat-composer .composer-reply span').innerText(), '开发群最新消息');
-        await page.screenshot({ path: path.join(artifacts, 'chat-reply.png'), animations: 'disabled' });
-        await page.getByRole('button', { name: '取消引用', exact: true }).click();
-        assert.equal(await page.locator('#chat-composer .composer-reply').count(), 0);
-        await original.click({ button: 'right' });
-        await page.getByRole('menuitem', { name: '引用', exact: true }).waitFor();
-        await page.keyboard.press('Escape');
-        await page.getByRole('menu').waitFor({ state: 'detached' });
-        await original.click({ button: 'right' });
-        await page.getByRole('menuitem', { name: '引用', exact: true }).click();
-        await page.locator('#chat-composer-text').fill('明确引用回复');
+        assert.equal(await page.getByRole('menuitem', { name: '引用', exact: true }).count(), 0);
+        await page.locator('#chat-composer-text').fill('普通回复');
         await page.locator('#chat-composer-send').click();
         await page.waitForFunction(() => document.querySelector('#chat-composer-text').value === '');
-        assert.equal(calls.filter((c) => c.endpoint === '/api/send').at(-1).body.reply_to_message, '开发群最新消息');
-        assert.equal(await page.locator('#chat-composer .composer-reply').count(), 0);
-        await original.click({ button: 'right' });
-        await page.getByRole('menuitem', { name: '引用', exact: true }).click();
-        await page.locator('[data-username="room1@chatroom"]').click();
-        assert.equal(await page.locator('#chat-composer .composer-reply').count(), 0);
-        await page.locator('[data-username="room0@chatroom"]').click();
+        assert.equal(calls.filter((c) => c.endpoint === '/api/send').at(-1).body.reply_to_message, undefined);
     });
     await check('聊天分页、搜索与切换会话', async () => {
         await nav('chat');
