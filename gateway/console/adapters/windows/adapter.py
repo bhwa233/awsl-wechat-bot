@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from contextlib import ExitStack
 from typing import Any
 
 from gateway.adapters.windows import WindowsWeChatAdapter
@@ -311,14 +312,20 @@ class WindowsConsoleAdapter(
                 return selection_state
             time.sleep(0.05)
 
-    def _send_text_message(self, *, text: str, max_nodes: int = 5000) -> dict[str, Any]:
+    def _send_text_message(
+        self, *, text: str, chat_name: str, max_nodes: int = 5000, reply_to_message: str | None = None,
+    ) -> dict[str, Any]:
         auto = self._ensure_uia()
-        with self._ui_operation_lock():
-            window = self._find_main_window(auto)
-            if window is None:
-                return self._action_error("未找到微信主窗口")
+        window = self._find_main_window(auto)
+        if window is None:
+            return self._action_error("未找到微信主窗口")
+        with self._ui_operation_lock(), ExitStack() as cleanup:
             if not self._activate_window_locked(window):
                 return self._action_error("激活微信主窗口失败", window=window)
+            current, chat_names = self._current_chat_context(window)
+            if not self._chat_names_match(chat_name, current, chat_names):
+                return self._chat_name_error(chat_name, current, window)
+            self._wechat_adapter.clear_reply(window)
 
             target = self._focus_input(window)
             if target is None:
@@ -326,6 +333,10 @@ class WindowsConsoleAdapter(
 
             try:
                 target.SendKeys("{CTRL}a{DELETE}", waitTime=0.2)
+                if cleanup.enter_context(self._wechat_adapter.reply_context(window, reply_to_message)):
+                    target = self._focus_input(window)
+                    if target is None:
+                        return self._action_error("引用后未找到输入框", window=window)
 
                 at_names, remaining = self._parse_at_prefix(text)
                 at_ok = True
@@ -370,6 +381,7 @@ class WindowsConsoleAdapter(
         filename: str = "",
         chat_name: str,
         max_nodes: int = 5000,
+        reply_to_message: str | None = None,
     ) -> dict[str, Any]:
         if not self._console_lock.acquire(blocking=False):
             return self._action_error("Console 正在执行其他操作")
@@ -380,7 +392,10 @@ class WindowsConsoleAdapter(
                 filename=filename,
                 chat_name=chat_name,
                 max_nodes=max_nodes,
+                reply_to_message=reply_to_message,
             )
+        except Exception as e:
+            return self._action_error(f"发送消息失败: {e}")
         finally:
             self._console_lock.release()
 
@@ -392,6 +407,7 @@ class WindowsConsoleAdapter(
         filename: str,
         chat_name: str,
         max_nodes: int,
+        reply_to_message: str | None = None,
     ) -> dict[str, Any]:
         if message_type == "voice":
             if not self._send_voice_to_window or not self._synthesize_voice:
@@ -414,7 +430,7 @@ class WindowsConsoleAdapter(
                 return self._chat_name_error(chat_name, current_chat_name, window)
 
         if message_type == "text":
-            return self._send_text_message(text=message, max_nodes=max_nodes)
+            return self._send_text_message(text=message, chat_name=chat_name, max_nodes=max_nodes, reply_to_message=reply_to_message)
 
         if message_type == "image":
             if not self._send_image_to_window:

@@ -17,6 +17,7 @@ logging.getLogger("comtypes").setLevel(logging.WARNING)
 import uiautomation as auto  # noqa: E402
 
 from common.config import config  # noqa: E402
+from common.models import ReceivedMessage  # noqa: E402
 from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow  # noqa: E402
 from gateway.metrics import metrics  # noqa: E402
 from gateway.models import GroupDebugInfo  # noqa: E402
@@ -96,7 +97,7 @@ class _SentMessageStore:
 
 @dataclass(frozen=True, slots=True)
 class _MessageRecord:
-    message: str | None
+    message: ReceivedMessage | None
     runtime_id: tuple[int, ...] | None
     fingerprint: str
 
@@ -120,6 +121,7 @@ class WindowsGroupDebugInfo(GroupDebugInfo):
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     SUPPORTS_VOICE = True
+    SUPPORTS_REPLY = True
     STANDALONE_AUTOMATION_PREFIX: ClassVar[str] = "ChatSingleWindow"
     _SEEN_RUNTIME_IDS_LIMIT = 256
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -175,10 +177,10 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
     def select_new_messages(
         self,
         window,
-        messages: list[str],
+        messages: list[ReceivedMessage],
         *,
         initialize: bool = False,
-    ) -> list[str]:
+    ) -> list[ReceivedMessage]:
         key = self._message_state_key(window)
         with self._message_state_lock:
             state = self._message_states.setdefault(key, _MessageState())
@@ -202,9 +204,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
         new_messages = []
         for message in candidates:
-            if self._is_self_sent_message(key, message):
+            if self._is_self_sent_message(key, message.content):
                 metrics.increment("detected_messages_total", group=window.Name, result="self_filtered")
-                logger.debug(f"[{window.Name}] 跳过自己发送的消息: {message[:30]}...")
+                logger.debug(f"[{window.Name}] 跳过自己发送的消息: {message.content[:30]}...")
                 continue
             new_messages.append(message)
         return new_messages
@@ -390,6 +392,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         self._set_clipboard_data(win32clipboard.CF_HDROP, dropfiles)
 
     def _find_chat_input_control(self, window):
+        target = window.EditControl(searchDepth=25, AutomationId='chat_input_field')
+        if target.Exists(0):
+            return target
         edit_controls = []
         for control, _depth in auto.WalkControl(window, maxDepth=6):
             if control.ControlTypeName != 'EditControl':
@@ -659,7 +664,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             logger.debug(f"激活窗口时出现警告: {e}")
             return False
 
-    def get_messages_from_window(self, window) -> list[str]:
+    def get_messages_from_window(self, window) -> list[ReceivedMessage]:
         """从指定窗口获取消息
 
         Args:
@@ -697,7 +702,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 content = text_control.Name if text_control.Exists(0) else item.Name
                 class_name = item.ClassName
                 records.append(_MessageRecord(
-                    message=self._triggerable_message(content or "", class_name or ""),
+                    message=(ReceivedMessage(content=content) if self._triggerable_message(content or "", class_name or "") else None),
                     runtime_id=self._message_runtime_id(item),
                     fingerprint=self._message_fingerprint(content or "", class_name or ""),
                 ))
@@ -711,7 +716,164 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             logger.error(f"提取消息时出错: {e}")
             return []
 
-    def send_text_to_window(self, window, text: str) -> bool:
+    @staticmethod
+    def _find_reply_message(items, reply_to_message: str):
+        if not reply_to_message.strip():
+            return None
+        candidates = []
+        for item in reversed(items):
+            if item.ClassName not in {"mmui::ChatTextItemView", "mmui::ChatBubbleReferItemView"}:
+                continue
+            raw = item.Name
+            bodies = [raw]
+            match = _QUOTE_RE.search(raw)
+            if (match and match.start() > 0 and raw[match.start() - 1] == "\n"
+                    and match.group(1).strip() and match.group(2).strip()):
+                bodies.append(raw[:match.start()].strip())
+            candidates.append((item, bodies))
+        for item, bodies in candidates:
+            if reply_to_message in bodies:
+                return item
+        normalized = _normalize_message(reply_to_message)
+        return next((item for item, bodies in candidates
+                     if any(_normalize_message(body) == normalized for body in bodies)), None)
+
+    @staticmethod
+    def _reply_preview(window):
+        preview = window.GroupControl(searchDepth=25, ClassName="mmui::ComposeReferView")
+        return preview if preview.Exists(0) and not preview.IsOffscreen else None
+
+    @staticmethod
+    def _reply_menus(window):
+        return [c for c in window.GetChildren() if c.ClassName == "mmui::XMenu" and not c.IsOffscreen]
+
+    @staticmethod
+    def _wait_for_reply(predicate):
+        deadline = time.monotonic() + 1.5
+        while True:
+            result = predicate()
+            if result:
+                return result
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(0.05)
+
+    @staticmethod
+    def _reply_state_key(window) -> tuple[int, str]:
+        target = window.EditControl(AutomationId="chat_input_field")
+        if not target.Exists(0) or not target.Name:
+            raise RuntimeError("无法确认引用所属聊天")
+        return window.NativeWindowHandle, target.Name
+
+    def clear_reply(self, window, key: tuple[int, str] | None = None) -> bool:
+        try:
+            if key is not None:
+                if self._reply_state_key(window) != key:
+                    return False
+                self._wait_for_reply(lambda: self._reply_preview(window) is None)
+                if self._reply_state_key(window) != key:
+                    return False
+            preview = self._reply_preview(window)
+            if preview is None:
+                return True
+            key = key or self._reply_state_key(window)
+            button = preview.ButtonControl(searchDepth=2, Name="删除引用消息")
+            if not button.Exists(0) or not button.IsEnabled or button.IsOffscreen:
+                raise RuntimeError("无法确认取消引用按钮")
+            if not self.activate_specific_window(window):
+                raise RuntimeError("无法激活窗口清理引用")
+            if self._reply_state_key(window) != key:
+                return False
+            button.Click(waitTime=0.05)
+            if not self._wait_for_reply(lambda: self._reply_preview(window) is None):
+                raise RuntimeError("引用预览未消失")
+            return self._reply_state_key(window) == key
+        except Exception as e:
+            logger.warning("清理引用失败: %s", e)
+            return False
+
+    def clear_input(self, window):
+        self.clear_reply(window)
+        target = self._focus_send_target(window)
+        target.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
+        return target
+
+    @contextlib.contextmanager
+    def reply_context(self, window, reply_to_message: str | None):
+        if not reply_to_message:
+            yield False
+            return
+        if self._reply_preview(window) is not None:
+            raise RuntimeError("输入框已有引用草稿,停止发送")
+        message_list = window.ListControl(AutomationId="chat_message_list")
+        if not message_list.Exists(0):
+            raise RuntimeError("无法读取消息列表,停止发送")
+        item = self._find_reply_message(message_list.GetChildren(), reply_to_message)
+        if item is None or item.IsOffscreen:
+            yield False
+            return
+        if self._reply_menus(window):
+            raise RuntimeError("微信已有打开的菜单,停止引用操作")
+        key = self._reply_state_key(window)
+
+        import ctypes
+
+        handle = window.NativeWindowHandle
+        scale = ctypes.windll.user32.GetDpiForWindow(handle) / 96
+        if scale <= 0:
+            raise RuntimeError("无法读取窗口缩放比例")
+        rect, viewport = item.BoundingRectangle, message_list.BoundingRectangle
+        original_id, original_text = item.GetRuntimeId(), item.Name
+        # UIA 暴露整行矩形;按 DPI 换算气泡两侧的位置,以消息菜单确认是否命中。
+        xs = (round(rect.right - 90 * scale), round(rect.left + 90 * scale))
+        ys = dict.fromkeys((round(rect.top + 28 * scale), round(rect.bottom - 28 * scale)))
+        clicked = False
+        try:
+            for y in ys:
+                for x in xs:
+                    if not (max(rect.left, viewport.left) < x < min(rect.right, viewport.right)
+                            and max(rect.top, viewport.top) < y < min(rect.bottom, viewport.bottom)):
+                        continue
+                    current_rect = item.BoundingRectangle
+                    if (item.GetRuntimeId() != original_id or item.Name != original_text
+                            or (current_rect.left, current_rect.top, current_rect.right, current_rect.bottom)
+                            != (rect.left, rect.top, rect.right, rect.bottom)):
+                        raise RuntimeError("待引用消息已变化,停止发送")
+                    if ctypes.windll.user32.GetForegroundWindow() != handle:
+                        raise RuntimeError("目标窗口失去焦点,停止引用")
+                    auto.RightClick(x, y, waitTime=0.05)
+                    menus = self._wait_for_reply(lambda: self._reply_menus(window))
+                    if not menus:
+                        continue
+                    if len(menus) != 1:
+                        raise RuntimeError("未找到唯一消息菜单,停止发送")
+                    options = [c for c in menus[0].GetChildren()
+                               if c.ControlTypeName == "MenuItemControl" and c.Name == "引用" and c.IsEnabled]
+                    if not options:
+                        menus[0].SendKeys("{ESC}", waitTime=0.05)
+                        continue
+                    if (len(options) != 1 or item.GetRuntimeId() != original_id or item.Name != original_text
+                            or self._reply_state_key(window) != key):
+                        raise RuntimeError("待引用消息或菜单已变化,停止发送")
+                    clicked = True
+                    options[0].Click(waitTime=0.05)
+                    if not self._wait_for_reply(lambda: self._reply_preview(window)):
+                        raise RuntimeError("未确认引用预览出现,停止发送")
+                    if self._reply_state_key(window) != key:
+                        raise RuntimeError("引用时聊天已切换,停止发送")
+                    yield True
+                    return
+            raise RuntimeError("无法打开原消息的引用菜单,停止发送")
+        finally:
+            try:
+                for menu in self._reply_menus(window):
+                    menu.SendKeys("{ESC}", waitTime=0.05)
+            except Exception as e:
+                logger.warning("关闭引用菜单失败: %s", e)
+            if clicked:
+                self.clear_reply(window, key)
+
+    def send_text_to_window(self, window, text: str, *, reply_to_message: str | None = None) -> bool:
         """向指定窗口发送文本消息
 
         Args:
@@ -722,17 +884,16 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             bool: 是否发送成功
         """
         self._ensure_uia()
-        with self._send_lock:
+        with self._send_lock, contextlib.ExitStack() as cleanup:
             logger.debug(f"[send_text_to_window] 向窗口 {window.Name} 发送: {text[:20]}...")
 
             # 激活窗口
             if not self.activate_specific_window(window):
                 return False
-            target = self._focus_send_target(window)
-
             try:
-                # 清空可能存在的草稿
-                target.SendKeys('{CTRL}a{DELETE}', waitTime=0.2)
+                target = self.clear_input(window)
+                if cleanup.enter_context(self.reply_context(window, reply_to_message)):
+                    target = self._focus_send_target(window)
 
                 # 开头 @ 名字逐个走「@ → 等新 popover → 粘名字 → Enter → 等 popover 关闭」
                 # popover 未弹/异常则清空，fallback 整条原文按字面发出
@@ -826,6 +987,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
             temp_path = None
             try:
+                self.clear_input(window)
                 image_data = base64.b64decode(image_base64)
 
                 suffix = '.png'
@@ -872,11 +1034,10 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
             if not self.activate_specific_window(window):
                 return False
-            target = self._focus_send_target(window)
-
             temp_path = None
             temp_dir = None
             try:
+                target = self.clear_input(window)
                 file_data = base64.b64decode(file_base64)
                 temp_path, temp_dir = self._write_temp_file(file_data, filename=filename, default_name="attachment.bin")
                 self._paste_file_to_window(window, temp_path)
@@ -924,7 +1085,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         try:
             if not self.activate_specific_window(window):
                 raise RuntimeError("激活目标微信窗口失败")
-            self._focus_send_target(window)
+            self.clear_input(window)
             finish_delay = max(
                 self._VOICE_RECORDING_FINISH_DELAY,
                 self._VOICE_MIN_RECORDING_DURATION - self._VOICE_RECORDING_START_DELAY - duration,

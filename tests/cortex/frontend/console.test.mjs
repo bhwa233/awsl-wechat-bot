@@ -32,6 +32,18 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
         await page.waitForFunction(() => document.querySelector('#console-composer-text').value === '');
         assert.equal(calls.filter((c) => c.endpoint === '/api/console/send-message').at(-1).body.chat_name, '产品群');
     });
+    await check('控制台右键引用与发送参数', async () => {
+        await page.waitForFunction(() => !document.querySelector('#console-composer-text').disabled);
+        await page.locator('#consoleMessages').getByText('产品群独有消息', { exact: true }).click({ button: 'right' });
+        await page.getByRole('menuitem', { name: '引用', exact: true }).click();
+        await page.locator('#console-composer .composer-reply').waitFor();
+        await page.locator('#console-composer-text').fill('控制台引用回复');
+        await page.screenshot({ path: `${artifacts}/console-reply.png`, animations: 'disabled' });
+        await page.locator('#console-composer-send').click();
+        await page.waitForFunction(() => document.querySelector('#console-composer-text').value === '');
+        assert.equal(calls.filter((c) => c.endpoint === '/api/console/send-message').at(-1).body.reply_to_message, '产品群独有消息');
+        assert.equal(await page.locator('#console-composer .composer-reply').count(), 0);
+    });
     await check('置顶显示图标和提示，预览只显示消息', async () => {
         const pinned = page.locator('#consoleChatList [data-name="开发群"]');
         assert.equal(await pinned.locator('.console-preview').innerText(), '最新消息');
@@ -78,6 +90,10 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
             const before = calls.filter((c) => c.endpoint === '/api/console/send-message').length;
             await page.keyboard.press('Enter');
             assert.equal(calls.filter((c) => c.endpoint === '/api/console/send-message').length, before);
+            await page.locator('#consoleMessages').getByText('产品群独有消息', { exact: true }).click({ button: 'right' });
+            await page.getByRole('menuitem', { name: '引用', exact: true }).click();
+            assert.equal(await page.locator('#console-composer .composer-reply span').innerText(), '产品群独有消息');
+            await input.focus();
             release();
             await page.waitForFunction(() => !document.querySelector('#console-composer-send').disabled);
             assert.equal(await input.evaluate((el) => document.activeElement === el), true);
@@ -88,6 +104,7 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
             const sends = calls.filter((c) => c.endpoint === '/api/console/send-message');
             assert.equal(sends.length, before + 1);
             assert.equal(sends.at(-1).body.message, '轮询前继续输入轮询后');
+            assert.equal(sends.at(-1).body.reply_to_message, '产品群独有消息');
         } finally {
             release();
             await page.unroute('**/api/console/state', readState);

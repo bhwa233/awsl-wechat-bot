@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any
 
+from common.models import ReceivedMessage
 from gateway.models import GroupDebugInfo
 
 
@@ -18,15 +19,16 @@ class BaseWeChatAdapter(ABC):
     """微信操作适配器基类"""
 
     SUPPORTS_VOICE = False
+    SUPPORTS_REPLY = False
 
     @abstractmethod
     def select_new_messages(
         self,
         window: Any,
-        messages: list[str],
+        messages: list[ReceivedMessage],
         *,
         initialize: bool = False,
-    ) -> list[str]:
+    ) -> list[ReceivedMessage]:
         """在平台内部去重并返回本轮可触发消息"""
         pass
 
@@ -36,12 +38,12 @@ class BaseWeChatAdapter(ABC):
         pass
 
     @abstractmethod
-    def get_messages_from_window(self, window: Any) -> list[str]:
+    def get_messages_from_window(self, window: Any) -> list[ReceivedMessage]:
         """从指定窗口获取消息列表"""
         pass
 
     @abstractmethod
-    def send_text_to_window(self, window: Any, text: str) -> bool:
+    def send_text_to_window(self, window: Any, text: str, *, reply_to_message: str | None = None) -> bool:
         """向指定窗口发送文本"""
         pass
 

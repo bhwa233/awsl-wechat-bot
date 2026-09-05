@@ -20,14 +20,22 @@ from pathlib import Path
 from typing import ClassVar
 
 import httpx
+from pydantic import ValidationError
 
 from common.config import config
+from common.models import ReceivedMessage
 from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
 
 logger = logging.getLogger(__name__)
 
 _MAIN_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
 _WECHAT_CLASS = "wechat.wechat"
+
+
+class _ChatlogMessage(ReceivedMessage):
+    time: str
+    msg_type: int
+    is_self: bool
 
 
 @dataclass
@@ -83,10 +91,10 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
     def select_new_messages(
         self,
         window: LinuxWeChatWindow,
-        messages: list[str],
+        messages: list[ReceivedMessage],
         *,
         initialize: bool = False,
-    ) -> list[str]:
+    ) -> list[ReceivedMessage]:
         return [] if initialize else messages
 
     def _ensure_tools(self) -> None:
@@ -175,7 +183,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
 
         return windows
 
-    def get_messages_from_window(self, window: LinuxWeChatWindow) -> list[str]:
+    def get_messages_from_window(self, window: LinuxWeChatWindow) -> list[ReceivedMessage]:
         talker = self._resolve_talker(window)
         if not talker:
             raise RuntimeError(f"[{window.title}] 未匹配 chatlog talker")
@@ -196,26 +204,29 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         try:
             response = self._chatlog.get("/api/chatlog/messages", params=params)
             response.raise_for_status()
-            messages = list(reversed(response.json()))
-        except httpx.HTTPError as exc:
+            messages = [_ChatlogMessage.model_validate(message) for message in reversed(response.json())]
+        except (httpx.HTTPError, ValidationError) as exc:
             raise RuntimeError(f"[{window.title}] Linux chatlog 消息读取失败: {exc}") from exc
 
-        new_texts: list[str] = []
+        new_texts: list[ReceivedMessage] = []
         new_last_time = last_time
         for message in messages:
-            msg_time = message.get("time", "")
+            msg_time = message.time
             # strict-greater 过滤同秒边界 (chatlog start 是 >=)
             if last_time and msg_time <= last_time:
                 continue
             # 跳过自己发的消息. 不推进 new_last_time, 防止把同秒别人的消息一并丢掉
             # (chatlog start 是 >= 边界 + 下面 strict-greater 过滤是 <=, 同秒边界
             # 必须等下一轮通过原 last_time 把别人的消息也带出来).
-            if message.get("is_self"):
+            if message.is_self:
                 continue
             text = self._message_text(message)
             if not text:
                 continue
-            new_texts.append(text)
+            new_texts.append(ReceivedMessage(
+                content=text, sender=message.sender, sender_name=message.sender_name,
+                at_users=message.at_users,
+            ))
             if msg_time > new_last_time:
                 new_last_time = msg_time
 
@@ -243,12 +254,11 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             self._window_title_to_talker[window.title] = window.talker
         return window.talker
 
-    def _message_text(self, message: dict) -> str:
-        content = message.get("content") or ""
-        if message.get("msg_type") == 1:
-            return content
-        if message.get("msg_type") == 49:
-            return self._appmsg_title(content)
+    def _message_text(self, message: _ChatlogMessage) -> str:
+        if message.msg_type == 1:
+            return message.content
+        if message.msg_type == 49:
+            return self._appmsg_title(message.content)
         return ""
 
     @staticmethod
@@ -260,7 +270,9 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         title = root.findtext(".//title")
         return title.strip() if title else ""
 
-    def send_text_to_window(self, window: LinuxWeChatWindow, text: str) -> bool:
+    def send_text_to_window(self, window: LinuxWeChatWindow, text: str, *, reply_to_message: str | None = None) -> bool:
+        if reply_to_message:
+            return False
         with self._send_lock:
             clipboard_owner: subprocess.Popen | bool | None = None
             if not self._activate_window(window):

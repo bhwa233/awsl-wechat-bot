@@ -23,6 +23,7 @@ class BaseConsoleAdapter(ABC):
         filename: str,
         chat_name: str,
         max_nodes: int = 5000,
+        reply_to_message: str | None = None,
     ) -> dict[str, Any]: ...
 
     @abstractmethod

@@ -23,7 +23,11 @@ export function messagePayload(value, capabilities) {
     const size = Math.floor((message.length * 3) / 4) - (message.endsWith('==') ? 2 : message.endsWith('=') ? 1 : 0);
     if (limit && !['text', 'voice'].includes(type) && size > limit)
         throw new Error(`文件不能超过 ${formatFileSize(limit)}`);
-    return { message_type: type, message, filename: ['file', 'voice_file'].includes(type) ? value.filename : '' };
+    if (value.reply_to_message && (type !== 'text' || !capabilities.reply)) throw new Error('当前发送方式不支持引用');
+    return {
+        message_type: type, message, filename: ['file', 'voice_file'].includes(type) ? value.filename : '',
+        ...(value.reply_to_message ? { reply_to_message: value.reply_to_message } : {}),
+    };
 }
 
 export function MessageComposer({
@@ -146,6 +150,14 @@ export function MessageComposer({
     return h(
         'div',
         { class: `message-composer ${onSend ? 'chat-compose' : ''} ${busy ? 'sending' : ''}`, ref: root, id },
+        value.reply_to_message && h(
+            'div', { class: 'composer-reply', role: 'status', 'aria-label': '引用预览' },
+            h('div', null, h('strong', null, '引用'), h('span', null, value.reply_to_message)),
+            h(Button, {
+                class: 'btn-xs', 'aria-label': '取消引用', disabled: busy || disabled,
+                onClick: () => onChange({ ...value, reply_to_message: undefined }),
+            }, '×')
+        ),
         h(
             'div',
             { class: 'compose-row' },

@@ -1212,3 +1212,11 @@ button:disabled { cursor: not-allowed; }
     .section-head { flex-wrap: wrap; }
     .section-head-actions { flex-wrap: wrap; }
 }
+
+.message-context-menu { position: fixed; z-index: 1100; min-width: 124px; padding: 4px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--panel); box-shadow: 0 4px 20px #0002; }
+.message-context-menu button { display: block; width: 100%; border: 0; border-radius: 4px; padding: 8px 12px; color: var(--text); background: transparent; text-align: left; cursor: pointer; font: inherit; }
+.message-context-menu button:hover, .message-context-menu button:focus-visible { outline: none; background: var(--accent-soft); }
+.composer-reply { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; padding: 8px 12px; border-left: 3px solid var(--border-strong); border-radius: 4px; background: var(--panel-2); color: var(--text-2); font-size: 12px; }
+.composer-reply > div { flex: 1; min-width: 0; }
+.composer-reply strong { display: block; margin-bottom: 3px; color: var(--text); font-weight: 500; }
+.composer-reply span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }

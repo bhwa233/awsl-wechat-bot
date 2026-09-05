@@ -81,18 +81,18 @@ class MessageDetector:
         if config.DEBUG:
             logger.debug(
                 f"[{self.group_name}] 消息列表({len(messages)}条): "
-                f"{[m[:20]+'...' if len(m) > 20 else m for m in messages]}"
+                f"{[m.content[:20] for m in messages]}"
             )
 
         new_messages = self.adapter.select_new_messages(self.window, messages)
         for i, msg in enumerate(new_messages):
             if config.DEBUG:
-                logger.debug(f"[{self.group_name}] 新消息[{i}]: {msg[:30]}...")
+                logger.debug(f"[{self.group_name}] 新消息[{i}]: {msg.content[:30]}...")
 
             try:
                 self.gateway_queue.put_nowait(GatewayMessage(
                     group_name=self.group_name,
-                    content=msg,
+                    **msg.model_dump(),
                     timestamp=time.time(),
                 ))
                 metrics.increment("detected_messages_total", group=self.group_name, result="queued")

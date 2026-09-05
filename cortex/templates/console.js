@@ -119,6 +119,7 @@ export function Console({ active }) {
     const busy = !!phase || !!confirming;
     const polling = phase === 'poll' && !confirming;
     function choose(next) {
+        if (next.name !== selectedRef.current.name) setMessage((value) => ({ ...value, reply_to_message: undefined }));
         selectedRef.current = next;
         setSelected(next);
     }
@@ -233,7 +234,7 @@ export function Console({ active }) {
             }
             if (data.chat_list) applyList(data.chat_list);
             if (operation === 'send') {
-                setMessage((value) => ({ ...value, message: '', filename: '' }));
+                setMessage((value) => ({ ...value, message: '', filename: '', reply_to_message: undefined }));
                 clearTimeout(sendTimer.current);
                 sendTimer.current = setTimeout(messages.reload, 1000);
             }
@@ -451,6 +452,10 @@ export function Console({ active }) {
                 }),
             h(MessageList, {
                 id: 'consoleMessages',
+                onReply: capabilities.reply && (!busy || polling) && !unsupported ? (reply_to_message) => {
+                    setMessage((value) => ({ ...emptyMessage(), message: value.message_type === 'text' ? value.message : '', reply_to_message }));
+                    requestAnimationFrame(() => document.getElementById('console-composer-text')?.focus());
+                } : null,
                 resource: messages,
                 group: group?.username || '',
                 caps: chatlog.data?.health.media,

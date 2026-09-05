@@ -468,9 +468,39 @@ function ImageDialog({ src, hd, onClose }) {
     );
 }
 
-export function MessageList({ resource, group, page = 0, caps = {}, id = 'messages' }) {
+export function replyText(message) {
+    if (Number(message.msg_type) === 1) return message.content || '';
+    if (Number(message.msg_type) !== 49) return '';
+    const xml = new DOMParser().parseFromString(message.content || '', 'text/xml');
+    if (xml.querySelector('parsererror')) return '';
+    const app = xml.documentElement.tagName === 'appmsg' ? xml.documentElement : xml.documentElement.querySelector(':scope > appmsg');
+    if (app?.querySelector(':scope > type')?.textContent !== '57') return '';
+    return app.querySelector(':scope > title')?.textContent || '';
+}
+
+export function MessageList({ resource, group, page = 0, caps = {}, id = 'messages', onReply }) {
     const { emoji } = useApp();
     const [overlay, setOverlay] = useState(null);
+    const [menu, setMenu] = useState(null);
+    const menuRef = useRef(null);
+    useLayoutEffect(() => {
+        if (!menu) return;
+        menuRef.current?.querySelector('button')?.focus();
+        const dismiss = (event) => {
+            if (event.type === 'keydown' && event.key !== 'Escape') return;
+            if (event.type === 'pointerdown' && menuRef.current?.contains(event.target)) return;
+            setMenu(null);
+        };
+        document.addEventListener('pointerdown', dismiss);
+        document.addEventListener('keydown', dismiss);
+        window.addEventListener('resize', dismiss);
+        return () => {
+            document.removeEventListener('pointerdown', dismiss);
+            document.removeEventListener('keydown', dismiss);
+            window.removeEventListener('resize', dismiss);
+        };
+    }, [menu]);
+    useEffect(() => { if (!onReply) setMenu(null); }, [onReply]);
     const ref = useRef(null);
     const following = useRef(true);
     const identity = useRef('');
@@ -489,6 +519,7 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
             following.current = true;
             identity.current = nextIdentity;
             setOverlay(null);
+            setMenu(null);
         }
         scrollBottom();
     }, [messages, nextIdentity]);
@@ -544,7 +575,16 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
                     ? body
                     : h(
                           'div',
-                          { class: `msg-bubble ${m.is_self ? 'self' : 'other'}` },
+                          {
+                              class: `msg-bubble ${m.is_self ? 'self' : 'other'}`,
+                              onContextMenu: (event) => {
+                                  if (!onReply) return;
+                                  const content = replyText(m);
+                                  if (!content.trim()) return;
+                                  event.preventDefault();
+                                  setMenu({ content, x: Math.min(event.clientX, window.innerWidth - 132), y: Math.min(event.clientY, window.innerHeight - 52) });
+                              },
+                          },
                           !m.is_self && h('div', { class: 'msg-sender' }, name),
                           body,
                           h('div', { class: 'msg-time' }, formatTime(m.time))
@@ -563,6 +603,7 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
                 id,
                 ref,
                 onScroll: (e) => {
+                    setMenu(null);
                     const el = e.currentTarget;
                     if (!el.clientHeight) return;
                     following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
@@ -572,6 +613,12 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
                 ? children
                 : !resource.loading && h(Empty, { icon: '☷' }, group ? '暂无消息' : '选择一个会话，查看聊天记录')
         ),
+        menu && onReply && h('div', {
+            class: 'message-context-menu', role: 'menu', 'aria-label': '消息操作', ref: menuRef,
+            style: { left: Math.max(8, menu.x), top: Math.max(8, menu.y) },
+        }, h('button', {
+            type: 'button', role: 'menuitem', onClick: () => { onReply(menu.content); setMenu(null); },
+        }, '引用')),
         overlay?.type === 'member' &&
             h(MemberDialog, { ...overlay, members, contacts, onClose: () => setOverlay(null) }),
         overlay?.type === 'record' && h(RecordDialog, { ...overlay, onClose: () => setOverlay(null) }),

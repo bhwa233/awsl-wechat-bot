@@ -30,7 +30,7 @@ def main():
         msgs = adapter.get_messages_from_window(win)
         print(f"获取到 {len(msgs)} 条消息")
         for m in msgs[-5:]:
-            print(f"  {m[:80]}")
+            print(f"  {m.content[:80]}")
 
     # 发送测试(可选,传 --send 参数)
     if "--send" in sys.argv:

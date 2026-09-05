@@ -376,11 +376,29 @@ scrape_configs:
 {"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}
 {"type": "unsubscribe"}
 {"type": "send_message", "group_name": "群名", "message_type": "text", "message": "hello"}
+{"type": "send_message", "group_name": "群名", "message_type": "text", "message": "收到", "reply_to_message": "要引用的原消息正文"}
 {"type": "send_message", "group_name": "群名", "message_type": "image", "message": "<base64>"}
 {"type": "send_message", "group_name": "群名", "message_type": "file", "message": "<base64>", "filename": "voice.mp3"}
 {"type": "send_message", "group_name": "群名", "message_type": "voice", "message": "你好，这是一条语音消息"}
 {"type": "send_message", "group_name": "群名", "message_type": "voice_file", "message": "<mp3-base64>", "filename": "voice.mp3"}
 ```
+
+`reply_to_message` 用于指定本次要回复的原始消息正文，为可选字段，目前仅支持 Windows 文本回复，主窗口 Console 的 `/api/console/send-message` 同样支持。
+不提供或只包含空白时普通发送；提供时先在当前加载的消息中从下往上精确匹配，再尝试统一空白后的匹配，每轮取最近的一条。
+找不到则普通发送，不滚动历史，也不使用前缀、包含或相似度匹配。Windows Adapter 的文本、图片、文件和语音发送共用清空输入框步骤：先尝试取消已有引用，再清空正文。Console 保留独立的文本发送流程，在自己的清空正文步骤前取消引用；非文本消息沿用现有 Adapter 委托。清理引用异常只记录日志，普通发送继续，下次请求重新检查，不保存跨请求失败状态。引用准备失败会停止本次发送；本次点过“引用”后，无论发送操作是否报错，结束时都尝试清理仍存在的引用预览，结束清理失败只记录日志。按窗口和聊天名称核对，不区分同名聊天；不自动重发，清理不代表确认送达。
+Gateway `/api/send` 成功及 WS `send_ok` 只表示已入队。Console `/api/console/send-message` 同步执行发送；接口结果均不能替代实际聊天记录中的引用核验。Windows 主窗口与独立窗口共用 Adapter 内的右键引用操作。
+
+Cortex 的聊天记录页和控制台页支持右键文本消息（含引用回复）选择“引用”。输入区可取消引用，切换会话、发送目标或消息类型时清除引用；发送失败保留草稿。仅 Gateway 报告 `capabilities.reply=true` 时启用。
+
+广播新增以下字段，沿用 Chatlog 已有的数据：
+
+| 字段 | 类型 | 含义 |
+|------|------|------|
+| `sender` | string | 发送人的 WX ID，无法取得时为空字符串 |
+| `sender_name` | string | 发送人名称，沿用 Chatlog 的名称选择规则，无法取得时为空字符串 |
+| `at_users` | string[] | 被 @ 的 WX ID 列表，未取得时为空列表 |
+
+Linux Adapter 直接传递这三个字段。Windows UIA 和 macOS OCR 未取得的信息使用上述空值，不猜测身份。Chatlog 接口、原有消息正文及检测规则保持原样。
 
 **Server → Client：**
 ```json

@@ -10,6 +10,7 @@ import time
 import Quartz
 
 from common.config import config
+from common.models import ReceivedMessage
 from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
 from gateway.utils.ocr import get_others_messages, screenshot_and_ocr
 
@@ -43,17 +44,17 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         logger.info(f"检测到微信进程: {self.process_name}")
 
     @staticmethod
-    def _message_hash(messages: list[str], index: int, group_name: str) -> str:
-        context = "|".join(messages[max(0, index - 2):index + 1])
+    def _message_hash(messages: list[ReceivedMessage], index: int, group_name: str) -> str:
+        context = "|".join(m.content for m in messages[max(0, index - 2):index + 1])
         return hashlib.sha256(f"{group_name}:{context}".encode()).hexdigest()[:16]
 
     def select_new_messages(
         self,
         window: MacOSWindow,
-        messages: list[str],
+        messages: list[ReceivedMessage],
         *,
         initialize: bool = False,
-    ) -> list[str]:
+    ) -> list[ReceivedMessage]:
         with self._message_hash_lock:
             seen = self._message_hashes.setdefault(window.title, {})
             if initialize:
@@ -217,13 +218,15 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
         logger.debug(f"扫描到 {len(windows)} 个聊天窗口")
         return windows
 
-    def get_messages_from_window(self, window: MacOSWindow) -> list[str]:
+    def get_messages_from_window(self, window: MacOSWindow) -> list[ReceivedMessage]:
         """从指定窗口获取消息(Quartz 截图 + OCR,无需激活窗口)"""
         ocr_results = screenshot_and_ocr(window.window_id)
-        return get_others_messages(ocr_results)
+        return [ReceivedMessage(content=text) for text in get_others_messages(ocr_results)]
 
-    def send_text_to_window(self, window: MacOSWindow, text: str) -> bool:
+    def send_text_to_window(self, window: MacOSWindow, text: str, *, reply_to_message: str | None = None) -> bool:
         """向指定窗口发送文本"""
+        if reply_to_message:
+            return False
         with self._send_lock:
             return self._send_text(window, text)
 

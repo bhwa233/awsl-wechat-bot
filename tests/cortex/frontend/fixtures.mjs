@@ -128,7 +128,7 @@ export async function mockApi(page, base) {
                 server_time: '2026-09-05T12:00:00+08:00',
             };
         else if (endpoint === '/api/gateway/health')
-            result = { capabilities: { voice: true, max_binary_file_bytes: 1024 * 1024 } };
+            result = { capabilities: { voice: true, reply: true, max_binary_file_bytes: 1024 * 1024 } };
         else if (endpoint === '/api/groups')
             result = [
                 { name: '开发群', active: true },
