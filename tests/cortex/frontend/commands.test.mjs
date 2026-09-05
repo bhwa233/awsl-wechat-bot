@@ -4,6 +4,8 @@ export async function run({ page, nav, check, state, data }) {
     await check('自定义命令筛选和图片附件', async () => {
         await nav('custom-commands');
         await page.locator('#customCommandsList .res-item').first().waitFor();
+        assert.equal(await page.locator('#customCommandsList .res-icon').count(), 0);
+        assert.deepEqual(await page.locator('#customCommandsList .res-name').allTextContents(), ['menu', 'dev']);
         await page.locator('#customCommandGroupFilter').selectOption('__global__');
         assert.equal(await page.locator('#customCommandsList .res-item').count(), 1);
         await page.getByRole('button', { name: '新建命令', exact: true }).click();

@@ -30,7 +30,7 @@ export function Empty({ children, icon = '◇' }) {
     return h(
         'div',
         { class: 'chat-empty' },
-        h('div', { class: 'chat-empty-icon', 'aria-hidden': true }, icon),
+        icon ? h('div', { class: 'chat-empty-icon', 'aria-hidden': true }, icon) : null,
         h('p', null, children)
     );
 }

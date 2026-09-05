@@ -179,7 +179,6 @@ export function CustomCommands({ active }) {
                     item,
                     crud,
                     title: item.key,
-                    icon: '/',
                     meta: [
                         item.description,
                         item.action_type || item.message_type,
@@ -196,7 +195,7 @@ export function CustomCommands({ active }) {
         !crud.loading &&
             !crud.error &&
             !shown.length &&
-            h(Empty, { icon: '/' }, items.length ? '这个群暂无适用命令' : '还没有自定义命令'),
+            h(Empty, { icon: null }, items.length ? '这个群暂无适用命令' : '还没有自定义命令'),
         crud.draft && h(CommandForm, { key: crud.draft._key, crud }),
         h(DeleteDialog, { crud, title: '自定义命令' })
     );

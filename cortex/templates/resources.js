@@ -97,7 +97,7 @@ export function ResourceItem({ item, title, icon, meta, preview, crud, test, kin
     return h(
         'div',
         { class: 'res-item', [`data-${kind}-id`]: item.id },
-        h('div', { class: 'res-icon', 'aria-hidden': true }, icon),
+        icon ? h('div', { class: 'res-icon', 'aria-hidden': true }, icon) : null,
         h(
             'div',
             { class: 'res-body' },
