@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-export async function run({ page, nav, check, state, data, calls }) {
+export async function run({ page, nav, check, state, data, calls, artifacts }) {
     await check('控制台切换、窗口管理和消息发送', async () => {
         await nav('console');
         await page.locator('#consoleChatList .console-row').first().waitFor();
@@ -31,6 +31,18 @@ export async function run({ page, nav, check, state, data, calls }) {
         await page.locator('#console-composer-send').click();
         await page.waitForFunction(() => document.querySelector('#console-composer-text').value === '');
         assert.equal(calls.filter((c) => c.endpoint === '/api/console/send-message').at(-1).body.chat_name, '产品群');
+    });
+    await check('置顶显示图标和提示，预览只显示消息', async () => {
+        const pinned = page.locator('#consoleChatList [data-name="开发群"]');
+        assert.equal(await pinned.locator('.console-preview').innerText(), '最新消息');
+        assert.equal(await pinned.locator('.console-chat-name').innerText(), '开发群');
+        const icon = pinned.getByRole('img', { name: '已置顶', exact: true });
+        assert.equal(await icon.getAttribute('title'), '已置顶');
+        assert.equal(await icon.locator('svg path').count(), 1);
+        assert.equal(await page.locator('#consoleChatList [data-name="产品群"] .console-pin').count(), 0);
+        await page
+            .locator('#consoleChatList')
+            .screenshot({ path: `${artifacts}/console-pins.png`, animations: 'disabled' });
     });
     await check('后台轮询不变灰、保持输入焦点与内容，发送仍串行', async () => {
         await page.waitForFunction(() => !document.querySelector('#console-composer-text').disabled);

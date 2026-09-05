@@ -353,6 +353,21 @@ export function Console({ active }) {
                                     'span',
                                     { class: 'console-name' },
                                     h('span', { class: 'console-chat-name' }, item.name),
+                                    item.pinned === true &&
+                                        h(
+                                            'span',
+                                            {
+                                                class: 'console-pin',
+                                                title: '已置顶',
+                                                role: 'img',
+                                                'aria-label': '已置顶',
+                                            },
+                                            h(
+                                                'svg',
+                                                { viewBox: '0 0 24 24', 'aria-hidden': true },
+                                                h('path', { d: 'M16 9V3H8v6l-3 3v2h14v-2l-3-3ZM12 14v7' })
+                                            )
+                                        ),
                                     Number(item.unread) > 0 && h('span', { class: 'console-badge' }, item.unread)
                                 ),
                                 h('span', { class: 'console-time' }, item.time)

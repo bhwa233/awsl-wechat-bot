@@ -3,9 +3,11 @@
 按服务模块组织：`tests/cortex/`、`tests/gateway/`、`tests/chatlog/`、`tests/daemon/`。仅在对应服务有测试时创建目录。
 
 当前 `cortex/` 包含任务接口、Web UI 静态资源和前端浏览器回归；所有数据使用临时数据库或模拟 API，不操作真实微信。
+`gateway/` 包含控制台列表解析测试，可在非 Windows 环境运行，不加载 UIAutomation。
 
 ```sh
 uv run python -m unittest discover -s tests/cortex -p "test_*.py"
+uv run python -m unittest discover -s tests/gateway -p "test_*.py"
 
 npm install --prefix /tmp/awsl-preact-qa playwright
 PLAYWRIGHT_MODULE=/tmp/awsl-preact-qa/node_modules/playwright/index.mjs node tests/cortex/frontend/run.mjs
