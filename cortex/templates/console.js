@@ -107,11 +107,17 @@ export function Console({ active }) {
     const readController = useRef(null);
     const sendTimer = useRef(null);
     const groups = chatlog.data?.groups || [];
-    const findGroup = (name) =>
-        groups.find((g) => [g.username, g.display_name, g.remark, g.nick_name].filter(Boolean).includes(name));
+    const findGroup = (name) => {
+        const target = String(name || '').trim();
+        if (!target) return null;
+        return groups.find((g) =>
+            [g.username, g.display_name, g.remark, g.nick_name].some((value) => String(value || '').trim() === target)
+        );
+    };
     const group = findGroup(selected.name);
     const messages = useMessages(group?.username || '', 0, active && !unsupported);
     const busy = !!phase || !!confirming;
+    const polling = phase === 'poll' && !confirming;
     function choose(next) {
         selectedRef.current = next;
         setSelected(next);
@@ -143,7 +149,7 @@ export function Console({ active }) {
         }
     }
     async function refresh(quiet = false) {
-        if (lock.current || confirming || unsupported || !active) return;
+        if (lock.current || confirming || unsupported || !active || (quiet && manager)) return;
         lock.current = true;
         setPhase(quiet ? 'poll' : 'refresh');
         const controller = new AbortController();
@@ -283,19 +289,26 @@ export function Console({ active }) {
                     h(
                         Button,
                         {
-                            class: 'btn-sm',
+                            class: 'btn-sm console-window-manager-trigger',
                             disabled: busy || unsupported || !windowStatus,
+                            quietDisabled: polling && !unsupported && !!windowStatus,
                             onClick: () => setManager(true),
                             'aria-label': '独立窗口管理',
                             title: '独立窗口管理',
                         },
-                        '▣'
+                        h(
+                            'svg',
+                            { viewBox: '0 0 20 20', 'aria-hidden': true },
+                            h('path', { d: 'M3.5 12.5V4.75A1.75 1.75 0 0 1 5.25 3h7.25' }),
+                            h('rect', { x: 6, y: 6, width: 10.5, height: 9.5, rx: 1.75 })
+                        )
                     ),
                     h(
                         Button,
                         {
                             class: 'btn-sm',
                             disabled: busy || unsupported,
+                            quietDisabled: polling && !unsupported,
                             onClick: () => operate('up'),
                             'aria-label': '向上滚动聊天列表',
                         },
@@ -306,6 +319,7 @@ export function Console({ active }) {
                         {
                             class: 'btn-sm',
                             disabled: busy || unsupported,
+                            quietDisabled: polling && !unsupported,
                             onClick: () => operate('down'),
                             'aria-label': '向下滚动聊天列表',
                         },
@@ -325,6 +339,7 @@ export function Console({ active }) {
                             class: `console-row ${item.name === selected.name ? 'active' : ''}`,
                             'data-name': item.name,
                             disabled: busy || unsupported,
+                            'data-quiet-disabled': polling && !unsupported,
                             onClick: () => operate('select', item),
                         },
                         h('span', { class: 'console-avatar' }, initial(item.name)),
@@ -337,8 +352,8 @@ export function Console({ active }) {
                                 h(
                                     'span',
                                     { class: 'console-name' },
-                                    item.name,
-                                    item.unread && h('span', { class: 'console-badge' }, item.unread)
+                                    h('span', { class: 'console-chat-name' }, item.name),
+                                    Number(item.unread) > 0 && h('span', { class: 'console-badge' }, item.unread)
                                 ),
                                 h('span', { class: 'console-time' }, item.time)
                             ),
@@ -376,6 +391,13 @@ export function Console({ active }) {
                             variant: 'green',
                             disabled:
                                 busy || unsupported || !windowStatus || windowStatus.open || !group || !selected.path,
+                            quietDisabled:
+                                polling &&
+                                !unsupported &&
+                                !!windowStatus &&
+                                !windowStatus.open &&
+                                !!group &&
+                                !!selected.path,
                             onClick: () => setConfirming('open'),
                         },
                         '打开独立窗口'
@@ -385,6 +407,7 @@ export function Console({ active }) {
                         {
                             class: 'btn-sm console-window-chat-action',
                             disabled: busy || unsupported || !windowStatus?.open || !group,
+                            quietDisabled: polling && !unsupported && !!windowStatus?.open && !!group,
                             onClick: () => setConfirming('close'),
                         },
                         '关闭独立窗口'
@@ -395,6 +418,7 @@ export function Console({ active }) {
                             class: 'btn-sm',
                             busy: phase === 'refresh',
                             disabled: busy || unsupported,
+                            quietDisabled: polling && !unsupported,
                             onClick: () => refresh(),
                         },
                         '刷新'
@@ -424,6 +448,7 @@ export function Console({ active }) {
                 busy: phase === 'send',
                 disabled: (busy && phase !== 'poll') || unsupported || !selected.name,
                 sendDisabled: busy,
+                quietSendDisabled: polling,
                 active,
             })
         ),

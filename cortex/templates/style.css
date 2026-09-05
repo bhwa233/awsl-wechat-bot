@@ -683,6 +683,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 .console-row:last-child::after { display: none; }
 .console-row:hover { background: var(--glass); }
 .console-row:disabled { cursor: wait; opacity: 0.58; }
+.btn:disabled[data-quiet-disabled="true"], .console-row:disabled[data-quiet-disabled="true"] { opacity: 1; cursor: pointer; }
 .console-row.active { background: var(--accent-soft); }
 .console-row.active .console-name { color: var(--accent-strong); font-weight: 600; }
 .console-avatar { width: 34px; height: 34px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--glass-strong); color: var(--text-2); font-size: 14px; font-weight: 500; }

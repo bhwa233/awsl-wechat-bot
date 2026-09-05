@@ -81,8 +81,9 @@ export async function mockApi(page, base) {
     };
     const chatItems = [
         { name: '开发群', path: '0/1', preview: '最新消息', unread: 2 },
-        { name: '产品群', path: '0/2', preview: '产品计划', time: '12:00' },
+        { name: '产品群', path: '0/2', preview: '产品计划', time: '12:00', unread: 0 },
     ];
+    state.chatItems = chatItems;
     const consoleState = () => ({
         available: true,
         chat_list: { items: chatItems },

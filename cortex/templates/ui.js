@@ -4,13 +4,22 @@ export { h, useContext, useEffect, useLayoutEffect, useRef, useState, useMemo, u
 export const AppContext = createContext(null);
 export const useApp = () => useContext(AppContext);
 
-export function Button({ children, variant = 'ghost', busy = false, disabled, class: className = '', ...props }) {
+export function Button({
+    children,
+    variant = 'ghost',
+    busy = false,
+    disabled,
+    quietDisabled = false,
+    class: className = '',
+    ...props
+}) {
     return h(
         'button',
         {
             type: 'button',
             ...props,
             disabled: disabled || busy,
+            'data-quiet-disabled': quietDisabled && !busy,
             class: `btn btn-${variant} ${busy ? 'loading' : ''} ${className}`,
             'aria-busy': busy,
         },
