@@ -70,6 +70,7 @@ class ScheduledTaskUpdate(SQLModel):
 class ScheduledTaskApiCreate(BaseModel):
     name: str
     cron_expression: str
+    enabled: bool = True
     task_type: TaskType = TaskType.SEND
     message: str | None = ""
     message_type: MessageType = MessageType.TEXT

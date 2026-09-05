@@ -51,6 +51,7 @@ def create_routes(task_service):
         data = ScheduledTaskCreate(
             name=payload.name,
             cron_expression=payload.cron_expression,
+            enabled=payload.enabled,
             task_type=payload.task_type,
             message=payload.message or "",
             message_type=payload.message_type,

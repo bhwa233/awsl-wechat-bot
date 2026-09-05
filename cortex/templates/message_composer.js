@@ -1,138 +1,95 @@
-const messageComposerRegistry = [];
+import { h, useEffect, useLayoutEffect, useRef, useState, useApp, Button, Select } from './ui.js';
+import { formatFileSize } from './api.js';
 
-function formatComposerFileSize(bytes) {
-    if (!bytes || bytes < 0) return '';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    let idx = 0;
-    let value = bytes;
-    while (value >= 1024 && idx < units.length - 1) {
-        value /= 1024;
-        idx++;
-    }
-    return (idx === 0 ? value : value.toFixed(1)) + ' ' + units[idx];
+export const emptyMessage = () => ({ message_type: 'text', message: '', filename: '' });
+export const messageTypes = [
+    ['text', '文本'],
+    ['voice', '语音'],
+    ['voice_file', '语音文件'],
+    ['image', '图片'],
+    ['file', '文件'],
+    ['summary', '总结'],
+];
+
+export function messagePayload(value, capabilities) {
+    if (value.reading) throw new Error('附件仍在读取，请稍候');
+    const type = value.message_type;
+    if (type === 'summary') return { message_type: type, message: '', filename: '' };
+    if (['voice', 'voice_file'].includes(type) && !capabilities.voice) throw new Error('当前平台不支持语音发送');
+    const message = ['text', 'voice'].includes(type) ? value.message.trim() : value.message;
+    if (!message) throw new Error(['text', 'voice'].includes(type) ? '请输入消息内容' : '请选择附件');
+    if (['file', 'voice_file'].includes(type) && !value.filename) throw new Error('附件缺少文件名，请重新选择');
+    const limit = capabilities.max_binary_file_bytes || 0;
+    const size = Math.floor((message.length * 3) / 4) - (message.endsWith('==') ? 2 : message.endsWith('=') ? 1 : 0);
+    if (limit && !['text', 'voice'].includes(type) && size > limit)
+        throw new Error(`文件不能超过 ${formatFileSize(limit)}`);
+    return { message_type: type, message, filename: ['file', 'voice_file'].includes(type) ? value.filename : '' };
 }
 
-function getComposerBase64Size(value) {
-    if (!value) return 0;
-    const base64 = String(value).split(',').pop().replace(/\s/g, '');
-    if (!base64) return 0;
-    const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
-    return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
-}
+export function MessageComposer({
+    value,
+    onChange,
+    summary = false,
+    onSend,
+    busy = false,
+    disabled = false,
+    sendDisabled = false,
+    active = true,
+    children,
+    id = 'composer',
+}) {
+    const { capabilities, toast } = useApp();
+    const [dragging, setDragging] = useState(false);
+    const [reading, setReading] = useState(false);
+    const [dimensions, setDimensions] = useState('');
+    const reader = useRef(null);
+    const root = useRef(null);
+    const generation = useRef(0);
+    const type = value.message_type;
+    const attachment = ['image', 'file', 'voice_file'].includes(type);
+    const size =
+        Math.floor((value.message.length * 3) / 4) -
+        (value.message.endsWith('==') ? 2 : value.message.endsWith('=') ? 1 : 0);
+    const preview = type === 'image' && value.message ? `data:image/png;base64,${value.message}` : '';
+    const choices = messageTypes.filter(
+        ([key]) => (summary || key !== 'summary') && (capabilities.voice || !['voice', 'voice_file'].includes(key))
+    );
+    if (!choices.some(([key]) => key === type))
+        choices.push([type, `${messageTypes.find(([key]) => key === type)?.[1] || type}（不可用）`]);
 
-function formatComposerAttachmentInfo(label, bytes, dimensions = '') {
-    const parts = [label || '已选择文件'];
-    const size = formatComposerFileSize(bytes);
-    if (size) parts.push(size);
-    if (dimensions) parts.push(dimensions);
-    return parts.join(' · ');
-}
-
-class MessageComposer {
-    constructor(cfg) {
-        this.cfg = cfg;
-        this.state = { message: '', filename: '' };
-        this.infoToken = 0;
-        this.typeEl = $(cfg.typeId);
-        this.typeControlEl = null;
-        this.textEl = cfg.textInputId ? $(cfg.textInputId) : null;
-        this.fileEl = cfg.fileInputId ? $(cfg.fileInputId) : null;
-        this.dropzoneEl = cfg.dropzoneId ? $(cfg.dropzoneId) : null;
-        this.previewEl = cfg.previewId ? $(cfg.previewId) : null;
-        this.infoEl = cfg.infoId ? $(cfg.infoId) : null;
-        this._enhanceTypeControl();
-        this._bind();
-        this.syncType({ resetUpload: false });
-        messageComposerRegistry.push(this);
-    }
-
-    getType() {
-        return this.typeEl?.value || 'text';
-    }
-
-    isVisible() {
-        if (this.cfg.isActive && !this.cfg.isActive()) return false;
-        const root = this.typeEl?.closest('.panel, .form-panel, .chat-input') || this.typeEl;
-        if (!root) return false;
-        return root.offsetParent !== null;
-    }
-
-    syncType(opts = {}) {
-        const type = this.getType();
-        const isText = type === 'text' || type === 'voice';
-        const isAttachment = type === 'image' || type === 'file' || type === 'voice_file';
-        this._setDisplay(this.cfg.textGroupId, isText);
-        this._setDisplay(this.cfg.attachmentGroupId, isAttachment);
-        this._setDisplay(this.cfg.summaryGroupId, type === 'summary');
-        if (this.fileEl) {
-            this.fileEl.accept = type === 'image' ? 'image/*' : type === 'voice_file' ? 'audio/mpeg,.mp3' : '';
+    useEffect(
+        () => () => {
+            generation.current++;
+            reader.current?.abort();
+        },
+        []
+    );
+    useLayoutEffect(() => {
+        generation.current++;
+        reader.current?.abort();
+        setReading(false);
+        setDimensions('');
+    }, [type]);
+    useEffect(() => {
+        let live = true;
+        setDimensions('');
+        if (preview) {
+            const image = new Image();
+            image.onload = () => {
+                if (live) setDimensions(`${image.naturalWidth}×${image.naturalHeight}`);
+            };
+            image.src = preview;
         }
-        if (this.dropzoneEl) {
-            this.dropzoneEl.dataset.type = type;
-        }
-        if (opts.resetUpload !== false && isAttachment) {
-            this.resetUpload();
-        }
-        if (this.infoEl && !this.state.message) {
-            this.infoEl.textContent = type === 'voice_file'
-                ? '选择 MP3 文件，最长 60 秒'
-                : (this.cfg.emptyLabel || '点击选择 / 拖拽 / Ctrl+V 粘贴');
-        }
-        this._syncTypeControl();
-        if (this.cfg.onTypeChange) this.cfg.onTypeChange(type);
-    }
+        return () => {
+            live = false;
+        };
+    }, [preview]);
 
-    resetUpload() {
-        this.infoToken++;
-        this.state = { message: '', filename: '' };
-        if (this.fileEl) this.fileEl.value = '';
-        if (this.dropzoneEl) this.dropzoneEl.classList.remove('has-file', 'dragover');
-        if (this.previewEl) {
-            this.previewEl.hidden = true;
-            this.previewEl.removeAttribute('src');
-        }
-        if (this.infoEl) {
-            this.infoEl.textContent = this.getType() === 'voice_file'
-                ? '选择 MP3 文件，最长 60 秒'
-                : (this.cfg.emptyLabel || '点击选择 / 拖拽 / Ctrl+V 粘贴');
-        }
-    }
-
-    reset() {
-        this.resetUpload();
-        if (this.textEl) this.textEl.value = '';
-        if (this.typeEl) this.typeEl.value = this.cfg.defaultType || 'text';
-        this.syncType({ resetUpload: false });
-    }
-
-    setAttachment(message, filename = '', previewSrc = '') {
-        const token = ++this.infoToken;
-        this.state = { message: message || '', filename: filename || '' };
-        if (this.dropzoneEl) this.dropzoneEl.classList.toggle('has-file', !!message);
-        if (this.previewEl) {
-            if (previewSrc) {
-                this.previewEl.src = previewSrc;
-                this.previewEl.hidden = false;
-            } else {
-                this.previewEl.hidden = true;
-                this.previewEl.removeAttribute('src');
-            }
-        }
-        if (this.infoEl) {
-            const bytes = getComposerBase64Size(message);
-            const label = filename || (previewSrc ? '图片' : '已选择文件');
-            this.infoEl.textContent = formatComposerAttachmentInfo(label, bytes);
-            if (previewSrc) this._updateImageInfo(previewSrc, label, bytes, token);
-        }
-    }
-
-    loadFile(file) {
-        if (!file) return;
-        const type = this.getType();
-        const maxBytes = gatewayCapabilities.maxBinaryFileBytes;
-        if (maxBytes > 0 && file.size > maxBytes) {
-            toast(`文件不能超过 ${formatComposerFileSize(maxBytes)}`, 'error');
-            this.resetUpload();
+    function loadFile(file) {
+        if (!file || busy || disabled || !attachment) return;
+        const max = capabilities.max_binary_file_bytes;
+        if (max && file.size > max) {
+            toast(`文件不能超过 ${formatFileSize(max)}`, 'error');
             return;
         }
         if (type === 'image' && !file.type.startsWith('image/')) {
@@ -143,182 +100,178 @@ class MessageComposer {
             toast('语音文件仅支持 MP3', 'error');
             return;
         }
-        const reader = new FileReader();
-        reader.onload = e => {
-            const dataUrl = e.target.result;
-            this.state.message = String(dataUrl).split(',')[1] || '';
-            this.state.filename = file.name;
-            if (this.dropzoneEl) this.dropzoneEl.classList.add('has-file');
-            if (this.previewEl) {
-                if (file.type.startsWith('image/')) {
-                    this.previewEl.src = dataUrl;
-                    this.previewEl.hidden = false;
-                } else {
-                    this.previewEl.hidden = true;
-                    this.previewEl.removeAttribute('src');
-                }
-            }
-            if (this.infoEl) {
-                this.infoEl.textContent = formatComposerAttachmentInfo(file.name, file.size);
-                if (file.type.startsWith('image/')) this._updateImageInfo(dataUrl, file.name, file.size, ++this.infoToken);
-            }
-        };
-        reader.readAsDataURL(file);
-    }
-
-    getText() {
-        return this.textEl ? this.textEl.value.trim() : '';
-    }
-
-    getPayload(messages = {}) {
-        const type = this.getType();
-        if (type === 'summary') {
-            return { message_type: 'summary', message: '', filename: '' };
-        }
-        if (type === 'voice') {
-            if (!gatewayCapabilities.voice) {
-                toast('当前平台不支持语音发送', 'error');
-                return null;
-            }
-            const message = this.getText();
-            if (!message) {
-                if (messages.text) toast(messages.text, 'error');
-                return null;
-            }
-            return { message_type: 'voice', message, filename: '' };
-        }
-        if (type === 'voice_file') {
-            if (!gatewayCapabilities.voice) {
-                toast('当前平台不支持语音发送', 'error');
-                return null;
-            }
-            if (!this.state.message) {
-                toast(messages.attachment || '请选择 MP3 文件', 'error');
-                return null;
-            }
-            return { message_type: 'voice_file', message: this.state.message, filename: this.state.filename };
-        }
-        if (type === 'text') {
-            const message = this.getText();
-            if (!message) {
-                if (messages.text) toast(messages.text, 'error');
-                return null;
-            }
-            return { message_type: 'text', message, filename: '' };
-        }
-        if (!this.state.message) {
-            toast(messages.attachment || '请选择内容', 'error');
-            return null;
-        }
-        return {
-            message_type: type,
-            message: this.state.message,
-            filename: type === 'file' ? this.state.filename : '',
-        };
-    }
-
-    _bind() {
-        if (this.typeEl) {
-            this.typeEl.addEventListener('change', () => this.syncType());
-        }
-        if (this.fileEl) {
-            this.fileEl.addEventListener('change', event => this.loadFile(event.target.files[0]));
-        }
-        if (!this.dropzoneEl) return;
-        this.dropzoneEl.addEventListener('dragover', event => {
-            event.preventDefault();
-            this.dropzoneEl.classList.add('dragover');
-        });
-        this.dropzoneEl.addEventListener('dragleave', () => this.dropzoneEl.classList.remove('dragover'));
-        this.dropzoneEl.addEventListener('drop', event => {
-            event.preventDefault();
-            this.dropzoneEl.classList.remove('dragover');
-            this.loadFile(event.dataTransfer.files[0]);
-        });
-    }
-
-    _setDisplay(id, show) {
-        if (!id) return;
-        const el = $(id);
-        if (el) el.style.display = show ? '' : 'none';
-    }
-
-    _enhanceTypeControl() {
-        if (!this.typeEl || this.typeEl.dataset.enhanced === 'true') return;
-        const options = Array.from(this.typeEl.options).filter(option => option.value);
-        if (!options.length) return;
-
-        const iconMap = { text: 'Aa', voice: 'TTS', voice_file: 'MP3', image: 'Img', file: 'File', summary: 'Sum' };
-        const control = document.createElement('div');
-        control.className = 'composer-type-control';
-        control.setAttribute('role', 'group');
-        control.setAttribute('aria-label', '消息类型');
-
-        for (const option of options) {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'composer-type-option';
-            button.dataset.value = option.value;
-            button.innerHTML = `<span class="composer-type-icon">${iconMap[option.value] || option.textContent.slice(0, 2)}</span><span>${option.textContent}</span>`;
-            button.addEventListener('click', () => {
-                if (this.typeEl.value === option.value) return;
-                this.typeEl.value = option.value;
-                this.typeEl.dispatchEvent(new Event('change', { bubbles: true }));
+        reader.current?.abort();
+        const token = ++generation.current;
+        const next = new FileReader();
+        reader.current = next;
+        setReading(true);
+        onChange({ ...value, reading: true });
+        next.onload = () => {
+            if (generation.current !== token) return;
+            onChange({
+                ...value,
+                reading: false,
+                message: String(next.result).split(',')[1] || '',
+                filename: file.name,
             });
-            control.appendChild(button);
-        }
-
-        this.typeEl.classList.add('composer-type-source');
-        this.typeEl.dataset.enhanced = 'true';
-        this.typeEl.insertAdjacentElement('afterend', control);
-        this.typeControlEl = control;
-    }
-
-    _syncTypeControl() {
-        if (!this.typeControlEl) return;
-        const type = this.getType();
-        this.typeControlEl.querySelectorAll('.composer-type-option').forEach(button => {
-            const active = button.dataset.value === type;
-            button.classList.toggle('active', active);
-            button.setAttribute('aria-pressed', active ? 'true' : 'false');
-        });
-    }
-
-    _updateImageInfo(src, label, bytes, token) {
-        if (!this.infoEl) return;
-        const img = new Image();
-        img.onload = () => {
-            if (this.infoToken !== token) return;
-            const dimensions = img.naturalWidth && img.naturalHeight ? `${img.naturalWidth}×${img.naturalHeight}` : '';
-            this.infoEl.textContent = formatComposerAttachmentInfo(label, bytes, dimensions);
+            setReading(false);
         };
-        img.src = src;
+        next.onerror = () => {
+            if (generation.current === token) {
+                setReading(false);
+                onChange({ ...value, reading: false });
+                toast('读取附件失败，请重试', 'error');
+            }
+        };
+        next.readAsDataURL(file);
     }
+    useEffect(() => {
+        if (!active || !attachment || disabled || busy) return;
+        const paste = (event) => {
+            if (!root.current?.getClientRects().length) return;
+            const modal = [...document.querySelectorAll('.modal-overlay')].find((el) => el.getClientRects().length);
+            if (modal && !root.current.closest('.modal-overlay')) return;
+            const file = [...(event.clipboardData?.files || [])].find(
+                (f) => type !== 'image' || f.type.startsWith('image/')
+            );
+            if (!file) return;
+            event.preventDefault();
+            loadFile(file);
+        };
+        document.addEventListener('paste', paste);
+        return () => document.removeEventListener('paste', paste);
+    }, [active, type, busy, disabled, value, capabilities]);
+
+    return h(
+        'div',
+        { class: `message-composer ${onSend ? 'chat-compose' : ''} ${busy ? 'sending' : ''}`, ref: root, id },
+        h(
+            'div',
+            { class: 'compose-row' },
+            children,
+            h(Select, {
+                class: 'composer-type-select',
+                'aria-label': '消息类型',
+                value: type,
+                options: choices,
+                disabled: busy || reading || disabled,
+                onValue: (message_type) => onChange({ message_type, message: '', filename: '' }),
+            }),
+            h(
+                'div',
+                { class: 'composer-type-control', role: 'group', 'aria-label': '消息类型' },
+                choices.map(([key, label]) =>
+                    h(
+                        'button',
+                        {
+                            type: 'button',
+                            key,
+                            disabled: busy || reading || disabled,
+                            class: `composer-type-option ${type === key ? 'active' : ''}`,
+                            'aria-pressed': type === key,
+                            'data-value': key,
+                            onClick: () => {
+                                if (type !== key) onChange({ message_type: key, message: '', filename: '' });
+                            },
+                        },
+                        label
+                    )
+                )
+            )
+        ),
+        h(
+            'div',
+            { class: 'compose-row compose-row-main' },
+            ['text', 'voice'].includes(type) &&
+                h(
+                    'div',
+                    { class: 'chat-input-body' },
+                    h('textarea', {
+                        id: `${id}-text`,
+                        'aria-label': '消息内容',
+                        value: value.message,
+                        rows: onSend ? 2 : 4,
+                        disabled: busy || disabled,
+                        placeholder: type === 'voice' ? '输入要合成语音的文字…' : '输入消息…',
+                        onInput: (e) => onChange({ ...value, message: e.currentTarget.value }),
+                        onKeyDown: (e) => {
+                            if (onSend && e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
+                                e.preventDefault();
+                                if (!busy && !disabled && !sendDisabled && value.message.trim()) onSend();
+                            }
+                        },
+                    })
+                ),
+            attachment &&
+                h(
+                    'label',
+                    {
+                        class: `file-dropzone ${dragging ? 'dragover' : ''} ${value.message ? 'has-file' : ''}`,
+                        onDragOver: (e) => {
+                            e.preventDefault();
+                            setDragging(true);
+                        },
+                        onDragLeave: () => setDragging(false),
+                        onDrop: (e) => {
+                            e.preventDefault();
+                            setDragging(false);
+                            loadFile(e.dataTransfer.files[0]);
+                        },
+                    },
+                    h('input', {
+                        type: 'file',
+                        hidden: true,
+                        disabled: busy || disabled,
+                        id: `${id}-file`,
+                        accept: type === 'image' ? 'image/*' : type === 'voice_file' ? 'audio/mpeg,.mp3' : '',
+                        onChange: (e) => {
+                            loadFile(e.currentTarget.files[0]);
+                            e.currentTarget.value = '';
+                        },
+                    }),
+                    preview && h('img', { src: preview, alt: '附件预览' }),
+                    h(
+                        'span',
+                        null,
+                        reading
+                            ? '正在读取附件…'
+                            : value.message
+                              ? [value.filename || '图片', formatFileSize(size), dimensions].filter(Boolean).join(' · ')
+                              : type === 'voice_file'
+                                ? '选择 MP3 文件，最长 60 秒'
+                                : '点击选择 / 拖拽 / 粘贴附件'
+                    )
+                ),
+            onSend &&
+                h(
+                    Button,
+                    {
+                        variant: 'green',
+                        busy: busy || reading,
+                        disabled: disabled || sendDisabled || (type !== 'summary' && !value.message.trim()),
+                        onClick: onSend,
+                        id: `${id}-send`,
+                    },
+                    type === 'summary' ? '生成总结' : '发送'
+                )
+        ),
+        onSend && h('div', { class: 'compose-hint' }, 'Enter 发送 · Shift + Enter 换行')
+    );
 }
 
-document.addEventListener('paste', event => {
-    const composer = messageComposerRegistry.find(item => {
-        const type = item.getType();
-        return item.isVisible() && (type === 'image' || type === 'file');
-    });
-    if (!composer) return;
-    const items = event.clipboardData?.items;
-    if (!items) return;
-    const type = composer.getType();
-    for (const item of items) {
-        if (item.kind !== 'file') continue;
-        if (type === 'image' && !item.type.startsWith('image/')) continue;
-        const file = item.getAsFile();
-        if (!file) continue;
-        event.preventDefault();
-        if (type === 'image') {
-            const ext = item.type.split('/')[1] || 'png';
-            composer.loadFile(new File([file], `pasted-${Date.now()}.${ext}`, { type: item.type }));
-            toast('已粘贴图片', 'success');
-            return;
-        }
-        composer.loadFile(file);
-        toast('已粘贴文件', 'success');
-        return;
-    }
-});
+export function MessagePreview({ type, message, filename }) {
+    if (type === 'image' && message)
+        return h('img', {
+            class: 'res-preview-img',
+            src: `data:image/png;base64,${message}`,
+            loading: 'lazy',
+            alt: '图片预览',
+        });
+    const text =
+        type === 'summary'
+            ? '📊 群聊总结'
+            : ['file', 'voice_file'].includes(type)
+              ? `📎 ${filename || '附件'}`
+              : message;
+    return h('span', { class: 'preview-text' }, text || '—');
+}

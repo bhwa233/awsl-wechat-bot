@@ -1,421 +1,355 @@
-// ============================================================================
-// custom_commands.js — 远程命令策略 + 自定义命令（两个独立 section）
-// ============================================================================
+import {
+    h,
+    useRef,
+    useState,
+    useResource,
+    useApp,
+    Button,
+    Badge,
+    Empty,
+    Feedback,
+    Field,
+    Input,
+    Select,
+    EnabledField,
+    GroupPicker,
+    PageHead,
+    Modal,
+} from './ui.js';
+import { api, groupName } from './api.js';
+import { useCrud, ResourceItem, DeleteDialog, FormActions } from './resources.js';
+import { MessageComposer, MessagePreview, emptyMessage, messagePayload } from './message_composer.js';
 
-let customCommandMessageComposer = null;
-
-// ---------------------------------------------------------------- 远程命令策略
-function updateRemoteCommandBypassGroups(selectedValues = null) {
-    const container = $('remoteCommandBypassGroups');
-    if (!container) return;
-    const selected = new Set(selectedValues || Array.from(document.querySelectorAll('input[name="remoteCommandBypassGroups"]:checked')).map(cb => cb.value));
-    const groups = allGroups.map(groupDisplayName).filter(Boolean);
-    if (!groups.length) {
-        container.innerHTML = '<div class="help-text">未加载到群组，请稍后重试或检查 Gateway 连接</div>';
-        return;
-    }
-    container.innerHTML = allGroups.map(g => {
-        const name = groupDisplayName(g);
-        if (!name) return '';
-        const checked = selected.has(name) ? ' checked' : '';
-        return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(name)}" name="remoteCommandBypassGroups"${checked}>${escapeHtml(name)}</label>`;
-    }).join('');
-}
-
-function remotePolicyText(values, emptyText) {
-    if (!values?.length) return escapeHtml(emptyText);
-    return values.map(value => `<span class="policy-chip">${escapeHtml(value)}</span>`).join('');
-}
-
-const remoteCommandPolicy = {
-    apiPath: '/api/remote-commands/policy',
-    loaded: false,
-    editing: false,
-    allowlist: [],
-    draftAllowlist: [],
-    availableCommands: [],
-    bypassGroups: [],
-
-    render(policy = {}) {
-        const allowlist = policy.allowlist || [];
-        const bypassGroups = policy.bypass_groups || [];
-        const availableCommands = policy.available_commands || [];
-        this.allowlist = allowlist;
-        this.availableCommands = availableCommands;
-        this.bypassGroups = bypassGroups;
-        this.draftAllowlist = [...allowlist];
-        $('remoteCommandStats').innerHTML = [
-            `<span class="policy-stat">远程命令 ${availableCommands.length}</span>`,
-            `<span class="policy-stat">白名单 ${allowlist.length || '全部'}</span>`,
-            `<span class="policy-stat">豁免群 ${bypassGroups.length}</span>`,
-        ].join('');
-        this.renderView();
-    },
-
-    renderView() {
-        this.renderCommandList();
-        if (this.editing) {
-            updateRemoteCommandBypassGroups(this.bypassGroups);
-        } else {
-            $('remoteCommandBypassGroups').innerHTML = remotePolicyText(this.bypassGroups, '无');
-        }
-        if ($('remoteCommandEditBtn')) $('remoteCommandEditBtn').textContent = this.editing ? '取消' : '编辑';
-        if ($('remoteCommandSaveBtn')) $('remoteCommandSaveBtn').style.display = this.editing ? '' : 'none';
-    },
-
-    renderCommandList() {
-        const box = $('remoteCommandList');
-        if (!box) return;
-        const cmds = this.availableCommands || [];
-        const allowlistSet = new Set((this.draftAllowlist || []).map(x => String(x).toLowerCase()));
-        const unrestricted = !this.allowlist.length;
-        if (!cmds.length) {
-            box.innerHTML = '<div class="empty-hint">未加载到远程命令</div>';
-            return;
-        }
-        if (this.editing) {
-            box.innerHTML = cmds.map(c => {
-                const key = String(c.key || '').trim();
-                const desc = String(c.description || '').trim();
-                const checked = allowlistSet.has(key.toLowerCase());
-                return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(key)}"${checked ? ' checked' : ''} onchange="remoteCommandPolicy.toggleAllowlist(this.value, this.checked)"><span>${escapeHtml(key)}${desc ? `<span class="checkbox-sub">${escapeHtml(desc)}</span>` : ''}</span></label>`;
-            }).join('');
-        } else {
-            box.innerHTML = cmds.map(c => {
-                const key = String(c.key || '').trim();
-                const desc = String(c.description || '').trim();
-                const whitelisted = unrestricted || allowlistSet.has(key.toLowerCase());
-                const badge = unrestricted
-                    ? '<span class="badge on">允许</span>'
-                    : (whitelisted ? '<span class="badge on">白名单</span>' : '<span class="badge off">未白名单</span>');
-                return `<div class="remote-cmd-row"><span class="remote-cmd-key">${escapeHtml(key)}</span><span class="remote-cmd-desc">${escapeHtml(desc)}</span>${badge}</div>`;
-            }).join('');
-        }
-    },
-
-    async load() {
-        $('remoteCommandStats').innerHTML = '<span class="policy-stat">加载中…</span>';
-        const r = await api('GET', this.apiPath);
-        if (!r.ok) {
-            this.loaded = false;
-            $('remoteCommandSaveBtn').disabled = true;
-            $('remoteCommandEditBtn').disabled = true;
-            $('remoteCommandRefreshBtn').disabled = true;
-            $('remoteCommandStats').innerHTML = '<span class="policy-stat">远程命令未启用</span>';
-            $('remoteCommandList').innerHTML = '<div class="empty-hint">远程命令服务未启用</div>';
-            $('remoteCommandBypassGroups').innerHTML = '无';
-            return;
-        }
-        this.loaded = true;
-        $('remoteCommandSaveBtn').disabled = false;
-        $('remoteCommandEditBtn').disabled = false;
-        $('remoteCommandRefreshBtn').disabled = false;
-        this.render(r.data || {});
-    },
-
-    toggleEdit() {
-        if (!this.loaded) return;
-        this.editing = !this.editing;
-        this.draftAllowlist = [...this.allowlist];
-        this.renderView();
-    },
-
-    toggleAllowlist(key, checked) {
-        const normalized = String(key).toLowerCase();
-        const next = this.draftAllowlist.filter(item => String(item).toLowerCase() !== normalized);
-        if (checked) next.push(key);
-        this.draftAllowlist = next;
-    },
-
-    getPayload() {
+function CommandForm({ crud }) {
+    const { groups, capabilities } = useApp();
+    const draft = crud.draft;
+    const [message, setMessage] = useState(() => ({
+        message_type: draft.action_type || draft.message_type || 'text',
+        message: draft.message || '',
+        filename: draft.filename || '',
+    }));
+    function payload() {
+        const key = draft.key.trim();
+        if (!key || /\s/.test(key)) throw new Error('命令 Key 不能为空或包含空白字符');
+        const payload = messagePayload(message, capabilities);
         return {
-            allowlist: this.draftAllowlist,
-            bypass_groups: Array.from(document.querySelectorAll('input[name="remoteCommandBypassGroups"]:checked')).map(cb => cb.value),
+            key,
+            description: draft.description.trim(),
+            action_type: payload.message_type,
+            message: payload.message,
+            filename: payload.filename,
+            target_groups: draft.target_groups || [],
+            enabled: draft.enabled,
         };
-    },
-
-    async refreshCommands() {
-        const btn = $('remoteCommandRefreshBtn');
-        const origText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = '刷新中…';
-        try {
-            const r = await api('POST', '/api/remote-commands/refresh');
-            if (!r.ok) { toast(r.data?.detail || r.error || '远程命令列表刷新失败', 'error'); return; }
-            this.render(r.data || {});
-            toast('远程命令列表已刷新', 'success');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = origText;
-        }
-    },
-
-    async save() {
-        const btn = $('remoteCommandSaveBtn');
-        const origText = btn.textContent;
-        btn.disabled = true;
-        btn.textContent = '保存中…';
-        try {
-            const r = await api('PUT', this.apiPath, { body: this.getPayload() });
-            if (!r.ok) { toast(r.data?.detail || r.error || '远程命令策略保存失败', 'error'); return; }
-            this.editing = false;
-            this.render(r.data || {});
-            toast('远程命令策略已保存', 'success');
-        } finally {
-            btn.disabled = false;
-            btn.textContent = origText;
-        }
-    },
-};
-
-// ---------------------------------------------------------------- 自定义命令
-function toggleCustomCommandMessageType(opts = {}) {
-    if (customCommandMessageComposer) customCommandMessageComposer.syncType(opts);
-}
-function resetCustomCommandUpload() {
-    if (customCommandMessageComposer) customCommandMessageComposer.resetUpload();
-}
-
-function updateCustomCommandTargetGroupsCheckboxes(selectedValues = null) {
-    const container = $('customCommandTargetGroupsCheckboxes');
-    if (!container) return;
-    const selected = new Set(selectedValues || Array.from(document.querySelectorAll('input[name="customCommandTargetGroups"]:checked')).map(cb => cb.value));
-    const groups = allGroups.map(groupDisplayName).filter(Boolean);
-    if (!groups.length) {
-        container.innerHTML = '<div class="help-text">未加载到群组，请稍后重试或检查 Gateway 连接</div>';
-        return;
     }
-    container.innerHTML = allGroups.map(g => {
-        const name = groupDisplayName(g);
-        if (!name) return '';
-        const checked = selected.has(name) ? ' checked' : '';
-        return `<label class="checkbox-item"><input type="checkbox" value="${escapeHtml(name)}" name="customCommandTargetGroups"${checked}>${escapeHtml(name)}</label>`;
-    }).join('');
-}
-
-function updateCustomCommandGroupFilterOptions() {
-    const select = $('customCommandGroupFilter');
-    if (!select) return;
-    const selected = select.value || '__all__';
-    const groups = new Set(allGroups.map(groupDisplayName).filter(Boolean));
-    customCommandCrud.items.forEach(command => {
-        (command.target_groups || []).filter(Boolean).forEach(group => groups.add(group));
-    });
-    select.replaceChildren(
-        new Option('全部命令', '__all__'),
-        new Option('仅全局命令', '__global__'),
-        ...Array.from(groups).sort((a, b) => a.localeCompare(b, 'zh-CN')).map(group => new Option(group, group)),
+    return h(
+        Modal,
+        {
+            title: draft.id ? '编辑自定义命令' : '新建自定义命令',
+            onClose: crud.close,
+            busy: !!crud.pending,
+            class: 'modal-lg',
+            id: 'customCommandFormHost',
+        },
+        h(
+            'form',
+            {
+                id: 'customCommandForm',
+                onSubmit: (e) => {
+                    e.preventDefault();
+                    crud.save(payload);
+                },
+            },
+            h(
+                'fieldset',
+                { class: 'form-fields', disabled: !!crud.pending },
+                h(
+                    'div',
+                    { class: 'form-row' },
+                    h(
+                        Field,
+                        { label: '命令 Key' },
+                        h(Input, {
+                            value: draft.key,
+                            required: true,
+                            placeholder: 'menu',
+                            onValue: (key) => crud.change({ key }),
+                        })
+                    ),
+                    h(EnabledField, { value: draft.enabled, onValue: (enabled) => crud.change({ enabled }) })
+                ),
+                h(
+                    Field,
+                    { label: '描述' },
+                    h(Input, {
+                        value: draft.description || '',
+                        placeholder: 'menu - 查看菜单',
+                        onValue: (description) => crud.change({ description }),
+                    })
+                ),
+                h(MessageComposer, {
+                    value: message,
+                    onChange: setMessage,
+                    summary: true,
+                    busy: !!crud.pending,
+                    id: 'command-composer',
+                }),
+                h(
+                    'div',
+                    { class: 'form-group' },
+                    h('span', { class: 'field-label' }, '目标群组（空 = 全部）'),
+                    h(GroupPicker, {
+                        names: groups.map(groupName),
+                        value: draft.target_groups,
+                        onValue: (target_groups) => crud.change({ target_groups }),
+                    })
+                )
+            ),
+            h(Feedback, { error: crud.error }),
+            h(FormActions, { busy: !!crud.pending, editing: !!draft.id, onClose: crud.close })
+        )
     );
-    select.value = Array.from(select.options).some(option => option.value === selected) ? selected : '__all__';
+}
+export function CustomCommands({ active }) {
+    const crud = useCrud('/api/custom-commands', '自定义命令', active);
+    const { groups } = useApp();
+    const [filter, setFilter] = useState('__all__');
+    const items = crud.data || [];
+    const names = [...new Set([...groups.map(groupName), ...items.flatMap((item) => item.target_groups || [])])].sort(
+        (a, b) => a.localeCompare(b, 'zh-CN')
+    );
+    const shown = items.filter(
+        (item) =>
+            filter === '__all__' ||
+            !item.target_groups?.length ||
+            (filter !== '__global__' && item.target_groups.includes(filter))
+    );
+    return h(
+        'div',
+        null,
+        h(
+            PageHead,
+            { title: '自定义命令' },
+            h(Button, { onClick: crud.reload }, '刷新'),
+            h(
+                Button,
+                {
+                    variant: 'green',
+                    disabled: !!crud.pending,
+                    onClick: () =>
+                        crud.create({
+                            key: '',
+                            description: '',
+                            enabled: true,
+                            target_groups: [],
+                            action_type: 'text',
+                            ...emptyMessage(),
+                        }),
+                },
+                '新建命令'
+            )
+        ),
+        h(
+            'div',
+            { class: 'command-filter-bar' },
+            h(
+                'div',
+                { class: 'command-filter-copy' },
+                h('span', { class: 'command-filter-label' }, '适用群'),
+                h('span', { class: 'command-filter-hint' }, '指定群同时显示全局命令')
+            ),
+            h(Select, {
+                id: 'customCommandGroupFilter',
+                class: 'command-filter-select',
+                'aria-label': '按适用群筛选',
+                value: filter,
+                onValue: setFilter,
+                options: [['__all__', '全部命令'], ['__global__', '仅全局命令'], ...names.map((name) => [name, name])],
+            }),
+            h('span', { class: 'command-filter-count' }, `${shown.length} / ${items.length}`)
+        ),
+        h(Feedback, { ...crud, retry: crud.reload }),
+        h(
+            'div',
+            { id: 'customCommandsList' },
+            shown.map((item) =>
+                h(ResourceItem, {
+                    key: item.id,
+                    kind: 'command',
+                    item,
+                    crud,
+                    title: item.key,
+                    icon: '/',
+                    meta: [
+                        item.description,
+                        item.action_type || item.message_type,
+                        item.target_groups?.length ? `${item.target_groups.length} 个群` : '所有群',
+                    ],
+                    preview: h(MessagePreview, {
+                        type: item.action_type || item.message_type,
+                        message: item.message,
+                        filename: item.filename,
+                    }),
+                })
+            )
+        ),
+        !crud.loading &&
+            !crud.error &&
+            !shown.length &&
+            h(Empty, { icon: '/' }, items.length ? '这个群暂无适用命令' : '还没有自定义命令'),
+        crud.draft && h(CommandForm, { key: crud.draft._key, crud }),
+        h(DeleteDialog, { crud, title: '自定义命令' })
+    );
 }
 
-const customCommandCrud = {
-    apiPath: '/api/custom-commands',
-    items: [],
-    editingId: null,
-
-    renderItem(cmd) {
-        const actionType = cmd.action_type || cmd.message_type || 'text';
-        const icon = actionType === 'summary' ? '📊'
-            : actionType === 'image' ? '🖼️'
-            : actionType === 'file' ? '📎'
-            : (actionType === 'voice' || actionType === 'voice_file') ? '🎙'
-            : '💬';
-        const targets = cmd.target_groups?.length ? `${cmd.target_groups.length} 个群` : '所有群';
-        const preview = messagePreview(actionType, cmd.message, cmd.filename);
-        return `<div class="res-item" data-command-id="${cmd.id}">
-            <div class="res-icon">${icon}</div>
-            <div class="res-body">
-                <div class="res-title"><span class="res-name mono">${escapeHtml(cmd.key)}</span><span class="badge ${cmd.enabled ? 'on' : 'off'}">${cmd.enabled ? '已启用' : '已禁用'}</span></div>
-                <div class="res-meta">
-                    ${cmd.description ? `<span>${escapeHtml(cmd.description)}</span><span class="sep">·</span>` : ''}
-                    <span>类型 ${escapeHtml(actionType)}</span><span class="sep">·</span>
-                    <span>目标 ${escapeHtml(targets)}</span>
-                </div>
-                <div class="res-preview">${preview}</div>
-            </div>
-            <div class="res-actions">
-                <button class="toggle${cmd.enabled ? ' on' : ''}" onclick="customCommandCrud.toggle(${cmd.id}, ${cmd.enabled})" title="${cmd.enabled ? '禁用' : '启用'}"></button>
-                <button class="btn btn-ghost btn-sm" onclick="customCommandCrud.edit(${cmd.id})">编辑</button>
-                <button class="btn btn-danger-ghost btn-sm" onclick="customCommandCrud.remove(${cmd.id})">删除</button>
-            </div>
-        </div>`;
-    },
-
-    filteredItems() {
-        const group = $('customCommandGroupFilter')?.value || '__all__';
-        if (group === '__all__') return this.items;
-        if (group === '__global__') return this.items.filter(cmd => !cmd.target_groups?.length);
-        return this.items.filter(cmd => !cmd.target_groups?.length || cmd.target_groups.includes(group));
-    },
-
-    render() {
-        const el = $('customCommandsList');
-        const items = this.filteredItems();
-        const count = $('customCommandFilterCount');
-        if (count) count.textContent = `${items.length} / ${this.items.length}`;
-        if (!this.items.length) el.innerHTML = '<div class="empty-hint">暂无自定义命令</div>';
-        else if (!items.length) el.innerHTML = '<div class="empty-hint">该筛选条件下暂无自定义命令</div>';
-        else el.innerHTML = items.map(item => this.renderItem(item)).join('');
-    },
-
-    async load() {
-        $('customCommandsList').innerHTML = '<div class="loading-hint">加载中…</div>';
-        const r = await api('GET', this.apiPath);
-        if (!r.ok) { toast(r.data?.detail || r.error || '加载自定义命令失败', 'error'); return; }
-        this.items = Array.isArray(r.data) ? r.data : [];
-        updateCustomCommandGroupFilterOptions();
-        this.render();
-    },
-
-    async fetchItem(id) {
-        const r = await api('GET', `${this.apiPath}/${id}`);
-        if (r.ok) return r.data;
-        toast(r.data?.detail || r.error || '读取自定义命令失败', 'error');
-        return null;
-    },
-
-    getFormData() {
-        const actionType = customCommandMessageComposer.getType();
-        const data = {
-            key: $('customCommandKey').value.trim(),
-            description: $('customCommandDescription').value.trim(),
-            action_type: actionType,
-            filename: '',
-            target_groups: Array.from(document.querySelectorAll('input[name="customCommandTargetGroups"]:checked')).map(cb => cb.value),
-            enabled: $('customCommandEnabled').value === 'true',
-        };
-        if (!data.key) { toast('请输入命令 Key', 'error'); return null; }
-        if (/\s/.test(data.key)) { toast('命令 Key 不能包含空白字符', 'error'); return null; }
-        if (actionType === 'summary') {
-            data.message = '';
-            return data;
-        }
-        const payload = customCommandMessageComposer.getPayload({ text: '请输入回复内容', attachment: '请选择内容' });
-        if (!payload) return null;
-        data.message = payload.message;
-        data.filename = payload.filename;
-        return data;
-    },
-
-    populateForm(cmd) {
-        $('customCommandKey').value = cmd.key;
-        $('customCommandDescription').value = cmd.description || '';
-        $('customCommandEnabled').value = cmd.enabled.toString();
-        const actionType = cmd.action_type || cmd.message_type || 'text';
-        $('customCommandMessageType').value = actionType;
-        $('customCommandMessage').value = ['text', 'voice'].includes(actionType) ? cmd.message : '';
-        resetCustomCommandUpload();
-        if (actionType === 'image' && cmd.message) {
-            customCommandMessageComposer.setAttachment(cmd.message, '', 'data:image/png;base64,' + cmd.message);
-        }
-        if (actionType === 'file' && cmd.message) {
-            customCommandMessageComposer.setAttachment(cmd.message, cmd.filename || '');
-        }
-        if (actionType === 'voice_file' && cmd.filename && cmd.message) {
-            customCommandMessageComposer.setAttachment(cmd.message, cmd.filename);
-        }
-        updateCustomCommandTargetGroupsCheckboxes(cmd.target_groups || []);
-        toggleCustomCommandMessageType({ resetUpload: false });
-    },
-
-    resetForm() {
-        $('customCommandForm').reset();
-        resetCustomCommandUpload();
-        $('customCommandMessageType').value = 'text';
-        $('customCommandEnabled').value = 'true';
-        updateCustomCommandTargetGroupsCheckboxes([]);
-        toggleCustomCommandMessageType();
-    },
-
-    showForm() {
-        this.editingId = null;
-        $('customCommandFormTitle').textContent = '新建自定义命令';
-        $('customCommandFormBtn').textContent = '创建命令';
-        this.resetForm();
-        $('customCommandFormHost').style.display = 'flex';
-        $('customCommandKey').focus();
-    },
-
-    hideForm() {
-        this.editingId = null;
-        $('customCommandFormHost').style.display = 'none';
-        this.resetForm();
-    },
-
-    async edit(id) {
-        const item = await this.fetchItem(id);
-        if (!item) return;
-        this.editingId = id;
-        $('customCommandFormTitle').textContent = `编辑自定义命令：${item.key}`;
-        $('customCommandFormBtn').textContent = '保存修改';
-        this.populateForm(item);
-        $('customCommandFormHost').style.display = 'flex';
-    },
-
-    async save() {
-        const btn = $('customCommandFormBtn');
-        const origText = btn.textContent;
-        const editingId = this.editingId;
-        btn.disabled = true;
-        btn.textContent = '处理中…';
+export function RemoteCommands({ active }) {
+    const { groups, toast } = useApp();
+    const resource = useResource((signal) => api('GET', '/api/remote-commands/policy', { signal }), [], active);
+    const [draft, setDraft] = useState(null);
+    const [busy, setBusy] = useState('');
+    const [error, setError] = useState('');
+    const lock = useRef(false);
+    const current = resource.data;
+    const allowlist = draft?.allowlist || current?.allowlist || [];
+    const commands = current?.available_commands || [];
+    const bypass = draft?.bypass_groups || current?.bypass_groups || [];
+    async function change(action) {
+        if (lock.current) return;
+        lock.current = true;
+        setBusy(action);
+        setError('');
         try {
-            const data = this.getFormData();
-            if (!data) return;
-            const r = await api(editingId ? 'PUT' : 'POST', editingId ? `${this.apiPath}/${editingId}` : this.apiPath, { body: data });
-            if (!r.ok) { toast(r.data?.detail || r.error || '操作失败', 'error'); return; }
-            toast(editingId ? '自定义命令已更新' : '自定义命令已创建', 'success');
-            this.hideForm();
-            await this.load();
+            const next =
+                action === 'save'
+                    ? await api('PUT', '/api/remote-commands/policy', { body: draft })
+                    : await api('POST', '/api/remote-commands/refresh');
+            resource.update(next);
+            setDraft(null);
+            toast(action === 'save' ? '远程命令策略已保存' : '远程命令列表已刷新', 'success');
+        } catch (e) {
+            setError(e.message);
         } finally {
-            btn.disabled = false;
-            btn.textContent = origText;
+            lock.current = false;
+            setBusy('');
         }
-    },
-
-    async remove(id) {
-        if (!confirm('确定要删除这个自定义命令吗？')) return;
-        const r = await api('DELETE', `${this.apiPath}/${id}`);
-        if (r.ok) {
-            toast('自定义命令已删除', 'success');
-            if (this.editingId === id) this.hideForm();
-            await this.load();
-        } else {
-            toast(r.data?.detail || r.error || '删除失败', 'error');
-        }
-    },
-
-    async toggle(id, current) {
-        const r = await api('PUT', `${this.apiPath}/${id}`, { body: { enabled: !current } });
-        if (r.ok) await this.load();
-        else toast(r.data?.detail || r.error || '状态更新失败', 'error');
-    },
-};
-
-$('customCommandForm').addEventListener('submit', async e => {
-    e.preventDefault();
-    await customCommandCrud.save();
-});
-
-remoteCommandPolicy.load();
-
-customCommandMessageComposer = new MessageComposer({
-    typeId: 'customCommandMessageType',
-    textGroupId: 'customCommandTextGroup',
-    textInputId: 'customCommandMessage',
-    attachmentGroupId: 'customCommandAttachmentGroup',
-    fileInputId: 'customCommandFileSelect',
-    dropzoneId: 'customCommandFileDropzone',
-    previewId: 'customCommandFilePreview',
-    infoId: 'customCommandFileInfo',
-    isActive: () => $('section-custom-commands')?.classList.contains('active') && $('customCommandFormHost')?.style.display !== 'none',
-});
-
-registerGroupsLoadedHandler(() => {
-    if (remoteCommandPolicy.loaded && remoteCommandPolicy.editing) {
-        updateRemoteCommandBypassGroups(remoteCommandPolicy.bypassGroups);
     }
-    updateCustomCommandGroupFilterOptions();
-    customCommandCrud.render();
-    if ($('customCommandFormHost')?.style.display !== 'none') updateCustomCommandTargetGroupsCheckboxes();
-});
+    function toggleKey(key, checked) {
+        const next = draft.allowlist.filter((value) => value.toLowerCase() !== key.toLowerCase());
+        setDraft({ ...draft, allowlist: checked ? [...next, key] : next });
+    }
+    return h(
+        'div',
+        null,
+        h(
+            PageHead,
+            { title: '远程命令' },
+            h(
+                Button,
+                { disabled: !current || !!draft || !!busy, busy: busy === 'refresh', onClick: () => change('refresh') },
+                '刷新命令列表'
+            ),
+            h(
+                Button,
+                {
+                    disabled: !!busy || (!draft && (!current || resource.loading || !!resource.error)),
+                    onClick: () =>
+                        setDraft(
+                            draft
+                                ? null
+                                : {
+                                      allowlist: [...(current.allowlist || [])],
+                                      bypass_groups: [...(current.bypass_groups || [])],
+                                  }
+                        ),
+                },
+                draft ? '取消' : '编辑'
+            ),
+            draft && h(Button, { variant: 'green', busy: !!busy, onClick: () => change('save') }, '保存')
+        ),
+        h(Feedback, { loading: resource.loading, error: error || resource.error, retry: resource.reload }),
+        current &&
+            h(
+                'div',
+                { class: 'card' },
+                h(
+                    'div',
+                    { class: 'remote-policy-stats' },
+                    [
+                        `远程命令 ${commands.length}`,
+                        `白名单 ${allowlist.length || '全部'}`,
+                        `豁免群 ${bypass.length}`,
+                    ].map((text) => h('span', { class: 'policy-stat', key: text }, text))
+                ),
+                h(
+                    'div',
+                    { class: 'remote-section' },
+                    h('div', { class: 'remote-section-label' }, '命令白名单'),
+                    h(
+                        'div',
+                        { class: 'remote-section-value' },
+                        h(
+                            'div',
+                            { class: 'remote-command-list' },
+                            commands.map((command) => {
+                                const checked = allowlist.some(
+                                    (key) => key.toLowerCase() === command.key.toLowerCase()
+                                );
+                                return draft
+                                    ? h(
+                                          'label',
+                                          { class: 'checkbox-item', key: command.key },
+                                          h('input', {
+                                              type: 'checkbox',
+                                              checked,
+                                              disabled: !!busy,
+                                              onChange: (e) => toggleKey(command.key, e.currentTarget.checked),
+                                          }),
+                                          h(
+                                              'span',
+                                              null,
+                                              command.key,
+                                              h('span', { class: 'checkbox-sub' }, command.description)
+                                          )
+                                      )
+                                    : h(
+                                          'div',
+                                          { class: 'remote-cmd-row', key: command.key },
+                                          h('span', { class: 'remote-cmd-key' }, command.key),
+                                          h('span', { class: 'remote-cmd-desc' }, command.description),
+                                          h(
+                                              Badge,
+                                              { enabled: !allowlist.length || checked },
+                                              !allowlist.length ? '允许' : checked ? '白名单' : '未白名单'
+                                          )
+                                      );
+                            })
+                        ),
+                        !commands.length && h('div', { class: 'empty-hint' }, '未加载到远程命令'),
+                        h('div', { class: 'help-text' }, '不勾选任何命令 = 允许全部远程命令。')
+                    )
+                ),
+                h(
+                    'div',
+                    { class: 'remote-section' },
+                    h('div', { class: 'remote-section-label' }, '豁免群组'),
+                    h(
+                        'div',
+                        { class: 'remote-section-value' },
+                        draft
+                            ? h(
+                                  'fieldset',
+                                  { disabled: !!busy, class: 'form-fields' },
+                                  h(GroupPicker, {
+                                      names: groups.map(groupName),
+                                      value: bypass,
+                                      onValue: (bypass_groups) => setDraft({ ...draft, bypass_groups }),
+                                  })
+                              )
+                            : bypass.length
+                              ? bypass.map((name) => h('span', { class: 'policy-chip', key: name }, name))
+                              : '无'
+                    )
+                )
+            )
+    );
+}

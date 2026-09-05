@@ -395,6 +395,10 @@ scrape_configs:
 
 </details>
 
+## 前端开发
+
+Cortex Web UI 使用本地固定版本的 Preact 和原生 JavaScript 模块，无需 Node.js 构建或运行时 CDN。组件结构与回归验证方法见 [前端说明](cortex/templates/README.md)。
+
 ## 注意事项
 
 - macOS 首次运行需授予辅助功能权限（发送）和屏幕录制权限（截图 OCR）
