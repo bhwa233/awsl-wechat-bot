@@ -479,7 +479,7 @@ export function replyText(message) {
 }
 
 export function MessageList({ resource, group, page = 0, caps = {}, id = 'messages', onReply }) {
-    const { emoji } = useApp();
+    const { emoji, toast } = useApp();
     const [overlay, setOverlay] = useState(null);
     const [menu, setMenu] = useState(null);
     const menuRef = useRef(null);
@@ -489,6 +489,7 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
         const dismiss = (event) => {
             if (event.type === 'keydown' && event.key !== 'Escape') return;
             if (event.type === 'pointerdown' && menuRef.current?.contains(event.target)) return;
+            if (event.type === 'pointerdown' && event.target.closest('.message-menu-trigger')) return;
             setMenu(null);
         };
         document.addEventListener('pointerdown', dismiss);
@@ -523,6 +524,29 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
         }
         scrollBottom();
     }, [messages, nextIdentity]);
+    async function copyMessage() {
+        const content = menu.content;
+        setMenu(null);
+        try {
+            if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(content);
+            else {
+                const input = document.createElement('textarea');
+                input.value = content;
+                input.readOnly = true;
+                input.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+                document.body.append(input);
+                try {
+                    input.select();
+                    if (!document.execCommand('copy')) throw new Error('复制失败');
+                } finally {
+                    input.remove();
+                }
+            }
+            toast('已复制', 'success');
+        } catch {
+            toast('复制失败，请选中文字后复制', 'error');
+        }
+    }
     let lastDate = '';
     const children = [];
     for (const m of messages) {
@@ -547,6 +571,7 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
             onMediaLoad: scrollBottom,
             retryKey: resource.mediaRevision,
         });
+        const content = onReply && !system ? replyText(m) : '';
         children.push(
             h(
                 'div',
@@ -577,17 +602,20 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
                           'div',
                           {
                               class: `msg-bubble ${m.is_self ? 'self' : 'other'}`,
-                              onContextMenu: (event) => {
-                                  if (!onReply) return;
-                                  const content = replyText(m);
-                                  if (!content.trim()) return;
-                                  event.preventDefault();
-                                  setMenu({ content, x: Math.min(event.clientX, window.innerWidth - 132), y: Math.min(event.clientY, window.innerHeight - 52) });
-                              },
                           },
                           !m.is_self && h('div', { class: 'msg-sender' }, name),
                           body,
-                          h('div', { class: 'msg-time' }, formatTime(m.time))
+                          h('div', { class: 'msg-time' }, formatTime(m.time), content.trim() && h('button', {
+                              type: 'button', class: 'message-menu-trigger', 'aria-label': '消息操作',
+                              'aria-haspopup': 'menu', 'aria-expanded': menu?.key === key,
+                              onClick: (event) => {
+                                  const rect = event.currentTarget.getBoundingClientRect();
+                                  setMenu(menu?.key === key ? null : {
+                                      key, content, x: Math.min(rect.left, window.innerWidth - 132),
+                                      y: Math.min(rect.bottom + 4, window.innerHeight - 104),
+                                  });
+                              },
+                          }, '⋯'))
                       )
             )
         );
@@ -617,6 +645,8 @@ export function MessageList({ resource, group, page = 0, caps = {}, id = 'messag
             class: 'message-context-menu', role: 'menu', 'aria-label': '消息操作', ref: menuRef,
             style: { left: Math.max(8, menu.x), top: Math.max(8, menu.y) },
         }, h('button', {
+            type: 'button', role: 'menuitem', onClick: copyMessage,
+        }, '复制'), h('button', {
             type: 'button', role: 'menuitem', onClick: () => { onReply(menu.content); setMenu(null); },
         }, '引用')),
         overlay?.type === 'member' &&

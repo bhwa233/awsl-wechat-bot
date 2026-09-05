@@ -32,9 +32,38 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
         await page.waitForFunction(() => document.querySelector('#console-composer-text').value === '');
         assert.equal(calls.filter((c) => c.endpoint === '/api/console/send-message').at(-1).body.chat_name, '产品群');
     });
-    await check('控制台右键引用与发送参数', async () => {
+    await check('控制台消息菜单复制、引用与发送参数', async () => {
         await page.waitForFunction(() => !document.querySelector('#console-composer-text').disabled);
-        await page.locator('#consoleMessages').getByText('产品群独有消息', { exact: true }).click({ button: 'right' });
+        await page.locator('#consoleMessages .msg').filter({ hasText: '产品群独有消息' }).getByRole('button', { name: '消息操作', exact: true }).click();
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+                writeText: async (text) => { window.copiedMessage = text; },
+            } });
+        });
+        await page.screenshot({ path: `${artifacts}/console-message-menu.png`, animations: 'disabled' });
+        await page.getByRole('menuitem', { name: '复制', exact: true }).click();
+        assert.equal(await page.evaluate(() => window.copiedMessage), '产品群独有消息');
+        assert.equal(await page.getByRole('menu', { name: '消息操作' }).count(), 0);
+        const menuButton = page.locator('#consoleMessages .msg').filter({ hasText: '产品群独有消息' }).getByRole('button', { name: '消息操作', exact: true });
+        await page.evaluate(() => {
+            Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined });
+            document.execCommand = (command) => {
+                window.copiedMessage = command === 'copy' ? document.activeElement.value : '';
+                return command === 'copy';
+            };
+            window.copiedMessage = '';
+        });
+        await menuButton.click();
+        await page.getByRole('menuitem', { name: '复制', exact: true }).click();
+        assert.equal(await page.evaluate(() => window.copiedMessage), '产品群独有消息');
+        assert.equal(await page.locator('body > textarea').count(), 0);
+        await menuButton.click();
+        await menuButton.click();
+        assert.equal(await page.getByRole('menu', { name: '消息操作' }).count(), 0);
+        await menuButton.click();
+        await page.keyboard.press('Escape');
+        assert.equal(await page.getByRole('menu', { name: '消息操作' }).count(), 0);
+        await menuButton.click();
         await page.getByRole('menuitem', { name: '引用', exact: true }).click();
         await page.locator('#console-composer .composer-reply').waitFor();
         await page.locator('#console-composer-text').fill('控制台引用回复');
@@ -90,7 +119,7 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
             const before = calls.filter((c) => c.endpoint === '/api/console/send-message').length;
             await page.keyboard.press('Enter');
             assert.equal(calls.filter((c) => c.endpoint === '/api/console/send-message').length, before);
-            await page.locator('#consoleMessages').getByText('产品群独有消息', { exact: true }).click({ button: 'right' });
+            await page.locator('#consoleMessages .msg').filter({ hasText: '产品群独有消息' }).getByRole('button', { name: '消息操作', exact: true }).click();
             await page.getByRole('menuitem', { name: '引用', exact: true }).click();
             assert.equal(await page.locator('#console-composer .composer-reply span').innerText(), '产品群独有消息');
             await input.focus();
@@ -120,6 +149,14 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
             const el = document.querySelector('#consoleMessages');
             return el.clientHeight > 0 && el.scrollHeight - el.scrollTop - el.clientHeight < 5;
         });
+        const lastMenuButton = page.locator('#consoleMessages .message-menu-trigger').last();
+        await lastMenuButton.click();
+        await page.getByRole('menu', { name: '消息操作' }).waitFor();
+        const bounds = await page.getByRole('menu', { name: '消息操作' }).boundingBox();
+        assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390);
+        assert.ok(bounds.y >= 0 && bounds.y + bounds.height <= 844);
+        await page.screenshot({ path: `${artifacts}/console-message-menu-mobile.png`, animations: 'disabled' });
+        await page.keyboard.press('Escape');
         await page.setViewportSize({ width: 1440, height: 960 });
     });
     await check('未读零不附加群名，未读一单独显示且数字群名正确匹配', async () => {
