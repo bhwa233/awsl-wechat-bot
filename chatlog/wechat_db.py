@@ -29,7 +29,7 @@ from datetime import datetime
 from hashlib import pbkdf2_hmac, sha512
 
 from chatlog.platform import get_chatlog_platform
-from chatlog.search import escape_like_query, message_search_expressions
+from chatlog.search import escape_like_query, message_search_expressions, resolve_message_sender
 
 try:
     from Crypto.Cipher import AES
@@ -786,9 +786,11 @@ class WeChatDBReader:
         display_names = self._get_chatroom_display_names(talker) if is_chatroom and not count_only else {}
         by_sender: dict[str, int] = {}
         search_sender, search_content = message_search_expressions(is_chatroom)
+        compressed = "hex(substr(m.message_content, 1, 4)) = '28B52FFD'"
+        sender_content = f"CASE WHEN {compressed} THEN m.message_content ELSE NULL END" if is_chatroom else "NULL"
 
         # 单 db 内 sort_seq 单调,最多需要 offset + limit 条;合并排序后再切片
-        per_db_cap = (offset + limit) if limit > 0 else 0
+        per_db_cap = (offset + limit) if limit > 0 and not (senders and is_chatroom) else 0
 
         for db_path in db_paths:
             db = self._get_message_db(db_path)
@@ -797,7 +799,7 @@ class WeChatDBReader:
             if not cursor.fetchone():
                 continue
 
-            columns = f"{search_sender}, COUNT(*)" if count_only else (
+            columns = f"{search_sender}, {sender_content} AS sender_content, COUNT(*)" if count_only else (
                 "m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
                 "m.create_time, m.message_content, m.status, m.source"
             )
@@ -820,7 +822,8 @@ class WeChatDBReader:
                 params.append(MESSAGE_TYPE_TEXT)
             if senders:
                 placeholders = ",".join("?" for _ in senders)
-                query += f" AND {search_sender} IN ({placeholders})"
+                query += f" AND ({search_sender} IN ({placeholders})"
+                query += f" OR {compressed})" if is_chatroom else ")"
                 params.extend(senders)
             if content_query:
                 query += (
@@ -829,9 +832,13 @@ class WeChatDBReader:
                 )
                 params.append(f"%{escape_like_query(content_query)}%")
             if count_only:
-                query += f" GROUP BY {search_sender}"
+                query += f" GROUP BY {search_sender}, sender_content"
                 cursor.execute(query, params)
-                for sender, count in cursor.fetchall():
+                for sender, content, count in cursor.fetchall():
+                    if content is not None:
+                        sender = resolve_message_sender(sender, self._decompress_content(content))
+                    if senders and sender not in senders:
+                        continue
                     by_sender[sender] = by_sender.get(sender, 0) + count
                 continue
             query += f" ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}"
@@ -853,6 +860,9 @@ class WeChatDBReader:
                     parts = content.split(":\n", 1)
                     if len(parts) == 2 and " " not in parts[0] and "\n" not in parts[0]:
                         sender, content = parts
+
+                if senders and sender not in senders:
+                    continue
 
                 # voip (msg_type=50) status 恒为 2 不可靠, 退化纯 sender 判
                 is_self = (

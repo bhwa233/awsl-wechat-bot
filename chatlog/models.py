@@ -77,6 +77,13 @@ class ChatlogMessageCountRequest(BaseModel):
     )
 
 
+    @model_validator(mode="after")
+    def _validate_query_message_types(self):
+        if self.query.strip() and set(self.msg_types) != {1}:
+            raise ValueError("query 仅支持文字消息，msg_types 必须为 [1]")
+        return self
+
+
 class ChatlogMessageCountResponse(BaseModel):
     count: int
     by_sender: dict[str, int]

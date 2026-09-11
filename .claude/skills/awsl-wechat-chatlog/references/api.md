@@ -125,7 +125,7 @@ Fields:
 - `query` (string, default `""`): Optional literal text to find, at most 256 characters; SQL wildcard characters are treated literally. May be empty only when `senders` is non-empty
 - `senders` (array of strings, default `[]`): Optional sender wxids, at most 200; an empty array matches all senders
 - `start` / `end` (string, optional): `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`
-- `msg_types` (array of integers, default `[1]`): Low 32-bit message types, at most 200 entries; `[]` selects all. Common values: 1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message (including files). With `query`, only uncompressed text is matched, intersected with this filter.
+- `msg_types` (array of integers, default `[1]`): Low 32-bit message types, at most 200 entries; `[]` selects all. Common values: 1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message (including files). With non-empty `query`, only `[1]` is allowed; other types or `[]` return HTTP 422. Keywords match only uncompressed text.
 - `limit` (int, default 100): Maximum results, 1–10000
 - `offset` (int, default 0): Skip results after ordering, 0–100000
 - `desc` (bool, default false): `true` returns newest first
@@ -147,7 +147,7 @@ There is no pagination or ordering. Default `msg_types` is `[1]`; pass `[]` for 
 Response: `{"count":123,"by_sender":{"wxid_alice":100,"wxid_bob":23}}`.
 `count` remains the total after all filters; `by_sender` is aggregated by sender wxid
 across databases with the same sender expression used for filtering (including legacy
-uncompressed group prefixes). Only matching senders appear, with unknown senders under
+group prefixes, including compressed bodies decoded for sender resolution). Only matching senders appear, with unknown senders under
 `""`; no matches returns `{"count":0,"by_sender":{}}`. No nickname lookup is performed.
 The CLI and Python `ChatlogClient.count_messages` return the complete response
 (total and map), without an additional grouping parameter.

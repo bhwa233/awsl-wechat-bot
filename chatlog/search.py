@@ -62,7 +62,8 @@ def message_search_expressions(is_chatroom: bool) -> tuple[str, str]:
     separator = f"instr({content}, char(58, 10))"
     prefix = f"substr({content}, 1, {separator} - 1)"
     has_sender_prefix = (
-        f"{separator} > 0"
+        "hex(substr(m.message_content, 1, 4)) != '28B52FFD'"
+        f" AND {separator} > 0"
         f" AND instr({prefix}, ' ') = 0"
         f" AND instr({prefix}, char(10)) = 0"
     )
@@ -73,3 +74,12 @@ def message_search_expressions(is_chatroom: bool) -> tuple[str, str]:
         f" ELSE {content} END"
     )
     return sender, content
+
+
+def resolve_message_sender(sender: str, content: str) -> str:
+    if ":\n" not in content:
+        return sender
+    prefix = content.split(":\n", 1)[0]
+    if " " in prefix or "\n" in prefix:
+        return sender
+    return prefix

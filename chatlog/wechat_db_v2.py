@@ -20,7 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from chatlog.platform import get_chatlog_platform
-from chatlog.search import escape_like_query, message_search_expressions
+from chatlog.search import escape_like_query, message_search_expressions, resolve_message_sender
 from chatlog.wechat_db import (
     HAS_ZSTD,
     MESSAGE_TYPE_TEXT,
@@ -489,6 +489,8 @@ class WeChatDBReaderV2:
         display_names = self._get_chatroom_display_names(talker) if is_chatroom and not count_only else {}
         by_sender: dict[str, int] = {}
         search_sender, search_content = message_search_expressions(is_chatroom)
+        compressed = "hex(substr(m.message_content, 1, 4)) = '28B52FFD'"
+        sender_content = f"CASE WHEN {compressed} THEN m.message_content ELSE NULL END" if is_chatroom else "NULL"
 
         type_filter = f" AND (m.local_type & 0xFFFFFFFF) = {MESSAGE_TYPE_TEXT}" if text_only else ""
         if msg_types:
@@ -501,7 +503,8 @@ class WeChatDBReaderV2:
             for sender in senders:
                 _validate_username(sender)
             sender_values = ",".join(_quote_sql_literal(sender) for sender in senders)
-            sender_filter = f" AND {search_sender} IN ({sender_values})"
+            sender_filter = f" AND ({search_sender} IN ({sender_values})"
+            sender_filter += f" OR {compressed})" if is_chatroom else ")"
         content_filter = ""
         if content_query:
             pattern = _quote_sql_literal(f"%{escape_like_query(content_query)}%")
@@ -510,7 +513,7 @@ class WeChatDBReaderV2:
                 f" AND {search_content} LIKE {pattern} ESCAPE '\\' COLLATE NOCASE"
             )
         sql_limit = ""
-        if limit > 0:
+        if limit > 0 and not (senders and is_chatroom):
             sql_limit = f" LIMIT {int(offset + limit)}"
         # create_time 无索引; 用 sort_seq(有索引, ≈create_time*1000) 圈定范围避免全表扫描,
         # 两端放宽余量后仍叠加精确的 create_time 过滤, 结果不变
@@ -522,7 +525,7 @@ class WeChatDBReaderV2:
             try:
                 if table_name not in self._tables_exist(db_path, [table_name]):
                     continue
-                columns = f"{search_sender}, COUNT(*)" if count_only else (
+                columns = f"{search_sender}, {sender_content} AS sender_content, COUNT(*)" if count_only else (
                     "m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
                     "m.create_time, m.message_content, m.status, m.source"
                 )
@@ -535,7 +538,7 @@ class WeChatDBReaderV2:
                     f"{type_filter}{sender_filter}{content_filter} "
                 )
                 if count_only:
-                    sql += f"GROUP BY {search_sender}"
+                    sql += f"GROUP BY {search_sender}, sender_content"
                 if not count_only:
                     sql += f"ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}{sql_limit}"
                 _, rows = self._query(db_path, sql)
@@ -545,10 +548,15 @@ class WeChatDBReaderV2:
                 logger.warning("[ChatlogV2] 查询 %s 失败: %s", db_path, e)
                 continue
             if count_only:
-                for sender, count in rows:
+                for sender, content, count in rows:
+                    if content is not None:
+                        sender = resolve_message_sender(sender, _decompress_content(_decode_blob(content)))
+                    if senders and sender not in senders:
+                        continue
                     by_sender[sender] = by_sender.get(sender, 0) + int(count)
                 continue
-            raw_messages.extend(self._process_rows(talker, is_chatroom, rows))
+            processed = self._process_rows(talker, is_chatroom, rows)
+            raw_messages.extend(m for m in processed if not senders or m[2] in senders)
 
         if count_only:
             return by_sender
