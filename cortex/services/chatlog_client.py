@@ -103,6 +103,7 @@ class ChatlogClient:
         *,
         senders: list[str] | None = None,
         msg_types: list[int] | None = None,
+        bucket: str | None = None,
         start: datetime | str | None = None,
         end: datetime | str | None = None,
     ) -> dict:
@@ -112,6 +113,8 @@ class ChatlogClient:
             "senders": senders or [],
             "msg_types": [1] if msg_types is None else msg_types,
         }
+        if bucket is not None:
+            body["bucket"] = bucket
         if start:
             body["start"] = start.strftime("%Y-%m-%d %H:%M:%S") if isinstance(start, datetime) else start
         if end:

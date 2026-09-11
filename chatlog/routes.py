@@ -244,7 +244,7 @@ def create_routes() -> APIRouter:
             logger.error(f"[Chatlog] 搜索消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="搜索失败, 请查看服务器日志") from e
 
-    @router.post("/messages/count", response_model=ChatlogMessageCountResponse, dependencies=[Depends(verify_token)])
+    @router.post("/messages/count", response_model=ChatlogMessageCountResponse, response_model_exclude_none=True, dependencies=[Depends(verify_token)])
     def count_messages(request: ChatlogMessageCountRequest):
         _ensure_v1_config()
         if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
@@ -259,10 +259,11 @@ def create_routes() -> APIRouter:
                 query=query_text,
                 senders=senders,
                 msg_types=request.msg_types,
+                bucket=request.bucket,
                 start_time=start_time,
                 end_time=end_time,
             )
-            return ChatlogMessageCountResponse(count=sum(count.values()), by_sender=count)
+            return count
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         except ValueError as e:

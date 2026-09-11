@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from chatlog.models import ChatlogMessageCountResponse
 from chatlog.wechat_db import ChatRoom, Contact, Message, RoomMember
 from chatlog.wechat_db_v2 import WeChatDBReaderV2
 
@@ -80,15 +81,17 @@ class ChatlogServiceV2:
         query: str,
         senders: list[str],
         msg_types: list[int] | None = None,
+        bucket: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
-    ) -> dict[str, int]:
+    ) -> ChatlogMessageCountResponse:
         return WeChatDBReaderV2(encrypted_dir, hex_key).count_messages(
             talker=talker,
             query=query,
             senders=senders,
             msg_types=msg_types,
             start_time=start_time,
+            bucket=bucket,
             end_time=end_time,
         )
 

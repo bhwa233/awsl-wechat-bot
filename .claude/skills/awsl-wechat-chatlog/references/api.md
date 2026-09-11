@@ -152,6 +152,27 @@ group prefixes, including compressed bodies decoded for sender resolution). Only
 The CLI and Python `ChatlogClient.count_messages` return the complete response
 (total and map), without an additional grouping parameter.
 Counts are summed across message databases using SQL.
+Optional `bucket` accepts `"hour"` or `"day"`; invalid values return 422.
+When supplied, the response additionally contains `buckets`, sorted by `start`, each
+with `start` / `end` (server-local ISO datetimes, inclusive start and exclusive end), `count`, and `by_sender`. Hour buckets start
+at HH:00:00; day buckets start at 00:00:00. Only non-empty buckets are returned;
+no matches returns `buckets: []`. Omitting `bucket` omits `buckets` entirely.
+Filtering uses the original inclusive time range before grouping, so the first/last
+bucket may cover only part of its calendar hour/day. Bucket counts sum to the top-level
+count, and their per-sender counts sum to the top-level `by_sender`.
+CLI: `count-messages --group <id> --bucket hour` (or `day`).
+
+```json
+{
+  "count": 5,
+  "by_sender": {"wxid_a": 3, "wxid_b": 2},
+  "buckets": [
+    {"start": "2026-09-11T09:00:00", "end": "2026-09-11T10:00:00", "count": 3, "by_sender": {"wxid_a": 2, "wxid_b": 1}},
+    {"start": "2026-09-11T10:00:00", "end": "2026-09-11T11:00:00", "count": 2, "by_sender": {"wxid_a": 1, "wxid_b": 1}}
+  ]
+}
+```
+
 Database read failures return an error rather than a partial count.
 Both search and count use server-local time, inclusive boundaries, and include the
 whole end date when only a date is supplied. A reversed time range returns 400.

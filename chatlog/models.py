@@ -2,7 +2,7 @@
 聊天记录数据模型 - HTTP API 响应模型
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -64,7 +64,7 @@ class ChatlogMessageResponse(BaseModel):
         return self
 
 
-class ChatlogMessageCountRequest(BaseModel):
+class ChatlogMessageFilters(BaseModel):
     """消息查询与统计过滤条件。"""
 
     group: str
@@ -76,7 +76,6 @@ class ChatlogMessageCountRequest(BaseModel):
         default_factory=lambda: [1], max_length=200,
     )
 
-
     @model_validator(mode="after")
     def _validate_query_message_types(self):
         if self.query.strip() and set(self.msg_types) != {1}:
@@ -84,12 +83,24 @@ class ChatlogMessageCountRequest(BaseModel):
         return self
 
 
-class ChatlogMessageCountResponse(BaseModel):
+class ChatlogMessageCountRequest(ChatlogMessageFilters):
+    bucket: Literal["hour", "day"] | None = None
+
+
+class ChatlogMessageCountBucket(BaseModel):
+    start: str
+    end: str
     count: int
     by_sender: dict[str, int]
 
 
-class ChatlogMessageSearchRequest(ChatlogMessageCountRequest):
+class ChatlogMessageCountResponse(BaseModel):
+    count: int
+    by_sender: dict[str, int]
+    buckets: list[ChatlogMessageCountBucket] | None = None
+
+
+class ChatlogMessageSearchRequest(ChatlogMessageFilters):
     """消息搜索请求，默认仅文字。"""
 
     limit: int = Field(default=100, ge=1, le=10000)

@@ -4,6 +4,7 @@ ChatlogService - 聊天记录服务统一接口
 
 from datetime import datetime
 
+from chatlog.models import ChatlogMessageCountResponse
 from chatlog.wechat_db import (
     HAS_CRYPTO,
     ChatRoom,
@@ -104,9 +105,10 @@ class ChatlogService:
         query: str,
         senders: list[str],
         msg_types: list[int] | None = None,
+        bucket: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
-    ) -> dict[str, int]:
+    ) -> ChatlogMessageCountResponse:
         reader = WeChatDBReader(db_path)
         try:
             return reader.count_messages(
@@ -115,6 +117,7 @@ class ChatlogService:
                 senders=senders,
                 msg_types=msg_types,
                 start_time=start_time,
+                bucket=bucket,
                 end_time=end_time,
             )
         finally:

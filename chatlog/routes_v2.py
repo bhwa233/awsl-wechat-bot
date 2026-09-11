@@ -276,7 +276,7 @@ def create_v2_router() -> APIRouter:
             logger.error(f"[ChatlogV2] 搜索消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="搜索失败, 请查看服务器日志") from e
 
-    @db_router.post("/messages/count", response_model=ChatlogMessageCountResponse)
+    @db_router.post("/messages/count", response_model=ChatlogMessageCountResponse, response_model_exclude_none=True)
     def count_messages(request: ChatlogMessageCountRequest):
         try:
             query_text = normalize_query(request.query)
@@ -289,10 +289,11 @@ def create_v2_router() -> APIRouter:
                 query=query_text,
                 senders=senders,
                 msg_types=request.msg_types,
+                bucket=request.bucket,
                 start_time=start_time,
                 end_time=end_time,
             )
-            return ChatlogMessageCountResponse(count=sum(count.values()), by_sender=count)
+            return count
         except FileNotFoundError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         except ValueError as e:

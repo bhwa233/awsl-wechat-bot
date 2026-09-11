@@ -1,7 +1,9 @@
 """Chatlog 搜索参数处理。"""
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+
+from chatlog.models import ChatlogMessageCountBucket, ChatlogMessageCountResponse
 
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_@.\-]{1,128}$")
 _MAX_LIST_ITEMS = 200
@@ -83,3 +85,23 @@ def resolve_message_sender(sender: str, content: str) -> str:
     if " " in prefix or "\n" in prefix:
         return sender
     return prefix
+
+
+def build_message_count(
+    by_sender: dict[str, int],
+    buckets: dict[str, dict[str, int]] | None,
+    bucket: str | None = None,
+) -> ChatlogMessageCountResponse:
+    return ChatlogMessageCountResponse(
+        count=sum(by_sender.values()),
+        by_sender=by_sender,
+        buckets=[
+            ChatlogMessageCountBucket(
+                start=start,
+                end=(datetime.fromisoformat(start) + timedelta(hours=1 if bucket == "hour" else 24)).isoformat(),
+                count=sum(counts.values()),
+                by_sender=counts,
+            )
+            for start, counts in sorted(buckets.items())
+        ] if buckets is not None else None,
+    )

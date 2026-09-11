@@ -208,6 +208,7 @@ def command_count_messages(args: argparse.Namespace) -> None:
         token=args.token,
         json_body={
             "group": args.group,
+            "bucket": args.bucket,
             "query": args.query,
             "senders": args.senders,
             "msg_types": [] if args.all_types else (args.msg_types or [1]),
@@ -314,6 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     count_parser.add_argument("--sender", dest="senders", action="append", default=[], help="Sender wxid; repeat for multiple")
     count_parser.add_argument("--start", default=None, help="Start time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
     count_parser.add_argument("--end", default=None, help="End time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
+    count_parser.add_argument("--bucket", choices=["hour", "day"], help="Add non-empty time buckets in server-local time")
     count_parser.set_defaults(func=command_count_messages)
 
     for filtered_parser in (search_parser, count_parser):

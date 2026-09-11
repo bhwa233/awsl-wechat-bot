@@ -28,8 +28,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from hashlib import pbkdf2_hmac, sha512
 
+from chatlog.models import ChatlogMessageCountResponse
 from chatlog.platform import get_chatlog_platform
-from chatlog.search import escape_like_query, message_search_expressions, resolve_message_sender
+from chatlog.search import build_message_count, escape_like_query, message_search_expressions, resolve_message_sender
 
 try:
     from Crypto.Cipher import AES
@@ -739,12 +740,14 @@ class WeChatDBReader:
         query: str,
         senders: list[str],
         msg_types: list[int] | None = None,
+        bucket: str | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
-    ) -> dict[str, int]:
+    ) -> ChatlogMessageCountResponse:
         return self._get_messages(
             talker=talker,
             start_time=start_time,
+            bucket=bucket,
             end_time=end_time,
             text_only=False,
             msg_types=[1] if msg_types is None else msg_types,
@@ -766,15 +769,19 @@ class WeChatDBReader:
         content_query: str = "",
         msg_types: list[int] | None = None,
         count_only: bool = False,
-    ) -> list[Message] | dict[str, int]:
+        bucket: str | None = None,
+    ) -> list[Message] | ChatlogMessageCountResponse:
         """获取聊天记录"""
         start_time = start_time or datetime(2000, 1, 1)
         end_time = end_time or datetime.now()
         start_ts, end_ts = int(start_time.timestamp()), int(end_time.timestamp())
 
+        if bucket not in (None, "hour", "day"):
+            raise ValueError("bucket 仅支持 hour 或 day")
+        buckets: dict[str, dict[str, int]] | None = {} if bucket else None
         db_paths = self._get_dbs_for_time_range(start_ts, end_ts, strict=count_only)
         if not db_paths:
-            return {} if count_only else []
+            return build_message_count({}, buckets, bucket) if count_only else []
 
         table_name = self._talker_to_table_name(talker)
         if not re.fullmatch(r'Msg_[0-9a-f]{32}', table_name):
@@ -788,6 +795,8 @@ class WeChatDBReader:
         search_sender, search_content = message_search_expressions(is_chatroom)
         compressed = "hex(substr(m.message_content, 1, 4)) = '28B52FFD'"
         sender_content = f"CASE WHEN {compressed} THEN m.message_content ELSE NULL END" if is_chatroom else "NULL"
+        bucket_format = "%Y-%m-%dT%H:00:00" if bucket == "hour" else "%Y-%m-%dT00:00:00"
+        bucket_start = f"strftime('{bucket_format}', m.create_time, 'unixepoch', 'localtime')" if bucket else "NULL"
 
         # 单 db 内 sort_seq 单调,最多需要 offset + limit 条;合并排序后再切片
         per_db_cap = (offset + limit) if limit > 0 and not (senders and is_chatroom) else 0
@@ -799,7 +808,7 @@ class WeChatDBReader:
             if not cursor.fetchone():
                 continue
 
-            columns = f"{search_sender}, {sender_content} AS sender_content, COUNT(*)" if count_only else (
+            columns = f"{search_sender}, {sender_content} AS sender_content, {bucket_start} AS bucket_start, COUNT(*)" if count_only else (
                 "m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
                 "m.create_time, m.message_content, m.status, m.source"
             )
@@ -832,14 +841,17 @@ class WeChatDBReader:
                 )
                 params.append(f"%{escape_like_query(content_query)}%")
             if count_only:
-                query += f" GROUP BY {search_sender}, sender_content"
+                query += f" GROUP BY {search_sender}, sender_content, bucket_start"
                 cursor.execute(query, params)
-                for sender, content, count in cursor.fetchall():
+                for sender, content, start, count in cursor.fetchall():
                     if content is not None:
                         sender = resolve_message_sender(sender, self._decompress_content(content))
                     if senders and sender not in senders:
                         continue
                     by_sender[sender] = by_sender.get(sender, 0) + count
+                    if buckets is not None:
+                        counts = buckets.setdefault(start, {})
+                        counts[sender] = counts.get(sender, 0) + int(count)
                 continue
             query += f" ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}"
             if per_db_cap > 0:
@@ -887,7 +899,7 @@ class WeChatDBReader:
                 ))
 
         if count_only:
-            return by_sender
+            return build_message_count(by_sender, buckets, bucket)
 
         messages.sort(key=lambda m: m.seq, reverse=desc)
         if offset > 0:
