@@ -18,9 +18,11 @@ from chatlog.models import (
     ChatlogGroupResponse,
     ChatlogMessageResponse,
     ChatlogMessageSearchRequest,
+    ChatlogMessageCountRequest,
+    ChatlogMessageCountResponse,
 )
 from chatlog.platform import get_chatlog_platform
-from chatlog.search import normalize_search_filters, parse_time_range
+from chatlog.search import normalize_query, normalize_search_filters, parse_time_range, validate_usernames
 from chatlog.service_v2 import ChatlogServiceV2
 from common.auth import verify_token, verify_token_or_query
 from common.config import config
@@ -258,6 +260,7 @@ def create_v2_router() -> APIRouter:
                 request.group,
                 query=query_text,
                 senders=senders,
+                msg_types=request.msg_types,
                 start_time=start_time,
                 end_time=end_time,
                 limit=request.limit,
@@ -272,6 +275,31 @@ def create_v2_router() -> APIRouter:
         except Exception as e:
             logger.error(f"[ChatlogV2] 搜索消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="搜索失败, 请查看服务器日志") from e
+
+    @db_router.post("/messages/count", response_model=ChatlogMessageCountResponse)
+    def count_messages(request: ChatlogMessageCountRequest):
+        try:
+            query_text = normalize_query(request.query)
+            senders = validate_usernames(request.senders, "senders")
+            start_time, end_time = parse_time_range(request.start, request.end)
+            count = chatlog.count_messages(
+                config.WECHAT_DB_INPUT_PATH,
+                config.WECHAT_DB_KEY,
+                request.group,
+                query=query_text,
+                senders=senders,
+                msg_types=request.msg_types,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            return ChatlogMessageCountResponse(count=sum(count.values()), by_sender=count)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[ChatlogV2] 统计消息失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="统计失败, 请查看服务器日志") from e
 
     @db_router.post(
         "/messages/batch",

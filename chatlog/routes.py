@@ -16,9 +16,11 @@ from chatlog.models import (
     ChatlogGroupResponse,
     ChatlogMessageResponse,
     ChatlogMessageSearchRequest,
+    ChatlogMessageCountRequest,
+    ChatlogMessageCountResponse,
 )
 from chatlog.platform import get_chatlog_platform
-from chatlog.search import normalize_search_filters, parse_time_range
+from chatlog.search import normalize_query, normalize_search_filters, parse_time_range, validate_usernames
 from chatlog.service import ChatlogService
 from common.auth import verify_token
 from common.config import config
@@ -226,6 +228,7 @@ def create_routes() -> APIRouter:
                 request.group,
                 query=query_text,
                 senders=senders,
+                msg_types=request.msg_types,
                 start_time=start_time,
                 end_time=end_time,
                 limit=request.limit,
@@ -240,6 +243,33 @@ def create_routes() -> APIRouter:
         except Exception as e:
             logger.error(f"[Chatlog] 搜索消息失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail="搜索失败, 请查看服务器日志") from e
+
+    @router.post("/messages/count", response_model=ChatlogMessageCountResponse, dependencies=[Depends(verify_token)])
+    def count_messages(request: ChatlogMessageCountRequest):
+        _ensure_v1_config()
+        if not os.path.isdir(config.WECHAT_DB_OUTPUT_PATH):
+            raise HTTPException(status_code=400, detail=f"目录不存在: {config.WECHAT_DB_OUTPUT_PATH}")
+        try:
+            query_text = normalize_query(request.query)
+            senders = validate_usernames(request.senders, "senders")
+            start_time, end_time = parse_time_range(request.start, request.end)
+            count = chatlog.count_messages(
+                config.WECHAT_DB_OUTPUT_PATH,
+                request.group,
+                query=query_text,
+                senders=senders,
+                msg_types=request.msg_types,
+                start_time=start_time,
+                end_time=end_time,
+            )
+            return ChatlogMessageCountResponse(count=sum(count.values()), by_sender=count)
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+        except Exception as e:
+            logger.error(f"[Chatlog] 统计消息失败: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="统计失败, 请查看服务器日志") from e
 
     try:
         _media_binding = V1MediaBackendBinding(get_chatlog_platform(), config)

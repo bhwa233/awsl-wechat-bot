@@ -52,6 +52,7 @@ class ChatlogServiceV2:
         *,
         query: str,
         senders: list[str],
+        msg_types: list[int] | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         limit: int = 100,
@@ -62,11 +63,33 @@ class ChatlogServiceV2:
             talker=talker,
             query=query,
             senders=senders,
+            msg_types=msg_types,
             start_time=start_time,
             end_time=end_time,
             limit=limit,
             offset=offset,
             desc=desc,
+        )
+
+    def count_messages(
+        self,
+        encrypted_dir: str,
+        hex_key: str,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        msg_types: list[int] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
+        return WeChatDBReaderV2(encrypted_dir, hex_key).count_messages(
+            talker=talker,
+            query=query,
+            senders=senders,
+            msg_types=msg_types,
+            start_time=start_time,
+            end_time=end_time,
         )
 
     def get_group_display_name(

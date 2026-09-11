@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-chatlog
-description: "Use when Codex needs to operate an AWSL WeChat Chatlog service by HTTP API: connect with a Chatlog base URL and optional Bearer token, decrypt WeChat chat records, list or search decrypted chatlog messages, list groups, or query group display names."
+description: "Use when Codex needs to operate an AWSL WeChat Chatlog service by HTTP API: connect with a Chatlog base URL and optional Bearer token, decrypt WeChat chat records, list, search, or count chatlog messages, list groups, or query group display names."
 ---
 
 # AWSL WeChat Chatlog
@@ -28,7 +28,9 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Decrypt WeChat chat records with `decrypt`, which calls `POST /api/chatlog/decrypt` and uses Chatlog-side `.env` values.
 - List decrypted chatlog groups with `groups`, which calls `GET /api/chatlog/groups`.
 - Query chat records with `messages --group <group_id>`, which calls `GET /api/chatlog/messages`. Every `messages` command must explicitly pass exactly one ordering flag: `--desc` for newest first or `--asc` for oldest first. With `--desc`, `--limit 100` returns the latest 100 messages. Use the `username` from `groups` as `--group`.
-- Search plain-text chat records with `search-messages --group <group_id>`, which calls `POST /api/chatlog/messages/search`. Pass `--query <text>`, repeat `--sender <wxid>`, or combine both; at least one query or sender is required. Exactly one of `--desc` or `--asc` is required.
+- Search chat records (text by default) with `search-messages --group <group_id>`, which calls `POST /api/chatlog/messages/search`. Pass `--query <text>`, repeat `--sender <wxid>`, or combine both; at least one query or sender is required. Exactly one of `--desc` or `--asc` is required.
+- Count messages with `count-messages --group <group_id>`, which calls `POST /api/chatlog/messages/count` and returns `{"count": N, "by_sender": {"wxid_alice": N}}`. Time (`--start`, `--end`), repeatable `--sender`, and `--query` are optional; no ordering or pagination flags. `by_sender` is a wxid-to-count map merged across databases. Only senders with matching messages appear; an empty wxid represents an unknown sender.
+- Both search and count default to text (type 1). Repeat `--msg-type` to select types, or use `--all-types` for every type. A keyword still matches only uncompressed text, intersected with selected types. Dates use the service's local timezone; an end date includes the whole day.
 - Get group display name with `group-name --group <group_id>`, which calls `GET /api/chatlog/group-display-name`.
 - Health check with `health`, which calls `GET /api/chatlog/health`. Response includes `media` capability flags: `image`, `sticker`, `video_thumb`, `voice`, `file`.
 
@@ -104,6 +106,20 @@ uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messa
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
   --group 12345@chatroom --sender wxid_alice \
   --start "2026-05-01" --end "2026-05-04" --limit 1000 --asc
+
+# Count messages per sender, including all message types
+uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" count-messages \
+  --group 12345@chatroom --start "2026-09-01" --end "2026-09-11" \
+  --all-types
+
+# Find images and stickers from a sender
+uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
+  --group 12345@chatroom --sender wxid_alice --msg-type 3 --msg-type 47 --desc
+
+# Count all types in a time range (omit --sender to count everyone)
+uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" count-messages \
+  --group 12345@chatroom --sender wxid_alice --all-types \
+  --start "2026-09-01" --end "2026-09-11"
 
 # Get group display name
 uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" group-name \

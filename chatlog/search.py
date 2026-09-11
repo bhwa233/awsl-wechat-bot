@@ -47,6 +47,8 @@ def parse_time_range(start: str | None, end: str | None) -> tuple[datetime | Non
         end_time = datetime.strptime(end, fmt)
         if " " not in end:
             end_time = end_time.replace(hour=23, minute=59, second=59)
+    if start_time and end_time and start_time > end_time:
+        raise ValueError("开始时间不能晚于结束时间")
     return start_time, end_time
 
 

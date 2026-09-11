@@ -2,6 +2,8 @@
 聊天记录数据模型 - HTTP API 响应模型
 """
 
+from typing import Annotated
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -62,14 +64,27 @@ class ChatlogMessageResponse(BaseModel):
         return self
 
 
-class ChatlogMessageSearchRequest(BaseModel):
-    """纯文本消息搜索请求。"""
+class ChatlogMessageCountRequest(BaseModel):
+    """消息查询与统计过滤条件。"""
 
     group: str
     query: str = Field(default="", max_length=256)
     senders: list[str] = Field(default_factory=list, max_length=200)
     start: str | None = None
     end: str | None = None
+    msg_types: list[Annotated[int, Field(strict=True, ge=0, le=0xFFFFFFFF)]] = Field(
+        default_factory=lambda: [1], max_length=200,
+    )
+
+
+class ChatlogMessageCountResponse(BaseModel):
+    count: int
+    by_sender: dict[str, int]
+
+
+class ChatlogMessageSearchRequest(ChatlogMessageCountRequest):
+    """消息搜索请求，默认仅文字。"""
+
     limit: int = Field(default=100, ge=1, le=10000)
     offset: int = Field(default=0, ge=0, le=100000)
     desc: bool = False

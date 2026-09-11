@@ -188,11 +188,31 @@ def command_search_messages(args: argparse.Namespace) -> None:
             "group": args.group,
             "query": args.query,
             "senders": args.senders,
+            "msg_types": [] if args.all_types else (args.msg_types or [1]),
             "start": args.start,
             "end": args.end,
             "limit": args.limit,
             "offset": args.offset,
             "desc": args.order == "desc",
+        },
+        timeout=args.timeout,
+    )
+    json_dump(data)
+
+
+def command_count_messages(args: argparse.Namespace) -> None:
+    data = request_json(
+        "POST",
+        args.base_url,
+        "/api/chatlog/messages/count",
+        token=args.token,
+        json_body={
+            "group": args.group,
+            "query": args.query,
+            "senders": args.senders,
+            "msg_types": [] if args.all_types else (args.msg_types or [1]),
+            "start": args.start,
+            "end": args.end,
         },
         timeout=args.timeout,
     )
@@ -275,7 +295,7 @@ def build_parser() -> argparse.ArgumentParser:
     order_group.add_argument("--asc", dest="order", action="store_const", const="asc", help="Oldest first")
     messages_parser.set_defaults(func=command_messages)
 
-    search_parser = subparsers.add_parser("search-messages", help="Search plain-text chat records")
+    search_parser = subparsers.add_parser("search-messages", help="Search chat records (default: text)")
     search_parser.add_argument("--group", required=True, help="Chatroom ID or personal WeChat ID")
     search_parser.add_argument("--query", default="", help="Literal message text; optional with --sender")
     search_parser.add_argument("--sender", dest="senders", action="append", default=[], help="Sender wxid; repeat for multiple")
@@ -287,6 +307,19 @@ def build_parser() -> argparse.ArgumentParser:
     search_order.add_argument("--desc", dest="order", action="store_const", const="desc", help="Newest first")
     search_order.add_argument("--asc", dest="order", action="store_const", const="asc", help="Oldest first")
     search_parser.set_defaults(func=command_search_messages)
+
+    count_parser = subparsers.add_parser("count-messages", help="Count matching records without pagination")
+    count_parser.add_argument("--group", required=True, help="Chatroom ID or personal WeChat ID")
+    count_parser.add_argument("--query", default="", help="Optional literal text keyword")
+    count_parser.add_argument("--sender", dest="senders", action="append", default=[], help="Sender wxid; repeat for multiple")
+    count_parser.add_argument("--start", default=None, help="Start time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
+    count_parser.add_argument("--end", default=None, help="End time: YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
+    count_parser.set_defaults(func=command_count_messages)
+
+    for filtered_parser in (search_parser, count_parser):
+        types = filtered_parser.add_mutually_exclusive_group()
+        types.add_argument("--msg-type", dest="msg_types", type=int, action="append", help="Message type; repeat for multiple (default: 1)")
+        types.add_argument("--all-types", action="store_true", help="Include all message types")
 
     gn_parser = subparsers.add_parser("group-name", help="Get group display name")
     gn_parser.add_argument("--group", required=True, help="Group ID")

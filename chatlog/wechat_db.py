@@ -15,6 +15,7 @@
 
 import argparse
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -522,21 +523,22 @@ class WeChatDBReader:
             self._contact_db = sqlite3.connect(db_path)
         return self._contact_db
 
-    def _init_message_dbs(self) -> None:
-        if self._message_db_times:
+    def _init_message_dbs(self, strict: bool = False) -> None:
+        if self._message_db_times and not strict:
             return
         db_files = self._find_db_files(r"^message_([0-9]?[0-9])?\.db$")
         infos = []
         for db_path in db_files:
             try:
-                conn = sqlite3.connect(db_path)
-                cursor = conn.cursor()
-                cursor.execute("SELECT timestamp FROM Timestamp LIMIT 1")
-                row = cursor.fetchone()
+                with contextlib.closing(sqlite3.connect(db_path)) as conn:
+                    row = conn.execute("SELECT timestamp FROM Timestamp LIMIT 1").fetchone()
                 if row:
                     infos.append((db_path, row[0]))
-                conn.close()
+                else:
+                    raise RuntimeError("消息数据库缺少 Timestamp")
             except Exception as e:
+                if strict:
+                    raise
                 print(f"警告: 无法读取数据库 {db_path}: {e}")
         infos.sort(key=lambda x: x[1])
         self._message_db_times = []
@@ -549,9 +551,9 @@ class WeChatDBReader:
             self._message_dbs[db_path] = sqlite3.connect(db_path)
         return self._message_dbs[db_path]
 
-    def _get_dbs_for_time_range(self, start_time: int, end_time: int) -> list[str]:
-        self._init_message_dbs()
-        return [p for p, s, e in self._message_db_times if s < end_time and e > start_time]
+    def _get_dbs_for_time_range(self, start_time: int, end_time: int, strict: bool = False) -> list[str]:
+        self._init_message_dbs(strict=strict)
+        return [p for p, s, e in self._message_db_times if s <= end_time and e >= start_time]
 
     def _talker_to_table_name(self, talker: str) -> str:
         return f"Msg_{hashlib.md5(talker.encode()).hexdigest()}"
@@ -710,6 +712,7 @@ class WeChatDBReader:
         *,
         query: str,
         senders: list[str],
+        msg_types: list[int] | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         limit: int = 100,
@@ -720,10 +723,32 @@ class WeChatDBReader:
             talker=talker,
             start_time=start_time,
             end_time=end_time,
-            text_only=True,
+            text_only=False,
+            msg_types=[1] if msg_types is None else msg_types,
             limit=limit,
             offset=offset,
             desc=desc,
+            senders=senders,
+            content_query=query,
+        )
+
+    def count_messages(
+        self,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        msg_types: list[int] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
+        return self._get_messages(
+            talker=talker,
+            start_time=start_time,
+            end_time=end_time,
+            text_only=False,
+            msg_types=[1] if msg_types is None else msg_types,
+            count_only=True,
             senders=senders,
             content_query=query,
         )
@@ -739,15 +764,17 @@ class WeChatDBReader:
         desc: bool = False,
         senders: list[str] | None = None,
         content_query: str = "",
-    ) -> list[Message]:
+        msg_types: list[int] | None = None,
+        count_only: bool = False,
+    ) -> list[Message] | dict[str, int]:
         """获取聊天记录"""
         start_time = start_time or datetime(2000, 1, 1)
         end_time = end_time or datetime.now()
         start_ts, end_ts = int(start_time.timestamp()), int(end_time.timestamp())
 
-        db_paths = self._get_dbs_for_time_range(start_ts, end_ts)
+        db_paths = self._get_dbs_for_time_range(start_ts, end_ts, strict=count_only)
         if not db_paths:
-            return []
+            return {} if count_only else []
 
         table_name = self._talker_to_table_name(talker)
         if not re.fullmatch(r'Msg_[0-9a-f]{32}', table_name):
@@ -756,7 +783,8 @@ class WeChatDBReader:
         messages = []
 
         # 获取群昵称映射
-        display_names = self._get_chatroom_display_names(talker) if is_chatroom else {}
+        display_names = self._get_chatroom_display_names(talker) if is_chatroom and not count_only else {}
+        by_sender: dict[str, int] = {}
         search_sender, search_content = message_search_expressions(is_chatroom)
 
         # 单 db 内 sort_seq 单调,最多需要 offset + limit 条;合并排序后再切片
@@ -769,16 +797,25 @@ class WeChatDBReader:
             if not cursor.fetchone():
                 continue
 
+            columns = f"{search_sender}, COUNT(*)" if count_only else (
+                "m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
+                "m.create_time, m.message_content, m.status, m.source"
+            )
             query = f"""
-                SELECT m.sort_seq, m.server_id, m.local_type, n.user_name,
-                       m.local_id,
-                       m.create_time, m.message_content, m.status, m.source
+                SELECT {columns}
                 FROM {table_name} m
                 LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid
                 WHERE m.create_time >= ? AND m.create_time <= ?
             """
             params: list = [start_ts, end_ts]
             if text_only:
+                query += " AND (m.local_type & 0xFFFFFFFF) = ?"
+                params.append(MESSAGE_TYPE_TEXT)
+            if msg_types:
+                placeholders = ",".join("?" for _ in msg_types)
+                query += f" AND (m.local_type & 0xFFFFFFFF) IN ({placeholders})"
+                params.extend(msg_types)
+            if content_query:
                 query += " AND (m.local_type & 0xFFFFFFFF) = ?"
                 params.append(MESSAGE_TYPE_TEXT)
             if senders:
@@ -791,6 +828,12 @@ class WeChatDBReader:
                     f" AND {search_content} LIKE ? ESCAPE '\\' COLLATE NOCASE"
                 )
                 params.append(f"%{escape_like_query(content_query)}%")
+            if count_only:
+                query += f" GROUP BY {search_sender}"
+                cursor.execute(query, params)
+                for sender, count in cursor.fetchall():
+                    by_sender[sender] = by_sender.get(sender, 0) + count
+                continue
             query += f" ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}"
             if per_db_cap > 0:
                 query += " LIMIT ?"
@@ -832,6 +875,9 @@ class WeChatDBReader:
                     local_id=int(local_id) if local_id is not None else 0,
                     at_users=at_users,
                 ))
+
+        if count_only:
+            return by_sender
 
         messages.sort(key=lambda m: m.seq, reverse=desc)
         if offset > 0:

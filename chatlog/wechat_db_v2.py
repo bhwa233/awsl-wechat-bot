@@ -150,8 +150,8 @@ class WeChatDBReaderV2:
             result = self.platform.query_raw_sql(db_path, key, sql)
         return result.get("columns", []) or [], result.get("rows", []) or []
 
-    def _init_message_dbs(self) -> None:
-        if self._message_db_times:
+    def _init_message_dbs(self, strict: bool = False) -> None:
+        if self._message_db_times and not strict:
             return
         paths = self._list_message_db_paths()
         file_set = frozenset(paths)
@@ -167,13 +167,18 @@ class WeChatDBReaderV2:
                 _, rows = self._query(path, "SELECT timestamp FROM Timestamp LIMIT 1")
                 if rows and rows[0]:
                     infos.append((path, int(rows[0][0])))
+                else:
+                    raise RuntimeError("消息数据库缺少 Timestamp")
             except Exception as e:
+                if strict:
+                    raise
                 errors.append((path, e))
                 logger.warning("[ChatlogV2] 无法读取数据库 %s: %s", path, e)
         if not infos:
             detail = "; ".join(f"{p}: {e}" for p, e in errors) if errors else "目录下无 message db"
             raise RuntimeError(f"没有可用的消息数据库: {detail}")
         infos.sort(key=lambda x: x[1])
+        self._message_db_times = []
         for i, (path, start_time) in enumerate(infos):
             end_time = infos[i + 1][1] if i < len(infos) - 1 else sys.maxsize
             self._message_db_times.append((path, start_time, end_time))
@@ -182,9 +187,9 @@ class WeChatDBReaderV2:
             with _CACHE_LOCK:
                 _DB_TIMES_CACHE[self.db_storage_dir] = (file_set, list(self._message_db_times))
 
-    def _get_dbs_for_time_range(self, start_ts: int, end_ts: int) -> list[str]:
-        self._init_message_dbs()
-        return [p for p, s, e in self._message_db_times if s < end_ts and e > start_ts]
+    def _get_dbs_for_time_range(self, start_ts: int, end_ts: int, strict: bool = False) -> list[str]:
+        self._init_message_dbs(strict=strict)
+        return [p for p, s, e in self._message_db_times if s <= end_ts and e >= start_ts]
 
     def _tables_exist(self, db_path: str, tables: list[str]) -> set[str]:
         """批量检查表是否存在(带进程级正/负缓存), 返回存在的表名集合."""
@@ -413,6 +418,7 @@ class WeChatDBReaderV2:
         *,
         query: str,
         senders: list[str],
+        msg_types: list[int] | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         limit: int = 100,
@@ -423,10 +429,32 @@ class WeChatDBReaderV2:
             talker=talker,
             start_time=start_time,
             end_time=end_time,
-            text_only=True,
+            text_only=False,
+            msg_types=[1] if msg_types is None else msg_types,
             limit=limit,
             offset=offset,
             desc=desc,
+            senders=senders,
+            content_query=query,
+        )
+
+    def count_messages(
+        self,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        msg_types: list[int] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
+        return self._get_messages(
+            talker=talker,
+            start_time=start_time,
+            end_time=end_time,
+            text_only=False,
+            msg_types=[1] if msg_types is None else msg_types,
+            count_only=True,
             senders=senders,
             content_query=query,
         )
@@ -442,24 +470,32 @@ class WeChatDBReaderV2:
         desc: bool = False,
         senders: list[str] | None = None,
         content_query: str = "",
-    ) -> list[Message]:
+        msg_types: list[int] | None = None,
+        count_only: bool = False,
+    ) -> list[Message] | dict[str, int]:
         _validate_username(talker)
         start_time = start_time or datetime(2000, 1, 1)
         end_time = end_time or datetime.now()
         start_ts, end_ts = int(start_time.timestamp()), int(end_time.timestamp())
 
-        db_paths = self._get_dbs_for_time_range(start_ts, end_ts)
+        db_paths = self._get_dbs_for_time_range(start_ts, end_ts, strict=count_only)
         if not db_paths:
-            return []
+            return {} if count_only else []
 
         table_name = _talker_to_table_name(talker)
         if not _TABLE_NAME_RE.match(table_name):
             raise ValueError(f"Invalid table name derived from talker: {talker}")
         is_chatroom = talker.endswith("@chatroom")
-        display_names = self._get_chatroom_display_names(talker) if is_chatroom else {}
+        display_names = self._get_chatroom_display_names(talker) if is_chatroom and not count_only else {}
+        by_sender: dict[str, int] = {}
         search_sender, search_content = message_search_expressions(is_chatroom)
 
-        type_filter = f" AND m.local_type = {MESSAGE_TYPE_TEXT}" if text_only else ""
+        type_filter = f" AND (m.local_type & 0xFFFFFFFF) = {MESSAGE_TYPE_TEXT}" if text_only else ""
+        if msg_types:
+            type_values = ",".join(str(int(value)) for value in msg_types)
+            type_filter += f" AND (m.local_type & 0xFFFFFFFF) IN ({type_values})"
+        if content_query:
+            type_filter += f" AND (m.local_type & 0xFFFFFFFF) = {MESSAGE_TYPE_TEXT}"
         sender_filter = ""
         if senders:
             for sender in senders:
@@ -486,21 +522,36 @@ class WeChatDBReaderV2:
             try:
                 if table_name not in self._tables_exist(db_path, [table_name]):
                     continue
+                columns = f"{search_sender}, COUNT(*)" if count_only else (
+                    "m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
+                    "m.create_time, m.message_content, m.status, m.source"
+                )
                 sql = (
-                    f"SELECT m.sort_seq, m.server_id, m.local_type, n.user_name, m.local_id, "
-                    f"m.create_time, m.message_content, m.status, m.source "
+                    f"SELECT {columns} "
                     f"FROM {table_name} m "
                     f"LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
                     f"WHERE m.sort_seq >= {seq_lo} AND m.sort_seq <= {seq_hi} "
                     f"AND m.create_time >= {start_ts} AND m.create_time <= {end_ts}"
                     f"{type_filter}{sender_filter}{content_filter} "
-                    f"ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}{sql_limit}"
                 )
+                if count_only:
+                    sql += f"GROUP BY {search_sender}"
+                if not count_only:
+                    sql += f"ORDER BY m.sort_seq {'DESC' if desc else 'ASC'}{sql_limit}"
                 _, rows = self._query(db_path, sql)
             except Exception as e:
+                if count_only:
+                    raise
                 logger.warning("[ChatlogV2] 查询 %s 失败: %s", db_path, e)
                 continue
+            if count_only:
+                for sender, count in rows:
+                    by_sender[sender] = by_sender.get(sender, 0) + int(count)
+                continue
             raw_messages.extend(self._process_rows(talker, is_chatroom, rows))
+
+        if count_only:
+            return by_sender
 
         raw_messages.sort(key=lambda m: m[0], reverse=desc)
         if offset > 0:

@@ -73,6 +73,7 @@ class ChatlogService:
         *,
         query: str,
         senders: list[str],
+        msg_types: list[int] | None = None,
         start_time: datetime | None = None,
         end_time: datetime | None = None,
         limit: int = 100,
@@ -85,11 +86,36 @@ class ChatlogService:
                 talker=talker,
                 query=query,
                 senders=senders,
+                msg_types=msg_types,
                 start_time=start_time,
                 end_time=end_time,
                 limit=limit,
                 offset=offset,
                 desc=desc,
+            )
+        finally:
+            reader.close()
+
+    def count_messages(
+        self,
+        db_path: str,
+        talker: str,
+        *,
+        query: str,
+        senders: list[str],
+        msg_types: list[int] | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
+    ) -> dict[str, int]:
+        reader = WeChatDBReader(db_path)
+        try:
+            return reader.count_messages(
+                talker=talker,
+                query=query,
+                senders=senders,
+                msg_types=msg_types,
+                start_time=start_time,
+                end_time=end_time,
             )
         finally:
             reader.close()

@@ -100,7 +100,7 @@ Query chat messages for a specific group or contact.
 
 ### `POST /api/chatlog/messages/search`
 
-Search text messages for a specific group or contact. At least one non-empty `query`
+Search messages for a specific group or contact (text by default). At least one non-empty `query`
 or one `senders` entry is required. When `query` is present, matching is performed in
 SQL against the visible message body after legacy group-sender prefix parsing;
 Zstd-compressed message bodies are not scanned. Sender-only searches filter by sender
@@ -125,11 +125,39 @@ Fields:
 - `query` (string, default `""`): Optional literal text to find, at most 256 characters; SQL wildcard characters are treated literally. May be empty only when `senders` is non-empty
 - `senders` (array of strings, default `[]`): Optional sender wxids, at most 200; an empty array matches all senders
 - `start` / `end` (string, optional): `YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`
+- `msg_types` (array of integers, default `[1]`): Low 32-bit message types, at most 200 entries; `[]` selects all. Common values: 1 text, 3 image, 34 voice, 43 video, 47 sticker, 49 app message (including files). With `query`, only uncompressed text is matched, intersected with this filter.
 - `limit` (int, default 100): Maximum results, 1–10000
 - `offset` (int, default 0): Skip results after ordering, 0–100000
 - `desc` (bool, default false): `true` returns newest first
 
 **Response:** Same array shape as `GET /api/chatlog/messages`.
+
+---
+
+### `POST /api/chatlog/messages/count`
+
+Accepts `group`, `query`, `senders`, `start`, `end`, and `msg_types` with the same
+semantics as search. Only `group` is required; time-only counting is supported.
+There is no pagination or ordering. Default `msg_types` is `[1]`; pass `[]` for all types.
+
+```json
+{"group":"12345@chatroom","start":"2026-09-01","end":"2026-09-11","senders":["wxid_alice"],"msg_types":[]}
+```
+
+Response: `{"count":123,"by_sender":{"wxid_alice":100,"wxid_bob":23}}`.
+`count` remains the total after all filters; `by_sender` is aggregated by sender wxid
+across databases with the same sender expression used for filtering (including legacy
+uncompressed group prefixes). Only matching senders appear, with unknown senders under
+`""`; no matches returns `{"count":0,"by_sender":{}}`. No nickname lookup is performed.
+The CLI and Python `ChatlogClient.count_messages` return the complete response
+(total and map), without an additional grouping parameter.
+Counts are summed across message databases using SQL.
+Database read failures return an error rather than a partial count.
+Both search and count use server-local time, inclusive boundaries, and include the
+whole end date when only a date is supplied. A reversed time range returns 400.
+Both endpoints are available under explicit `/api/chatlog/v1` and `/api/chatlog/v2`
+prefixes and the default prefix; Cortex proxies the default endpoints. V2 requires
+an authenticated request and a running WeChat process.
 
 ---
 
