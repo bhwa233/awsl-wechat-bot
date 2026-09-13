@@ -64,7 +64,7 @@ function WindowManager({ busy, operate, onClose, revision }) {
                                 ? h(
                                       'div',
                                       { class: 'console-cache-list' },
-                                      windows.map((window, i) =>
+                                      [...windows].sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-CN', { numeric: true })).map((window, i) =>
                                           h(
                                               'div',
                                               { class: 'console-cache-item', key: `${window.name}:${i}` },
