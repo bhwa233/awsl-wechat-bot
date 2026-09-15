@@ -25,7 +25,8 @@ uv run run_daemon.py       # Daemon (:8001)
 # Tools
 uv run tools/inspect_wechat.py   # 微信窗口检查
 uv run tools/extract_wx_keys_windows.py  # Windows 提取微信数据库密钥
-sudo uv run tools/extract_wx_keys_linux.py  # Linux 提取微信数据库密钥
+sudo uv run tools/extract_wx_keys_linux.py  # Linux 提取微信数据库密钥（内存扫描，微信 ≤4.1.12）
+uv run tools/extract_wx_keys_linux.py --mode passphrase  # 微信 ≥4.1.13：关闭微信后运行，自动重启微信捕获 passphrase 派生密钥
 uv run --with pycryptodome tools/extract_wx_image_key_windows.py  # Windows 派生图片 V2 .dat AES key
 uv run --with pycryptodome tools/extract_wx_image_key_linux.py    # Linux 派生图片 V2 .dat AES key (无需 root)
 
