@@ -105,7 +105,10 @@ class WSSubscribe(BaseModel):
         if v:
             if len(v) > MAX_REGEX_LEN:
                 raise ValueError(f"正则表达式长度不能超过 {MAX_REGEX_LEN} 字符")
-            re.compile(v)
+            try:
+                re.compile(v)
+            except re.error as exc:
+                raise ValueError(f"无效的正则表达式: {exc}") from exc
         return v
 
 

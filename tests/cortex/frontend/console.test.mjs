@@ -208,7 +208,7 @@ export async function run({ page, nav, check, state, data, calls, artifacts }) {
         await nav('dashboard');
         state.consoleUnsupported = true;
         await nav('console');
-        await page.locator('#section-console .request-error').getByText('Console 仅支持 Windows Gateway').waitFor();
+        await page.locator('#section-console .request-error').getByText('Console 当前平台不可用').waitFor();
         assert.equal(await page.locator('#console-composer-send').isDisabled(), true);
         state.consoleUnsupported = false;
     });

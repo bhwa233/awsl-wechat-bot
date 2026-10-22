@@ -120,6 +120,7 @@ class ChatlogBatchMessagesRequest(BaseModel):
     items: list[ChatlogBatchItem] = Field(min_length=1, max_length=200)
     # 每个群最多返回条数
     limit: int = Field(default=500, ge=1, le=10000)
+    offset: int = Field(default=0, ge=0)
 
 
 class ChatlogBatchMessagesResponse(BaseModel):

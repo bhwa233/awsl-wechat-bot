@@ -648,8 +648,9 @@ class WeChatDBReaderV2:
         self,
         items: list[tuple[str, int]],
         limit: int = 500,
+        offset: int = 0,
     ) -> dict[str, list[Message]]:
-        """批量增量查询: 每个 (talker, since_seq) 返回 sort_seq >= since_seq 的消息(升序, 每群最多 limit 条).
+        """批量增量查询: 每群按 sort_seq/local_id 升序, 跨库合并后按 offset/limit 分页.
 
         专为低延迟轮询设计: 全部群合并为对每个 message db 的一条 UNION ALL SQL,
         sort_seq 走索引, 整批耗时与单群查询同量级. since_seq 为闭区间(>=),
@@ -665,10 +666,11 @@ class WeChatDBReaderV2:
         if not seen:
             return {}
         limit = max(1, int(limit))
+        offset = max(0, int(offset))
 
         # since_seq ≈ 毫秒时间戳, 换算成秒并放宽余量, 只查可能覆盖该范围的 message db
         min_start_ts = min(seen.values()) // 1000 - _SORT_SEQ_SLACK_MS // 1000
-        db_paths = self._get_dbs_for_time_range(min_start_ts, sys.maxsize)
+        db_paths = self._get_dbs_for_time_range(min_start_ts, sys.maxsize, strict=True)
 
         tables = {talker: _talker_to_table_name(talker) for talker in seen}
         results_raw: dict[str, list[tuple]] = {talker: [] for talker in seen}
@@ -688,15 +690,11 @@ class WeChatDBReaderV2:
                     f"SELECT * FROM (SELECT '{talker}' AS talker, {cols} "
                     f"FROM {table} m LEFT JOIN Name2Id n ON m.real_sender_id = n.rowid "
                     f"WHERE m.sort_seq >= {seen[talker]} "
-                    f"ORDER BY m.sort_seq ASC LIMIT {limit})"
+                    f"ORDER BY m.sort_seq ASC, m.local_id ASC LIMIT {limit + offset})"
                 )
             if not parts:
                 continue
-            try:
-                _, rows = self._query(db_path, " UNION ALL ".join(parts))
-            except Exception as e:
-                logger.warning("[ChatlogV2] 批量查询 %s 失败: %s", db_path, e)
-                continue
+            _, rows = self._query(db_path, " UNION ALL ".join(parts))
             by_talker: dict[str, list[list]] = {}
             for row in rows:
                 by_talker.setdefault(row[0], []).append(row[1:])
@@ -721,9 +719,9 @@ class WeChatDBReaderV2:
 
         results: dict[str, list[Message]] = {}
         for talker, raws in results_raw.items():
-            raws.sort(key=lambda m: m[0])
+            raws.sort(key=lambda m: (m[0], m[8]))
             results[talker] = self._finalize_messages(
-                raws[:limit], display_by_talker.get(talker, {}), contact_names
+                raws[offset:offset + limit], display_by_talker.get(talker, {}), contact_names
             )
         return results
 

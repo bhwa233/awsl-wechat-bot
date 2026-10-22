@@ -1,6 +1,6 @@
 ---
 name: awsl-wechat-gateway-console
-description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows main-window Console. Treat Console UI state and send results as non-authoritative; confirm every send through awsl-wechat-chatlog, and wait at least two minutes before declaring failure or retrying. Reuses awsl-wechat-gateway connection and authentication."
+description: "Use when Codex needs to list or scroll chats, or send a message through the AWSL WeChat Gateway Windows/Linux main-window Console. Treat Console UI state and send results as non-authoritative; confirm every send through awsl-wechat-chatlog, and wait at least two minutes before declaring failure or retrying. Reuses awsl-wechat-gateway connection and authentication."
 ---
 
 # AWSL WeChat Gateway Console
@@ -38,7 +38,7 @@ uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message "Console test"
 
-# Send attachments or Windows voice messages
+# Send attachments or Windows/Linux voice messages
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message-type image --file-path ./image.png
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
@@ -56,9 +56,17 @@ When resolving a chat manually, follow the same rules:
 4. Stop when one exact-name match is visible. If multiple visible items have the same exact name, report ambiguity instead of choosing one.
 5. Report not found only when two consecutive downward signatures are identical, confirming the bottom.
 
-Never alternate scroll directions or treat the traversal limit as an edge. Main-window `ChatSessionCell` AutomationIds use the display-name form `session_item_<name>` and do not expose the stable WeChat chat ID; do not infer a chat ID from them.
+Never alternate scroll directions or treat the traversal limit as an edge. Windows `ChatSessionCell` AutomationIds use the display-name form `session_item_<name>`. Linux returns opaque session `path` values from AT-SPI; refresh state before using them. Neither exposes the stable WeChat chat ID. Resolve it through Chatlog and do not infer it from a path.
 
-`send` resolves the exact chat-list item and uses Console UIA state while opening and sending. UI recognition/validation and the actual send are decoupled: a validation failure or error response does not prove that no message was sent.
+`send` resolves the exact chat-list item and uses Console UIA/AT-SPI state while opening and sending. UI recognition/validation and the actual send are decoupled: a validation failure or error response does not prove that no message was sent.
+
+Linux requires WeChat started with `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`, a shared X11 user/session, and Chatlog v2; voice also needs PulseAudio. Current-chat controls may temporarily disappear from AT-SPI, including zero-sized rectangles: stop on an unrecognized target and refresh or reselect the chat before sending. Native `@name ` prefixes require unique visible member candidates and fall back to literal text on ambiguity. See the repository README for setup and platform limits.
+
+Linux WeChat detaches the current chat area when opening a separate window. Console reselects the chat after opening to restore the main window; after a manual detach, select the chat again. A top-level `available=true` alone does not mean `chat_area` or `input_box` is ready. Ambiguous chat names are rejected. Linux quotes verify copied text before selecting the quote menu and confirming the preview.
+
+Linux Console holds its operation lock during TTS synthesis; chat switching returns busy during that operation. If recording completion cannot be confirmed, automatic UI actions pause and the silent microphone remains active until cancellation is confirmed. Do not delete `~/.cache/awsl-wechat-gateway/pending-recording.json` to bypass this guard; cancel recording in WeChat and retry. Window-cache restore returns unavailable when any entry fails, with per-entry results and failure counts.
+
+Linux state includes structured Chinese/English quotes and timestamp rows. Debug `include_patterns=true` returns actual AT-SPI interfaces, attributes and supported actions/text without invoking actions. If microphone restoration or module removal fails after recording, the recovery marker remains and subsequent UI operations retry cleanup; do not resend solely because the API reported failure. Saving a window cache with unresolved conversation IDs fails and preserves the existing cache.
 
 ## Send Confirmation (Required)
 
@@ -67,7 +75,7 @@ Treat Chatlog as the only source of truth for whether a send occurred. For every
 1. Resolve the destination to its stable Chatlog `username` with `awsl-wechat-chatlog groups`, preferably before sending.
 2. Run the Console `send` command once.
 3. Query the destination's newest records with `awsl-wechat-chatlog messages --group <username> --limit 20 --desc` and keep polling Chatlog during the confirmation window. Do not invoke `send` again while polling.
-4. Confirm a matching record with `is_self=true` in the send time window. Match the text exactly when possible; for attachments or voice, also use the message type, filename/content metadata, and timestamp available in Chatlog.
+4. Confirm a matching record with `is_self=true` in the send time window. Match text exactly when possible. For attachments/voice, query all types (`--all-types` in the Chatlog CLI or `text_only=false` over HTTP), then match type, filename/content metadata, and timestamp. Confirm native mentions with `at_users`; confirm quotes with the reference message ID in appmsg type 57.
 5. Report the send as successful as soon as that record exists, regardless of the Console command's UI error or return status.
 6. Treat an absent record as pending, not failed, until at least 120 seconds have elapsed since the first `send` invocation. After the 120-second deadline, perform one final fresh Chatlog query.
 7. Declare failure or retry only when that final query still contains no matching self-sent record. Never shorten the 120-second minimum because the Console returned early or reported an error.

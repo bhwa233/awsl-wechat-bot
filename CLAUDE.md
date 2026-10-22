@@ -86,7 +86,9 @@ per group                              │ 广播
 - `adapters/base.py` - BaseWeChatAdapter 抽象基类 (窗口读取/发送 + 平台消息检测策略)
 - `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
 - `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，文本/图片/文件/语音发送共用 _send_lock 串行；语音通过 LocalAI TTS（EdgeTTS 回退）+ VB-CABLE + 右 Alt 录音实现
-- `adapters/linux.py` - Linux: 通过 Chatlog HTTP 读取文本消息，通过 X11 工具发送文本/图片/文件
+- `adapters/linux.py` - Linux: Chatlog v2 seq 游标读取文本，AT-SPI 定位控件，X11 发送文本/图片/文件，PulseAudio 虚拟麦克风发送原生语音
+- `console/adapters/linux.py` - Linux Console：会话切换/滚动、独立窗口缓存/恢复、文本引用；与发送器共用跨进程 UI 锁
+- `utils/linux_accessibility.py` / `linux_ui_lock.py` / `linux_voice.py` - AT-SPI D-Bus 控件读取、跨进程锁、虚拟麦克风与录音路由
 - `utils/voice_synthesis.py` - 平台无关的 LocalAI/EdgeTTS 语音合成
 - `utils/ocr.py` - macOS Vision OCR 封装
 - `utils/screenshot.py` - 截图工具
@@ -148,9 +150,11 @@ per group                              │ 广播
 - **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
 - **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
 - **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`；Console 另用操作锁防止慢速 TTS 期间切换聊天，合成本身不占 UI 锁
-- **Windows 语音发送**: `voice` 在独立线程中优先用 OpenAI 兼容 LocalAI TTS 合成 MP3，失败时回退 EdgeTTS，完成后回到发送队列；`voice_file` 接收 Base64 MP3。两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒，Linux/macOS 不支持
-- **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog HTTP 查询最近文本消息；发送依赖 X11 工具 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
-- **消息去重**: 各平台适配器按会话维护进程内状态；Windows 优先 UIA RuntimeId、hash 序列回退，macOS 使用 SHA256 上下文哈希且只触发最后一条，Linux 使用 Chatlog 时间游标
+- **Windows 语音发送**: `voice` 在独立线程中优先用 OpenAI 兼容 LocalAI TTS 合成 MP3，失败时回退 EdgeTTS，完成后回到发送队列；`voice_file` 接收 Base64 MP3。两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒。Linux 通过 PulseAudio 支持同样的载荷，macOS 不支持
+- **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog v2 `/messages/batch` 的 seq 游标增量查询，保留边界去重；已识别自消息即使尚未确认也不阻塞游标。发送依赖 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
+- **增量读取失败**: v2 batch 严格读取数据库时间索引，相关库任一查询失败则不返回部分结果，Gateway 保留游标重试
+- **Linux 操作锁/录音保护**: Console 操作锁覆盖 TTS，UI 锁只覆盖实际操作。录音结束/取消必须同时确认录音流和 UI 状态；未确认时保留无声输入与持久化 pending-recording 标记，所有后续 UI 操作先尝试恢复，确认停止后才清理设备。缓存恢复返回实际失败状态及计数
+- **消息去重**: 各平台适配器按会话维护进程内状态；Windows 优先 UIA RuntimeId、hash 序列回退，macOS 使用 SHA256 上下文哈希且只触发最后一条，Linux 使用 seq 游标及 (seq, server_id, local_id) 去重
 - **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
 - **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
 - **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，发送载荷统一为 `message_type + message + filename`
@@ -174,7 +178,7 @@ Chatlog (:7998):
 - 联系人/群成员端点 `GET /contacts?usernames=`: 按 wxid 批量查（逗号分隔，最多 200）返回昵称/备注/头像。`GET /members?group=<xxx@chatroom>`: 列出群完整成员名单，解析 `chat_room.ext_buffer` protobuf 得全部成员 wxid + 群内昵称(display_name)，再批量补 contact 表的昵称/头像，群主排首位并标 `is_owner`
 - 消息端点 `GET /messages`: 返回 `ChatlogMessageResponse` 列表，群聊消息含 `at_users`（被 @ 人 wxid 列表，读消息表 `source` 列 base64→zstd→XML 解 `<atuserlist>`；自闭合/CDATA 空/裸 wxid/逗号分隔多个均兼容，非群聊或无 @ 为空）
 - 消息搜索端点 `POST /messages/search`: 请求体 `{group,query,senders,start,end,limit,offset,desc}`，`query` 或 `senders` 至少提供一个；关键词搜索仅在 SQL 中匹配 `msg_type=1` 的未压缩纯文本，仅按发送者搜索则在 SQL 中按人/时间过滤；群聊搜索保持旧 `sender:\n正文` 解析兼容
-- 批量消息端点 `POST /messages/batch` (v2): 请求体 `{items:[{group,since_seq}], limit}`，按每群 `sort_seq >= since_seq` 升序返回 `{results:{group:[...]}}`，用于低延迟增量轮询
+- 批量消息端点 `POST /messages/batch` (v2): 请求体 `{items:[{group,since_seq}], limit, offset}`，`offset` 默认 0，按每群 `sort_seq >= since_seq`、`local_id` 升序排列并在跨库合并后分页，返回 `{results:{group:[...]}}`。Linux 同 seq 边界占满一页时继续翻页，避免游标卡住
 - 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
 - 媒体端点 `GET /media?msg_type=&group=&server_id=&local_id=&create_time=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 依赖 av/pilk（必需依赖，普通 `uv sync` 安装），优先按 `server_id` 查询，自发语音因 VoiceInfo.svr_id=0 时用消息返回的 `local_id + create_time` 唯一回退；sticker/file 不依赖密钥。image `hd=1` 通过 message_resource md5 查本机 `.dat`，按无后缀原图 / `_h` / `_W` / 非缩略图 / `_t` 顺序尝试，wxgf/HEVC 经 av 转 JPEG；转发聊天记录 type=19 的内嵌图片当前不按普通 msg_type=3 暴露。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
 - 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
@@ -195,7 +199,7 @@ Client → Server:
 - `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
 - `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}` — priority/passive 可选，无效 regex 返回 error
 - `{"type": "unsubscribe"}`
-- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file|voice|voice_file", "message": "...", "filename": "..."}`（file/voice_file 需要 filename；voice 是 TTS 文本，voice_file 是 Base64 MP3；两种语音当前仅 Windows）
+- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file|voice|voice_file", "message": "...", "filename": "..."}`（file/voice_file 需要 filename；voice 是 TTS 文本，voice_file 是 Base64 MP3；支持 Windows/Linux，Linux 需 PulseAudio）
 
 Server → Client:
 - `{"type": "auth_ok"}`
@@ -217,7 +221,7 @@ Server → Client:
 
 ## Development Notes
 
-- **No test suite**: 项目当前没有配置 pytest / ruff / mypy 等工具，无自动化测试
+- **测试**: 使用标准库 unittest，按服务组织在 `tests/`；Gateway：`uv run python -m unittest discover -s tests/gateway`。没有配置 pytest/mypy，前端检查见 `tests/README.md`
 - **Python 3.11+**: `requires-python = ">=3.11"`
 - **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖；富媒体依赖 av/pilk/numpy 是必需依赖，避免 daemon 普通 `uv sync` 后丢失原图 HEVC 转码和语音能力
 - **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `REMOTE_COMMANDS_ENABLED`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `LINUX_WECHAT_*`, `LINUX_CHATLOG_*`, `DEBUG`）
@@ -226,4 +230,9 @@ Server → Client:
 
 - **macOS**: 需要辅助功能权限（发送）+ 屏幕录制权限（截图）
 - **Windows**: 建议管理员权限运行，UIA 使用 UIAutomationInitializerInThread per-thread 初始化
-- **Linux**: 需要 Linux WeChat、可访问的 X11 会话、Chatlog 服务和 `wmctrl`/`xdotool`/`xclip`/`xwininfo`；文本发送优先使用 `xsel`
+- **Linux**: 微信与 Gateway 使用同一用户和 X11 会话，需要 Chatlog v2 和 `wmctrl`/`xdotool`/`xclip`/`xwininfo`，文本优先 `xsel`。微信启动前设置 `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`；语音需要 `pactl`/`paplay`，无声卡环境先准备虚拟麦克风。完整部署步骤见 README Linux setup
+- **Linux Console**: 列表 path 不是群 ID，群 ID 来自 Chatlog；同名无法唯一对应时停止自动窗口操作。原生 @ 仅解析正文开头的 `@昵称 `，候选不唯一/不存在时清理草稿后发送原文。引用只匹配 Console 当前可见消息，Linux 找不到原文或无法确认清理时停止发送。AT-SPI 控件缺失/坐标无效时停止发送，不凭截图或固定坐标兜底
+- **Linux 主窗口状态**: 微信开独立窗口会清空主窗口聊天区，Console 开窗后重新选中原会话恢复控件。整体 `available` 不表示已选中聊天；发送还需核对 `chat_area`、`input_box` 与焦点。同名会话拒绝选择和发送，跳过重复点击还要求目标列表项处于 selected 状态
+- **Linux Console 状态/调试**: 返回中英文引用结构、结合格式与行高的时间行分类、置顶/免打扰/多行预览；`include_patterns` 仅查询实际 AT-SPI 接口/属性/动作/文本，不执行动作，不使用会导致 Qt 崩溃的 Properties.GetAll。
+- **Linux 异常资源恢复**: 文件名按 UTF-8 字节限长并保留扩展名，临时文件创建失败也清理；缺失会话 ID 时保留旧窗口缓存；语音清理成功后才删除恢复标记，清理失败不放行后续 UI 操作。
+- **Linux 原生库**: Windows DLL、Linux amd64/ARM64 `.so` 及兼容别名统一使用上游 v0.1.22 release pipeline 产物；Linux 使用 `file:` URI + `mode=ro`，去除 `nolock`，继续读取 WAL，不使用 `immutable`；来源、CI 和哈希见 `chatlog/vendor/UPSTREAM.md`

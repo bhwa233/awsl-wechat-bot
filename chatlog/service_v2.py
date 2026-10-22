@@ -42,8 +42,9 @@ class ChatlogServiceV2:
         hex_key: str,
         items: list[tuple[str, int]],
         limit: int = 500,
+        offset: int = 0,
     ) -> dict[str, list[Message]]:
-        return WeChatDBReaderV2(encrypted_dir, hex_key).get_messages_since(items, limit=limit)
+        return WeChatDBReaderV2(encrypted_dir, hex_key).get_messages_since(items, limit=limit, offset=offset)
 
     def search_messages(
         self,

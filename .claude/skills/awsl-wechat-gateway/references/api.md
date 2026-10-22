@@ -33,9 +33,12 @@ Use `Authorization: Bearer <token>` when a token is available. Omit the header w
 - `message_type`: `text`, `image`, `file`, `voice`, or `voice_file`.
 - `image` and `file` use base64 content in `message`.
 - `file` requires `filename`.
-- `voice` uses plain text in `message`, is currently Windows-only, and is limited to 1,000 input characters and 60 seconds of synthesized audio.
-- `voice_file` uses Base64 MP3 in `message`, requires an `.mp3` `filename`, is Windows-only, and is limited to 7,000,000 decoded bytes and 60 seconds.
+- `voice` uses plain text in `message`, supports Windows/Linux with the required audio devices, and defaults to at most 1,000 input characters and 60 seconds of synthesized audio.
+- `voice_file` uses Base64 MP3 in `message`, requires an `.mp3` `filename`, supports Windows/Linux with the required audio devices, and is limited to `BINARY_MAX_FILE_BYTES` decoded bytes (default 32 MiB) and 60 seconds.
 - Response: `{ "success": true, "message": "消息已加入发送队列" }`
+- Queue admission is not delivery confirmation. Query Chatlog for a matching self-sent record before reporting success or retrying.
+- Linux uses X11 plus AT-SPI, and PulseAudio virtual microphones for voice. See the repository README Linux setup for desktop-session and headless-audio prerequisites.
+- Linux text beginning with `@name ` attempts native member selection. Missing/ambiguous candidates fall back to the original literal text; confirm native mentions through Chatlog `at_users`.
 
 Chatlog database APIs are not served by Gateway. Use the `awsl-wechat-chatlog`
 skill and its API reference for groups, messages, decryption, and media access.

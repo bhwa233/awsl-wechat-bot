@@ -1,6 +1,7 @@
 # 微信 Bot 项目接手文档
 
-> 2026-09-23 最后更新
+> wx-sync-rs 参考部署的历史记录（2026-09-23），不是本仓库当前部署指南。
+> AWSL Gateway 的 Linux Console、原生语音及只读原生库修正见 [README](README.md#linux-setup) 和 [原生库来源](chatlog/vendor/UPSTREAM.md)。下文旧 `ro+nolock` 配置不适用于当前 AWSL Gateway。
 
 ## 项目概述
 
@@ -159,7 +160,7 @@ sudo systemctl stop wx-syncd
 |---|---|
 | 扫码需真人 | 微信登录会话过期后必须手机扫码 (物理限制) |
 | 秒撤不可恢复 | CDN 下载完成前撤回 = 文件从未落盘 |
-| 语音发送 | Linux 不支持 (仅接收) |
+| 语音发送 | 此历史 wx-sync-rs 方案仅接收；本仓库 AWSL Gateway 已支持 Linux PulseAudio 原生语音 |
 | R2 密钥已暴露 | `src/bin/r2test.rs` 曾推到 GitHub, 需轮换 |
 
 ## 待做 (优先级排序)

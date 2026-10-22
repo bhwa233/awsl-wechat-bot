@@ -15,7 +15,7 @@ Preact 及同包 Hooks 已固定在 `vendor/preact/`，由 `index.html` 的本�
 - `message_composer.js`：受控输入、消息类型、附件读取/拖拽/粘贴和载荷校验。
 - `chatlog.js`：会话、消息分页、取消过期请求、联系人和群成员缓存。
 - `messages.js`：共享消息与富媒体组件、稳定消息 key、成员/转发记录/原图弹窗。
-- `chat.js`、`console.js`：聊天与 Windows 控制台页面。
+- `chat.js`、`console.js`：聊天与 Windows/Linux 控制台页面（UIA/AT-SPI）。
 - `tasks.js`、`custom_commands.js`、`webhooks.js`：管理页面。
 
 Preact 管理 DOM；仅在焦点、滚动和媒体交互中使用 DOM 引用。接口返回的文本由 Preact 转义，不拼接动态 HTML 或内联事件。更换 Token 会重建页面，清理旧会话状态；消息轮询仅在页面激活且浏览器可见时进行。

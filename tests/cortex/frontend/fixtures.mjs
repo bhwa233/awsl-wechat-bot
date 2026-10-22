@@ -194,7 +194,7 @@ export async function mockApi(page, base) {
         } else if (endpoint.startsWith('/api/console')) {
             if (state.consoleUnsupported) {
                 status = 501;
-                result = { detail: 'Console 仅支持 Windows Gateway' };
+                result = { detail: 'Console 当前平台不可用' };
             } else if (endpoint.endsWith('/standalone-windows/status'))
                 result = { available: true, open: state.windowsOpen };
             else if (endpoint.endsWith('/standalone-windows/cache')) {

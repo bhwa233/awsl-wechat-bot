@@ -307,7 +307,7 @@ async function refreshState() {
     refreshingState = true;
     const btn = $('refresh');
     setButtonBusy(btn, true);
-    setStatus('正在读取主窗口 UIA 状态', false, true);
+    setStatus('正在读取主窗口状态', false, true);
     try {
         const res = await api('/api/console/state', {});
         if (!res.ok) {

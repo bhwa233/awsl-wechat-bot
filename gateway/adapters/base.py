@@ -63,5 +63,5 @@ class BaseWeChatAdapter(ABC):
         filename: str,
         timeout: float | None = None,
     ) -> bool:
-        """将 MP3 文件作为语音发送,当前仅 Windows 实现"""
+        """将 MP3 文件作为语音发送,由支持语音的平台实现"""
         return False

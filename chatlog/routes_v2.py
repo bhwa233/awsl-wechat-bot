@@ -314,6 +314,7 @@ def create_v2_router() -> APIRouter:
                 config.WECHAT_DB_KEY,
                 [(item.group, item.since_seq) for item in req.items],
                 limit=req.limit,
+                offset=req.offset,
             )
             return ChatlogBatchMessagesResponse(
                 results={

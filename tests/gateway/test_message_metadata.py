@@ -22,7 +22,8 @@ class MessageMetadataTest(unittest.TestCase):
     def test_same_text_different_senders_survives_linux_detector_and_broadcast(self):
         adapter = LinuxWeChatAdapter.__new__(LinuxWeChatAdapter)
         adapter._seen_lock = threading.Lock()
-        adapter._last_pull = {}
+        adapter._last_seq = {}
+        adapter._seen_messages = {}
         data = [{
             'seq': 1, 'talker': 'room@chatroom', 'sender_name': nickname, 'is_self': False,
             'time': '2026-09-05T12:00:00', 'content': '同样的正文', 'msg_type': 1,

@@ -53,7 +53,7 @@ class Config(BaseSettings):
     # 调试模式(输出每次检测到的所有消息)
     DEBUG: bool = False
 
-    # Chatlog 默认后端(无版本前缀 /api/chatlog 路由),True 用 v2(DLL,Windows-only),False 用 v1(pycryptodome)
+    # Chatlog 默认后端(无版本前缀 /api/chatlog 路由),True 用 v2(原生库,Windows/Linux),False 用 v1(pycryptodome)
     CHATLOG_USE_V2: bool = True
 
     # AppleScript 超时配置(秒)

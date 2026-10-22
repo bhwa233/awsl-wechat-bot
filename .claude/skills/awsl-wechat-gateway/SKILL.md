@@ -27,7 +27,7 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Manage cached connection info with `config show|set|clear`.
 - List open/listened chat windows with `windows`, which calls `GET /api/groups`.
 - Send messages with `send --group <window_name> --message <text>`. Use the visible/open window name from `windows` as `--group`.
-- Send Windows TTS voice with `--message-type voice --message <text>` or an MP3 with `--message-type voice_file --file-path <file.mp3>`. Both are limited to 60 seconds.
+- Send Windows/Linux TTS voice with `--message-type voice --message <text>` or an MP3 with `--message-type voice_file --file-path <file.mp3>`. Both are limited to 60 seconds. Linux requires PulseAudio; check `GET /api/health` → `capabilities.voice` before sending.
 
 **Note:** Chatlog features (decrypt, groups, messages) have been moved to the `awsl-wechat-chatlog` skill. Use that skill for WeChat database operations.
 
@@ -57,11 +57,11 @@ uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type image --file-path ./image.png
 
-# Send synthesized voice on a Windows Gateway
+# Send synthesized voice on a Windows/Linux Gateway
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type voice --message "你好，这是一条语音消息"
 
-# Send an existing MP3 as voice on a Windows Gateway
+# Send an existing MP3 as voice on a Windows/Linux Gateway
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type voice_file --file-path ./voice.mp3
 ```

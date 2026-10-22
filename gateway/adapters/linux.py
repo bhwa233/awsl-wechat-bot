@@ -7,15 +7,18 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hashlib
+import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
 import threading
 import time
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import ClassVar
 
@@ -25,17 +28,29 @@ from pydantic import ValidationError
 from common.config import config
 from common.models import ReceivedMessage
 from gateway.adapters.base import BaseWeChatAdapter, DiscoveredWindow
+from gateway.models import GroupDebugInfo
+from gateway.utils.linux_accessibility import LinuxAccessibility, chat_title, input_node
+from gateway.utils.linux_ui_lock import LinuxUILock
 
 logger = logging.getLogger(__name__)
 
 _MAIN_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
 _WECHAT_CLASS = "wechat.wechat"
+_AT_PREFIX_RE = re.compile(r"^((?:@[^\s@,\uff0c;\uff1b:\uff1a]+\s+)+)(.*)", re.DOTALL)
 
 
 class _ChatlogMessage(ReceivedMessage):
+    seq: int
     time: str
     msg_type: int
     is_self: bool
+    server_id: int = 0
+    local_id: int = 0
+
+
+class LinuxGroupDebugInfo(GroupDebugInfo):
+    window_id: int
+    chat_id: str | None = None
 
 
 @dataclass
@@ -43,6 +58,7 @@ class LinuxWeChatWindow:
     title: str
     window_id: str
     talker: str | None = None
+    expected_chat: str | None = None
 
     def Exists(self, timeout: float = 0.5) -> bool:
         env = _x11_env()
@@ -54,7 +70,7 @@ class LinuxWeChatWindow:
             env=env,
             check=False,
         )
-        return result.returncode == 0
+        return result.returncode == 0 and result.stdout.strip() == self.title
 
 
 def _x11_env() -> dict[str, str]:
@@ -71,7 +87,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
     _CHATLOG_RETRY_INTERVAL: ClassVar[float] = 5.0
 
     def __init__(self) -> None:
-        self._send_lock = threading.Lock()
+        self._send_lock = LinuxUILock()
+        self.accessibility = LinuxAccessibility()
         self._chatlog = httpx.Client(
             base_url=self._chatlog_base_url(),
             headers={"Authorization": f"Bearer {config.HTTP_API_TOKEN}"} if config.HTTP_API_TOKEN else {},
@@ -80,10 +97,102 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._group_cache_at = 0.0
         self._group_cache_retry_at = 0.0
         self._title_to_talker: dict[str, str] = {}
-        self._window_title_to_talker: dict[str, str] = {}
-        self._last_pull: dict[str, str] = {}
+        self._ambiguous_titles: set[str] = set()
+        self._talker_to_title: dict[str, str] = {}
+        self._last_seq: dict[str, int] = {}
+        self._seen_messages: dict[str, set[tuple]] = {}
         self._seen_lock = threading.Lock()
+        self.SUPPORTS_VOICE = all(shutil.which(command) for command in ("pactl", "paplay"))
         self._ensure_tools()
+
+    @property
+    def ui_operation_lock(self):
+        return self._ui_operation()
+
+    @contextlib.contextmanager
+    def _ui_operation(self):
+        with self._send_lock:
+            path = self._recording_marker_path()
+            if path.exists():
+                window = LinuxWeChatWindow(**json.loads(path.read_text())["window"])
+                if not self._finish_recording(window, cancel=True, cleanup=True):
+                    raise RuntimeError("微信录音尚未确认结束,暂停 UI 操作; 请取消录音后重试")
+            yield
+
+    @staticmethod
+    def _recording_marker_path():
+        return Path.home() / ".cache" / "awsl-wechat-gateway" / "pending-recording.json"
+
+    def _mark_recording(self, window, source, previous=None):
+        path = self._recording_marker_path()
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        fd, temp = tempfile.mkstemp(dir=path.parent)
+        try:
+            with os.fdopen(fd, "w") as file:
+                json.dump({"window": asdict(window), "audio_source": source, "previous_source": previous}, file, ensure_ascii=False)
+            os.replace(temp, path)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp)
+
+    def _recording_stopped(self, window):
+        from gateway.utils.linux_voice import wechat_microphone_streams
+
+        try:
+            if wechat_microphone_streams():
+                return False
+            if not window.Exists(.2):
+                return True
+            nodes = self.window_nodes(window)
+            buttons = {n["name"] for n in nodes if n["role"] == "push button"}
+            return bool(buttons & {"Send Voice", "发送语音"}) and not buttons & {"Cancel", "取消", "Send voice message", "发送语音消息"}
+        except Exception as exc:
+            logger.warning("无法确认微信录音已结束: %s", exc)
+            return False
+
+    def _finish_recording(self, window, *, cancel, cleanup=False):
+        if cancel:
+            try:
+                if not self._recording_stopped(window):
+                    self._voice_button(window, {"Cancel", "取消"}, require_active=False)
+            except Exception as exc:
+                logger.warning("取消微信录音失败: %s", exc)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if self._recording_stopped(window):
+                path = self._recording_marker_path()
+                if cleanup and path.exists():
+                    from gateway.utils.linux_voice import cleanup_microphone
+
+                    state = json.loads(path.read_text())
+                    cleanup_microphone(state["audio_source"], state.get("previous_source"))
+                path.unlink(missing_ok=True)
+                return True
+            time.sleep(.1)
+        return False
+
+    def window_nodes(self, window: LinuxWeChatWindow, *, max_nodes=5000) -> list[dict]:
+        geometry = self._window_geometry(window.window_id)
+        if geometry is None:
+            raise RuntimeError("无法读取目标窗口坐标")
+        frame = self.accessibility.frame(window.title, geometry)
+        return self.accessibility.nodes(frame, max_nodes=max_nodes)
+
+    def list_windows(self, *, include_main=False) -> list[LinuxWeChatWindow]:
+        result = self._run_x11(["wmctrl", "-lx"], timeout=5)
+        if result.returncode != 0:
+            raise RuntimeError("无法枚举微信窗口")
+        windows = []
+        for line in result.stdout.splitlines():
+            parts = line.split(None, 4)
+            if len(parts) != 5:
+                continue
+            window_id, _, window_class, _, title = parts
+            if window_class != _WECHAT_CLASS or not title or (not include_main and title in _MAIN_WINDOW_TITLES):
+                continue
+            talker = self._title_to_talker.get(title)
+            windows.append(LinuxWeChatWindow(title, window_id, talker))
+        return windows
 
     def close(self) -> None:
         self._chatlog.close()
@@ -134,9 +243,13 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             self._group_cache_retry_at = now + self._CHATLOG_RETRY_INTERVAL
             return
 
-        title_to_talker: dict[str, str] = {}
+        title_to_talkers: dict[str, set[str]] = {}
+        talker_to_title: dict[str, str] = {}
         for group in groups:
             username = group.get("username", "")
+            display_name = group.get("display_name") or group.get("remark") or group.get("nick_name")
+            if username and display_name:
+                talker_to_title[username] = display_name
             names = {
                 username,
                 group.get("display_name", ""),
@@ -145,113 +258,90 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             }
             for name in names:
                 if name and username:
-                    title_to_talker[name] = username
+                    title_to_talkers.setdefault(name, set()).add(username)
 
-        self._title_to_talker = title_to_talker
+        self._title_to_talker = {name: next(iter(ids)) for name, ids in title_to_talkers.items() if len(ids) == 1}
+        self._ambiguous_titles = {name for name, ids in title_to_talkers.items() if len(ids) > 1}
+        self._talker_to_title = talker_to_title
         self._group_cache_at = now
         self._group_cache_retry_at = 0.0
 
     def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
-        result = self._run_x11(["wmctrl", "-lx"], timeout=5)
-        if result.returncode != 0:
-            logger.warning("wmctrl 枚举窗口失败: %s", result.stderr.strip())
-            return []
-
         self._refresh_group_cache()
-        windows: list[DiscoveredWindow] = []
-        for line in result.stdout.splitlines():
-            parts = line.split(None, 4)
-            if len(parts) < 5:
-                continue
-            window_id, _desktop, window_class, _host, title = parts
-            if window_class != _WECHAT_CLASS or title in _MAIN_WINDOW_TITLES:
-                continue
-            if not title:
-                continue
-            talker = self._window_title_to_talker.get(title) or self._title_to_talker.get(title)
-            if talker:
-                self._window_title_to_talker[title] = talker
-            window = LinuxWeChatWindow(title=title, window_id=window_id, talker=talker)
-            windows.append(
-                DiscoveredWindow(
-                    title=title,
-                    window=window,
-                    debug_info=None,
-                )
+        windows = self.list_windows()
+        counts: dict[str, int] = {}
+        for window in windows:
+            counts[window.title] = counts.get(window.title, 0) + 1
+        return [
+            DiscoveredWindow(
+                title=window.title,
+                window=window,
+                debug_info=LinuxGroupDebugInfo(window_id=int(window.window_id, 16), chat_id=window.talker),
             )
-            logger.debug("发现 Linux 微信窗口: %s (%s, talker=%s)", title, window_id, talker)
-
-        return windows
+            for window in windows if counts[window.title] == 1
+        ]
 
     def get_messages_from_window(self, window: LinuxWeChatWindow) -> list[ReceivedMessage]:
         talker = self._resolve_talker(window)
         if not talker:
             raise RuntimeError(f"[{window.title}] 未匹配 chatlog talker")
-
         with self._seen_lock:
-            last_time = self._last_pull.get(talker, "")
-
-        params: dict = {
-            "group": talker,
-            "limit": config.LINUX_CHATLOG_MESSAGE_LIMIT,
-            "desc": True,
-        }
-        # 增量: chatlog start 是 'YYYY-MM-DD HH:MM:SS', 用上次最大 time 做下界 (含等号,
-        # 同秒边界靠下面 strict-greater 过滤)
-        if last_time:
-            params["start"] = last_time.replace("T", " ")[:19]
-
+            cursor = self._last_seq.get(talker)
+            seen = self._seen_messages.get(talker, set())
         try:
-            response = self._chatlog.get("/api/chatlog/messages", params=params)
-            response.raise_for_status()
-            messages = [_ChatlogMessage.model_validate(message) for message in reversed(response.json())]
-        except (httpx.HTTPError, ValidationError) as exc:
+            if cursor is None:
+                response = self._chatlog.get("/api/chatlog/messages", params={
+                    "group": talker, "limit": config.LINUX_CHATLOG_MESSAGE_LIMIT, "desc": True,
+                })
+                response.raise_for_status()
+                rows = list(reversed(response.json()))
+            else:
+                rows = []
+                limit = max(2, config.LINUX_CHATLOG_MESSAGE_LIMIT)
+                offset = 0
+                while True:
+                    response = self._chatlog.post("/api/chatlog/v2/messages/batch", json={
+                        "items": [{"group": talker, "since_seq": cursor}],
+                        "limit": limit, "offset": offset,
+                    })
+                    response.raise_for_status()
+                    page = response.json()["results"][talker]
+                    rows.extend(page)
+                    if len(page) < limit or any(row["seq"] > cursor for row in page):
+                        break
+                    offset += len(page)
+            messages = [_ChatlogMessage.model_validate(row) for row in rows]
+        except (httpx.HTTPError, ValidationError, KeyError) as exc:
             raise RuntimeError(f"[{window.title}] Linux chatlog 消息读取失败: {exc}") from exc
 
-        new_texts: list[ReceivedMessage] = []
-        new_last_time = last_time
+        new_texts = []
+        identities = set()
+        new_cursor = max(cursor or 0, max((message.seq for message in messages), default=0))
         for message in messages:
-            msg_time = message.time
-            # strict-greater 过滤同秒边界 (chatlog start 是 >=)
-            if last_time and msg_time <= last_time:
-                continue
-            # 跳过自己发的消息. 不推进 new_last_time, 防止把同秒别人的消息一并丢掉
-            # (chatlog start 是 >= 边界 + 下面 strict-greater 过滤是 <=, 同秒边界
-            # 必须等下一轮通过原 last_time 把别人的消息也带出来).
-            if message.is_self:
+            identity = (message.seq, message.server_id, message.local_id)
+            identities.add(identity)
+            if identity in seen or message.is_self or (cursor is not None and message.seq < cursor):
                 continue
             text = self._message_text(message)
-            if not text:
-                continue
-            new_texts.append(ReceivedMessage(
-                content=text, sender=message.sender, sender_name=message.sender_name,
-                at_users=message.at_users,
-            ))
-            if msg_time > new_last_time:
-                new_last_time = msg_time
-
-        if not new_texts:
-            return []
-
+            if text:
+                new_texts.append(ReceivedMessage(
+                    content=text, sender=message.sender, sender_name=message.sender_name,
+                    at_users=message.at_users,
+                ))
         with self._seen_lock:
-            self._last_pull[talker] = new_last_time
+            self._last_seq[talker] = new_cursor
+            self._seen_messages[talker] = {identity for identity in seen | identities if identity[0] >= new_cursor}
         return new_texts
 
     def _resolve_talker(self, window: LinuxWeChatWindow) -> str | None:
         if window.talker:
             return window.talker
-        talker = self._window_title_to_talker.get(window.title)
-        if talker:
-            window.talker = talker
-            return talker
         # cache 空时 (启动早期 chatlog 尚未就绪) 复位退避锁, 每次都尝试刷新;
         # 已有 cache 但当前 title 不在里面, 走默认 TTL/retry backoff 避免狂刷
         if not self._title_to_talker:
             self._group_cache_retry_at = 0.0
         self._refresh_group_cache(force=True)
         window.talker = self._title_to_talker.get(window.title)
-        if window.talker:
-            self._window_title_to_talker[window.title] = window.talker
         return window.talker
 
     def _message_text(self, message: _ChatlogMessage) -> str:
@@ -271,17 +361,21 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         return title.strip() if title else ""
 
     def send_text_to_window(self, window: LinuxWeChatWindow, text: str) -> bool:
-        with self._send_lock:
+        with self.ui_operation_lock:
             clipboard_owner: subprocess.Popen | bool | None = None
             if not self._activate_window(window):
                 return False
             if not self._focus_input_area(window):
                 return False
-            clipboard_owner = self._set_clipboard_text(text)
-            if not clipboard_owner:
+            if not self._send_context_matches(window) or not self._keys("ctrl+a", "Delete"):
                 return False
+            remaining = self._prepare_mentions(window, text)
+            if remaining:
+                clipboard_owner = self._set_clipboard_text(remaining)
+                if not clipboard_owner:
+                    return False
             try:
-                if not self._paste_and_send(window):
+                if not self._paste_and_send(window, clear=False, paste=bool(remaining)):
                     return False
                 time.sleep(0.3)
                 return True
@@ -292,18 +386,97 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         image_data = base64.b64decode(image_base64)
         suffix = self._guess_image_suffix(image_data)
         temp_path = self._write_temp_file(image_data, suffix=suffix, filename=None)
-        sent = self._send_file_path(window, temp_path)
-        if not sent:
-            self._schedule_temp_cleanup(temp_path)
-        return sent
+        sent = False
+        try:
+            sent = self._send_file_path(window, temp_path, as_image=True)
+            return sent
+        finally:
+            if not sent:
+                self._schedule_temp_cleanup(temp_path)
 
     def send_file_to_window(self, window: LinuxWeChatWindow, file_base64: str, filename: str) -> bool:
         file_data = base64.b64decode(file_base64)
         temp_path = self._write_temp_file(file_data, suffix="", filename=filename)
-        sent = self._send_file_path(window, temp_path)
-        if not sent:
-            self._schedule_temp_cleanup(temp_path)
-        return sent
+        sent = False
+        try:
+            sent = self._send_file_path(window, temp_path)
+            return sent
+        finally:
+            if not sent:
+                self._schedule_temp_cleanup(temp_path)
+
+    def send_voice_to_window(self, window, file_base64, filename, timeout=None) -> bool:
+        from gateway.utils.linux_voice import connect_wechat_microphone, decoded_voice, microphone, play_voice
+
+        if not self.SUPPORTS_VOICE:
+            return False
+        deadline = time.monotonic() + (timeout or config.WINDOWS_VOICE_TIMEOUT)
+        try:
+            with decoded_voice(file_base64) as (path, duration), self.ui_operation_lock:
+                if deadline - time.monotonic() < max(4.5, duration) + 3:
+                    raise TimeoutError("语音发送剩余时间不足")
+                if not self._activate_window(window) or not self._focus_input_area(window) or not self._send_context_matches(window):
+                    return False
+                if not self._keys("ctrl+a", "Delete"):
+                    return False
+                cleaned = False
+                with microphone(retain_modules=lambda: cleaned or self._recording_marker_path().exists()) as (sink, source, previous):
+                    sent = False
+                    self._mark_recording(window, source, previous)
+                    try:
+                        if not self._voice_button(window, {"Send Voice", "发送语音"}):
+                            raise RuntimeError("启动微信录音失败")
+                        started = time.monotonic()
+                        while time.monotonic() - started < 2:
+                            if connect_wechat_microphone(source):
+                                break
+                            time.sleep(.1)
+                        else:
+                            raise RuntimeError("微信未打开录音流")
+                        play_voice(path, sink, deadline=deadline, context_matches=lambda: self._voice_context_matches(window))
+                        time.sleep(max(.3, 4.5 - (time.monotonic() - started)))
+                        if not self._voice_button(window, {"Send voice message", "发送语音消息"}):
+                            raise RuntimeError("语音发送前会话或焦点发生变化")
+                        sent = True
+                        return True
+                    finally:
+                        if not self._finish_recording(window, cancel=not sent, cleanup=True):
+                            raise RuntimeError("微信录音尚未确认结束,暂停后续 UI 操作")
+                        cleaned = True
+        except Exception as exc:
+            logger.error("[%s] Linux 语音发送失败: %s", window.title, exc)
+            return False
+
+    def _voice_button(self, window, names, *, require_active=True):
+        if not require_active and not names <= {"Cancel", "取消"}:
+            return False
+        if require_active and not self._active_window_matches(window):
+            return False
+        nodes = self.window_nodes(window)
+        if window.expected_chat and chat_title(nodes, window.title) != window.expected_chat:
+            return False
+        field = input_node(nodes)
+        if field is None:
+            return False
+        buttons = [node for node in nodes if node["role"] == "push button" and node["name"] in names
+                   and node["enabled"] and node["rect"]
+                   and node["rect"]["top"] >= field["rect"]["bottom"]]
+        if len(buttons) != 1:
+            return False
+        if not self._active_window_matches(window):
+            if require_active:
+                return False
+            return self._run_x11(["xdotool", "key", "--window", window.window_id, "Escape"]).returncode == 0
+        rect = buttons[0]["rect"]
+        return self._run_x11([
+            "xdotool", "mousemove", str(rect["left"] + rect["width"] // 2),
+            str(rect["top"] + rect["height"] // 2), "click", "1",
+        ]).returncode == 0
+
+    def _voice_context_matches(self, window):
+        if not self._active_window_matches(window):
+            return False
+        return not window.expected_chat or chat_title(self.window_nodes(window), window.title) == window.expected_chat
 
     def _activate_window(self, window: LinuxWeChatWindow) -> bool:
         result = self._run_x11(["xdotool", "windowactivate", window.window_id], timeout=5)
@@ -314,18 +487,27 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         return True
 
     def _focus_input_area(self, window: LinuxWeChatWindow) -> bool:
-        geometry = self._window_geometry(window.window_id)
-        if not geometry:
-            return True
-        x, y, width, height = geometry
-        click_x = x + max(20, width // 2)
-        click_y = y + max(20, height - 45)
-        result = self._run_x11(["xdotool", "mousemove", str(click_x), str(click_y), "click", "1"], timeout=5)
-        if result.returncode != 0:
-            logger.debug("[%s] 点击输入区域失败: %s", window.title, result.stderr.strip())
+        try:
+            if (window.expected_chat or window.title) in self._ambiguous_titles:
+                return False
+            if not self._active_window_matches(window):
+                return False
+            nodes = self.window_nodes(window)
+            field = input_node(nodes)
+            if field is None or not field["enabled"]:
+                return False
+            if chat_title(nodes, window.title) != (window.expected_chat or window.title):
+                return False
+            self.accessibility.focus(field["ref"])
+            rect = field["rect"]
+            result = self._run_x11([
+                "xdotool", "mousemove", str(rect["left"] + rect["width"] // 2),
+                str(rect["top"] + rect["height"] // 2), "click", "1",
+            ])
+            return result.returncode == 0 and self._send_context_matches(window)
+        except Exception as exc:
+            logger.warning("AT-SPI 输入框定位失败: %s", exc)
             return False
-        time.sleep(0.1)
-        return True
 
     def _window_geometry(self, window_id: str) -> tuple[int, int, int, int] | None:
         result = self._run_x11(["xwininfo", "-id", window_id], timeout=5)
@@ -356,27 +538,126 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             if result.returncode != 0:
                 logger.error("xsel 设置文本剪贴板失败: %s", result.stderr.strip())
                 return None
-            return True
+            owner = True
+        else:
+            owner = self._start_clipboard_owner(
+                ["xclip", "-quiet", "-selection", "clipboard", "-t", "text/plain;charset=utf-8"],
+                text.encode(),
+            )
+        result = self._run_x11(["xclip", "-selection", "clipboard", "-o", "-t", "UTF8_STRING"], timeout=5)
+        if result.returncode != 0 or result.stdout != text:
+            self._stop_clipboard_owner(owner)
+            logger.warning("剪贴板读回与本条文本不一致,停止粘贴")
+            return None
+        return owner
 
-        return self._start_clipboard_owner(
-            ["xclip", "-quiet", "-selection", "clipboard", "-t", "text/plain;charset=utf-8"],
-            text.encode(),
-        )
+    def _keys(self, *keys: str) -> bool:
+        return self._run_x11(["xdotool", "key", "--clearmodifiers", *keys], timeout=5).returncode == 0
 
-    def _send_file_path(self, window: LinuxWeChatWindow, temp_path: str) -> bool:
-        with self._send_lock:
+    def _mention_popups(self):
+        return [node for node in self.accessibility.frames() if not node["name"] and node["rect"]
+                and node["rect"]["width"] > 0 and node["rect"]["height"] > 0]
+
+    def _select_mention(self, window, name):
+        if not self._send_context_matches(window):
+            raise RuntimeError("输入 @ 前会话或焦点发生变化")
+        field = input_node(self.window_nodes(window))
+        before = self.accessibility.text(field["ref"]).count("\ufffc")
+        baseline = {node["ref"] for node in self._mention_popups()}
+        if self._run_x11(["xdotool", "type", "--clearmodifiers", "@"], timeout=5).returncode != 0:
+            raise RuntimeError("输入 @ 失败")
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            popups = [node for node in self._mention_popups() if node["ref"] not in baseline]
+            if len(popups) > 1:
+                raise RuntimeError("无法唯一定位 @ 弹层")
+            if popups:
+                popup = popups[0]["ref"]
+                break
+            time.sleep(.05)
+        else:
+            raise RuntimeError("未打开 @ 弹层")
+        owner = self._set_clipboard_text(name)
+        if not owner:
+            raise RuntimeError("设置 @ 名称失败")
+        try:
+            if not self._keys("ctrl+v"):
+                raise RuntimeError("粘贴 @ 名称失败")
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                nodes = self.accessibility.nodes(popup, max_nodes=200, max_depth=12)
+                matches = [node for node in nodes if node["role"] == "list item" and node["name"] == name]
+                if len(matches) > 1:
+                    raise RuntimeError("@ 候选存在重名")
+                if matches:
+                    fresh = self.accessibility.info(matches[0]["ref"])
+                    rect = fresh["rect"]
+                    if (fresh["name"] != name or not rect or rect["width"] <= 0 or rect["height"] <= 0
+                            or not self._active_window_matches(window)):
+                        raise RuntimeError("@ 候选或焦点已变化")
+                    result = self._run_x11([
+                        "xdotool", "mousemove", str(rect["left"] + rect["width"] // 2),
+                        str(rect["top"] + rect["height"] // 2), "mousedown", "1", "sleep", ".08", "mouseup", "1",
+                    ])
+                    if result.returncode != 0:
+                        raise RuntimeError("选择 @ 候选失败")
+                    break
+                time.sleep(.05)
+            else:
+                raise RuntimeError("未找到 @ 候选")
+        finally:
+            self._stop_clipboard_owner(owner)
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if popup not in {node["ref"] for node in self._mention_popups()} and self._send_context_matches(window):
+                field = input_node(self.window_nodes(window))
+                if field and self.accessibility.text(field["ref"]).count("\ufffc") == before + 1:
+                    return
+            time.sleep(.05)
+        raise RuntimeError("未能确认原生 @ 已插入")
+
+    def _prepare_mentions(self, window: LinuxWeChatWindow, text: str) -> str:
+        match = _AT_PREFIX_RE.match(text)
+        if not match:
+            return text
+        try:
+            for name in [token[1:] for token in match[1].split()]:
+                self._select_mention(window, name)
+            return match[2]
+        except Exception as exc:
+            logger.warning("原生 @ 失败,回退为原文: %s", exc)
+            if not self._focus_input_area(window) or not self._send_context_matches(window) or not self._keys("ctrl+a", "Delete"):
+                raise RuntimeError("无法安全清理 @ 草稿") from exc
+            return text
+
+    def _send_file_path(self, window: LinuxWeChatWindow, temp_path: str, *, as_image=False) -> bool:
+        with self.ui_operation_lock:
             clipboard_owner: subprocess.Popen | bool | None = None
             try:
                 if not self._activate_window(window):
                     return False
                 if not self._focus_input_area(window):
                     return False
-                clipboard_owner = self._set_clipboard_file(temp_path)
+                if as_image:
+                    image = Path(temp_path).read_bytes()
+                    suffix = self._guess_image_suffix(image).lstrip(".")
+                    mime = "image/jpeg" if suffix == "jpg" else f"image/{suffix}"
+                    clipboard_owner = self._start_clipboard_owner([
+                        "xclip", "-quiet", "-selection", "clipboard", "-t", mime,
+                    ], image)
+                    target = self._run_x11(["xclip", "-selection", "clipboard", "-o", "-t", "TARGETS"])
+                    if target.returncode != 0 or mime not in target.stdout.splitlines():
+                        return False
+                else:
+                    clipboard_owner = self._set_clipboard_file(temp_path)
+                    target = self._run_x11(["xclip", "-selection", "clipboard", "-o", "-t", "text/uri-list"])
+                    if target.returncode != 0 or target.stdout.strip() != Path(temp_path).resolve().as_uri():
+                        return False
                 if not clipboard_owner:
                     return False
-                if not self._paste_and_send(window):
+                if not self._paste_and_send(window, delay=2.0):
                     return False
-                self._schedule_temp_cleanup(temp_path)
+                self._schedule_temp_cleanup(temp_path, delay=15 if as_image else 180)
                 return True
             except Exception as exc:
                 logger.error("[%s] 发送文件失败: %s", window.title, exc)
@@ -391,12 +672,43 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             (uri + "\n").encode(),
         )
 
-    def _paste_and_send(self, window: LinuxWeChatWindow) -> bool:
-        paste = self._run_x11(["xdotool", "key", "--clearmodifiers", "ctrl+v"], timeout=5)
-        if paste.returncode != 0:
-            logger.error("[%s] xdotool 粘贴失败: %s", window.title, paste.stderr.strip())
+    def _active_window_matches(self, window: LinuxWeChatWindow) -> bool:
+        active = self._run_x11(["xdotool", "getactivewindow"], timeout=3)
+        try:
+            matches = active.returncode == 0 and int(active.stdout.strip(), 0) == int(window.window_id, 16)
+        except ValueError:
             return False
-        time.sleep(0.2)
+        if not matches:
+            return False
+        title = self._run_x11(["xdotool", "getwindowname", window.window_id], timeout=3)
+        return title.returncode == 0 and title.stdout.strip() == window.title
+
+    def _send_context_matches(self, window: LinuxWeChatWindow) -> bool:
+        if (window.expected_chat or window.title) in self._ambiguous_titles:
+            return False
+        if not self._active_window_matches(window):
+            return False
+        try:
+            nodes = self.window_nodes(window)
+            field = input_node(nodes)
+            return (field is not None and field["enabled"] and field["focused"]
+                    and chat_title(nodes, window.title) == (window.expected_chat or window.title))
+        except Exception as exc:
+            logger.warning("AT-SPI 发送上下文检查失败: %s", exc)
+            return False
+
+    def _paste_and_send(self, window: LinuxWeChatWindow, *, delay=.35, clear=True, paste=True) -> bool:
+        if not self._send_context_matches(window):
+            return False
+        if clear and not self._keys("ctrl+a", "Delete"):
+            return False
+        if paste and not self._keys("ctrl+v"):
+            logger.error("[%s] xdotool 粘贴失败", window.title)
+            return False
+        time.sleep(delay)
+        if not self._send_context_matches(window):
+            logger.warning("[%s] 回车前焦点或当前会话发生变化,停止发送", window.title)
+            return False
         send = self._run_x11(["xdotool", "key", "--clearmodifiers", "Return"], timeout=5)
         if send.returncode != 0:
             logger.error("[%s] xdotool 回车发送失败: %s", window.title, send.stderr.strip())
@@ -452,32 +764,50 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         return ".png"
 
     def _write_temp_file(self, data: bytes, *, suffix: str, filename: str | None) -> str:
+        temp_dir = None
+        fd = None
         if filename:
+            name = self._safe_filename(filename)
             temp_dir = tempfile.mkdtemp(prefix="awsl-wechat-")
-            path = os.path.join(temp_dir, self._safe_filename(filename))
-            with open(path, "wb") as file:
+            path = os.path.join(temp_dir, name)
+        else:
+            fd, path = tempfile.mkstemp(prefix="awsl-wechat-", suffix=suffix)
+        try:
+            with (os.fdopen(fd, "wb") if fd is not None else open(path, "wb")) as file:
                 file.write(data)
-            return path
-        fd, path = tempfile.mkstemp(prefix="awsl-wechat-", suffix=suffix)
-        with os.fdopen(fd, "wb") as file:
-            file.write(data)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
+            if temp_dir:
+                with contextlib.suppress(OSError):
+                    os.rmdir(temp_dir)
+            raise
         return path
 
     @staticmethod
     def _safe_filename(filename: str) -> str:
-        name = os.path.basename(filename).strip()
-        return name[:200] or "attachment.bin"
+        name = os.path.basename(filename).strip().replace("\0", "_")
+        if name in {"", ".", ".."}:
+            return "attachment.bin"
+        if len(name.encode("utf-8")) <= 200:
+            return name
+        stem, extension = os.path.splitext(name)
+        tag = "-" + hashlib.sha256(name.encode("utf-8")).hexdigest()[:8]
+        budget = 200 - len((tag + extension).encode("utf-8"))
+        if budget <= 0:
+            stem, extension, budget = name, "", 200 - len(tag)
+        return stem.encode("utf-8")[:budget].decode("utf-8", errors="ignore") + tag + extension
 
-    def _schedule_temp_cleanup(self, temp_path: str) -> None:
+    def _schedule_temp_cleanup(self, temp_path: str, *, delay: float | None = None) -> None:
         threading.Thread(
             target=self._cleanup_temp_path,
-            args=(temp_path,),
+            args=(temp_path, delay),
             daemon=True,
             name="linux-wechat-temp-cleanup",
         ).start()
 
-    def _cleanup_temp_path(self, temp_path: str) -> None:
-        time.sleep(self._TEMP_CLEANUP_DELAY)
+    def _cleanup_temp_path(self, temp_path: str, delay: float | None = None) -> None:
+        time.sleep(self._TEMP_CLEANUP_DELAY if delay is None else delay)
         with contextlib.suppress(Exception):
             os.unlink(temp_path)
         temp_dir = os.path.dirname(temp_path)

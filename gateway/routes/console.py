@@ -94,7 +94,7 @@ def create_routes(gateway_app):
 
     @router.post("/api/console/scroll-chats", dependencies=[Depends(verify_token)])
     def console_scroll_chats(request: ConsoleScrollChatsRequest):
-        """向上或向下滚动 Windows 微信主窗口聊天列表."""
+        """向上或向下滚动 微信主窗口聊天列表."""
         return _console_adapter(gateway_app).scroll_chats(
             direction=request.direction,
             max_nodes=request.max_nodes,
@@ -114,7 +114,7 @@ def create_routes(gateway_app):
 
     @router.get("/api/console/standalone-windows", dependencies=[Depends(verify_token)])
     def console_standalone_windows():
-        """列出全部 Windows 微信独立聊天窗口."""
+        """列出全部 微信独立聊天窗口."""
         return _console_adapter(gateway_app).list_standalone_windows()
 
     @router.post("/api/console/standalone-windows/open", dependencies=[Depends(verify_token)])
@@ -156,12 +156,12 @@ def create_routes(gateway_app):
 
     @router.post("/api/console/debug/list", dependencies=[Depends(verify_token)])
     def console_debug_list():
-        """列出 Windows 微信窗口."""
+        """列出 微信窗口."""
         return _console_adapter(gateway_app).list_windows()
 
     @router.post("/api/console/debug/inspect", dependencies=[Depends(verify_token)])
     def console_debug_inspect(request: ConsoleWindowDebugRequest):
-        """返回指定 Windows 微信窗口或子节点 UIA 调试树."""
+        """返回指定 微信窗口或子节点 UIA/AT-SPI 调试树."""
         return _console_adapter(gateway_app).dump_window(
             handle=request.handle,
             max_depth=request.depth,

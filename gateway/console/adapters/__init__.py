@@ -6,6 +6,13 @@ from gateway.console.adapters.base import BaseConsoleAdapter
 
 def get_console_adapter(wechat_adapter: BaseWeChatAdapter) -> BaseConsoleAdapter | None:
     """返回当前平台的 Console 适配器."""
+    if sys.platform.startswith("linux"):
+        from gateway.adapters.linux import LinuxWeChatAdapter
+        from gateway.console.adapters.linux import LinuxConsoleAdapter
+
+        if not isinstance(wechat_adapter, LinuxWeChatAdapter):
+            raise TypeError("Linux Console 需要 LinuxWeChatAdapter")
+        return LinuxConsoleAdapter(wechat_adapter)
     if sys.platform != "win32":
         return None
 

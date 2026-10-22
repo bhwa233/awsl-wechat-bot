@@ -89,6 +89,8 @@ hook_va = 序言地址 - 镜像基址
 
 本仓库实现：`tools/extract_wx_keys_linux.py --mode passphrase`。
 
+密钥 JSON 只包含提取时已存在且校验通过的数据库。微信后续新建或重建 `.db` 时，需重新派生相应路径的 key；例如首次发送语音后可能才出现 `message/media_0.db`。已保存且仍有效的 passphrase 可按新库 salt 派生，但 Gateway/Chatlog 当前不会自动补 key；更新配置后重启读取服务。不要把 passphrase 或完整 key 写入日志。
+
 ---
 
 ## 2. Windows（Weixin.exe）

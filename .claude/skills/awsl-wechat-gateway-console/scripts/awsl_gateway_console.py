@@ -3,7 +3,7 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""CLI helper for the AWSL WeChat Gateway Windows Console API."""
+"""CLI helper for the AWSL WeChat Gateway Windows/Linux Console API."""
 
 from __future__ import annotations
 
@@ -88,7 +88,7 @@ def resolve_chat_path(args: argparse.Namespace) -> str:
         if matches:
             path = matches[0].get("path")
             if not path:
-                raise SystemExit(f"Chat has no UIA path: {args.chat}")
+                raise SystemExit(f"Chat has no accessibility path: {args.chat}")
             return str(path)
 
         previous_signature = chat_list_signature(current)
@@ -148,7 +148,7 @@ def command_send(args: argparse.Namespace) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Operate the AWSL WeChat Gateway Windows Console")
+    parser = argparse.ArgumentParser(description="Operate the AWSL WeChat Gateway Windows/Linux Console")
     parser.add_argument("-b", "--base-url", default=None, help="Gateway base URL override")
     parser.add_argument("-t", "--token", default=None, help="Gateway Bearer token override")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="HTTP timeout in seconds")
