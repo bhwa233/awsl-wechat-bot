@@ -100,6 +100,13 @@ class WebhookBase(SQLModel):
             raise ValueError(f"reply_mode 必须是 {[e.value for e in ReplyMode]} 之一")
         return v
 
+class Webhook(WebhookBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: str | None = Field(default_factory=_now_local)
+    updated_at: str | None = Field(default_factory=_now_local)
+
+
+class WebhookCreate(WebhookBase):
     @model_validator(mode="after")
     def validate_reply_jsonpath(self):
         if self.reply_mode == ReplyMode.JSONPATH.value:
@@ -108,14 +115,6 @@ class WebhookBase(SQLModel):
             self.reply_jsonpath = self.reply_jsonpath.strip()
         return self
 
-
-class Webhook(WebhookBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    created_at: str | None = Field(default_factory=_now_local)
-    updated_at: str | None = Field(default_factory=_now_local)
-
-
-class WebhookCreate(WebhookBase):
     @field_validator("url")
     @classmethod
     def validate_url_scheme(cls, v):
