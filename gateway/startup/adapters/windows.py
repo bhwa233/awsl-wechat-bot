@@ -48,7 +48,7 @@ class WindowsLoginAdapter(BaseLoginAdapter):
         import pythoncom
         from win32com.client import GetObject
 
-        pythoncom.CoInitialize()
+        pythoncom.CoInitializeEx(pythoncom.COINIT_MULTITHREADED)
         try:
             service = GetObject(r"winmgmts:{impersonationLevel=impersonate}!\\.\root\cimv2")
             startup = service.Get("Win32_ProcessStartup").SpawnInstance_()

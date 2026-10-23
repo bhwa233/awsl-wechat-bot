@@ -218,7 +218,7 @@ class StartupPlatformTests(unittest.TestCase):
         self.assertEqual(startup.WinstationDesktop, r'winsta0\default')
         self.assertEqual(startup.CreateFlags, 0x01000000)
         self.assertEqual(startup.ShowWindow, 1)
-        com.CoInitialize.assert_called_once()
+        com.CoInitializeEx.assert_called_once_with(com.COINIT_MULTITHREADED)
         com.CoUninitialize.assert_called_once()
         direct_launch.assert_not_called()
 
@@ -235,7 +235,7 @@ class StartupPlatformTests(unittest.TestCase):
                 with patch.dict('sys.modules', {'pythoncom': com, 'win32com.client': client}), \
                      patch('subprocess.Popen') as direct_launch, self.assertRaises(RuntimeError):
                     driver._launch('C:/Weixin/Weixin.exe')
-                com.CoInitialize.assert_called_once()
+                com.CoInitializeEx.assert_called_once_with(com.COINIT_MULTITHREADED)
                 com.CoUninitialize.assert_called_once()
                 direct_launch.assert_not_called()
 

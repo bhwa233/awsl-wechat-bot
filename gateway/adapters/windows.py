@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import re
+import sys
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -15,6 +16,9 @@ import httpx
 from pydantic import computed_field
 
 logging.getLogger("comtypes").setLevel(logging.WARNING)
+
+if sys.platform == "win32":
+    sys.coinit_flags = 0  # UIA 后台线程使用 MTA,避免共享 COM 客户端等待 STA 消息循环。
 
 import uiautomation as auto  # noqa: E402
 

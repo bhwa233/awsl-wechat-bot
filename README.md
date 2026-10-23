@@ -496,6 +496,8 @@ Cortex Web UI 使用本地固定版本的 Preact 和原生 JavaScript 模块，�
 
 ### Windows 疑难排查
 
+Windows 的 UIA 后台线程统一使用 COM MTA，启动登录的 WMI 调用也使用同一模式并成对释放，避免扫描、看护与发送共用客户端时互相等待 STA 消息循环。
+
 如果在 Windows 上启动后找不到窗口或无法获取消息，可能是讲述人（Narrator）未开启导致 UI Automation 无法正常工作。尝试通过注册表启用：
 
 ```powershell
