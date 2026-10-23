@@ -279,6 +279,12 @@ class ScheduledTaskService:
                 """
             )
 
+        def drop_legacy_payload_columns(conn):
+            columns = SQLiteMigrator.column_names(conn, "scheduled_tasks")
+            for column in ("image_base64", "is_file"):
+                if column in columns:
+                    conn.execute(f"ALTER TABLE scheduled_tasks DROP COLUMN {column}")
+
         migrator.migrate([
             ("20260331_001_scheduled_tasks_add_task_type", add_task_type),
             ("20260331_002_scheduled_tasks_add_message_type", add_message_type),
@@ -290,6 +296,7 @@ class ScheduledTaskService:
             ("20260331_008_scheduled_tasks_normalize_enum_storage", normalize_enum_storage),
             ("20260331_009_scheduled_tasks_repair_legacy_image_payload", repair_legacy_image_payload),
             ("20260809_001_scheduled_tasks_normalize_voice_message_types", normalize_voice_message_types),
+            ("20261024_001_scheduled_tasks_drop_legacy_payload_columns", drop_legacy_payload_columns),
         ])
 
     @staticmethod
