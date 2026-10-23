@@ -17,7 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 DEFAULT_TIMEOUT = 15.0
 CONFIG_PATH = Path.home() / ".config" / "awsl-wechat-gateway" / "config.json"
@@ -106,11 +106,16 @@ def request_json(
     token: str | None,
     params: dict[str, Any] | None = None,
     payload: dict[str, Any] | None = None,
+    file_stream: BinaryIO | None = None,
     timeout: float = DEFAULT_TIMEOUT,
 ) -> Any:
     body = None
     headers = {"Accept": "application/json"}
-    if payload is not None:
+    if file_stream is not None:
+        body = file_stream
+        headers["Content-Type"] = "application/octet-stream"
+        headers["Content-Length"] = str(os.fstat(file_stream.fileno()).st_size)
+    elif payload is not None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers["Content-Type"] = "application/json"
     if token:
@@ -168,6 +173,17 @@ def load_message_payload(args: argparse.Namespace) -> tuple[str, str | None]:
 def command_send(args: argparse.Namespace) -> None:
     if args.mention_all and args.message_type != "text":
         raise SystemExit("--mention-all only supports text messages")
+    if args.message_type == "file" and args.file_path:
+        path = Path(args.file_path).expanduser()
+        if not path.is_file():
+            raise SystemExit(f"File does not exist: {path}")
+        with path.open("rb") as file_stream:
+            json_dump(request_json(
+                "POST", args.base_url, "/api/send/file", token=args.token,
+                params={"group_name": args.group, "filename": args.filename or path.name},
+                file_stream=file_stream, timeout=args.timeout,
+            ))
+        return
     message, filename = load_message_payload(args)
     payload: dict[str, Any] = {
         "group_name": args.group,
@@ -249,7 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
     send_parser.add_argument(
         "--file-path",
         default=None,
-        help="Local file to base64 encode for image/file/voice_file sends",
+        help="Local file: binary streaming for file sends, Base64 for image/voice_file sends",
     )
     send_parser.add_argument("--filename", default=None, help="Filename for file/voice_file messages")
     send_parser.set_defaults(func=command_send)

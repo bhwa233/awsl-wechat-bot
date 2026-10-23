@@ -27,6 +27,7 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Manage cached connection info with `config show|set|clear`.
 - List open/listened chat windows with `windows`, which calls `GET /api/groups`.
 - Send messages with `send --group <window_name> --message <text>`. Use the visible/open window name from `windows` as `--group`.
+- Prefer binary streaming for file attachments: `send --group <window_name> --message-type file --file-path <path>` uses `POST /api/send/file` without loading or Base64-encoding the whole file. Image/MP3 inputs and pre-encoded Base64 `--message` keep using `/api/send`. Do not automatically fall back to Base64 or resend after an upload error; confirm delivery through Chatlog first. See `references/api.md` for limits and cleanup.
 - Send a native all-members mention on Windows/Linux with `send --group <window_name> --message <body> --mention-all`. This is a text-only option, requires an available owner/admin all-members candidate, and fails without sending when that candidate is missing. A literal `@所有人` or `@all` prefix does not enable it. Confirm delivery and `at_users` containing `notify@all` through Chatlog.
 - Send Windows/Linux TTS voice with `--message-type voice --message <text>` or an MP3 with `--message-type voice_file --file-path <file.mp3>`. Both are limited to 60 seconds. Linux requires PulseAudio; check `GET /api/health` → `capabilities.voice` before sending.
 
@@ -54,7 +55,11 @@ uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message "收到"
 
-# Send a local image or file; the helper base64-encodes file contents
+# Prefer binary streaming for a local file (up to 100 MiB)
+uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" --timeout 300 send \
+  --group "测试群" --message-type file --file-path ./document.pdf
+
+# Send a local image; image inputs retain Base64 encoding
 uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type image --file-path ./image.png
 
