@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 from common.models import MessageType
@@ -11,7 +12,7 @@ class LegacyTaskSchemaTest(unittest.TestCase):
     def test_legacy_constraints_are_removed_after_preserving_payloads(self):
         with tempfile.TemporaryDirectory() as directory:
             path = str(Path(directory) / "tasks.db")
-            with sqlite3.connect(path) as connection:
+            with closing(sqlite3.connect(path)) as connection, connection:
                 connection.executescript("""
                     CREATE TABLE scheduled_tasks (
                         id INTEGER PRIMARY KEY, name TEXT NOT NULL, cron_expression TEXT NOT NULL,
@@ -52,7 +53,7 @@ class LegacyTaskSchemaTest(unittest.TestCase):
             service = ScheduledTaskService(path)
             try:
                 self.assertEqual(len(service.get_all_tasks()), 3)
-                with sqlite3.connect(path) as connection:
+                with closing(sqlite3.connect(path)) as connection, connection:
                     columns = {row[1] for row in connection.execute("PRAGMA table_info(scheduled_tasks)")}
                     self.assertTrue(columns.isdisjoint({"image_base64", "is_file"}))
                     self.assertIn("mention_targets", columns)

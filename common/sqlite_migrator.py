@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
+from contextlib import closing
 
 MigrationFn = Callable[[sqlite3.Connection], None]
 
@@ -20,7 +21,7 @@ class SQLiteMigrator:
         self.db_path = db_path
 
     def migrate(self, migrations: list[tuple[str, MigrationFn]]):
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             self._ensure_schema_migrations(conn)
             for version, fn in migrations:
                 if self._is_applied(conn, version):
