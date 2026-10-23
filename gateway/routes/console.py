@@ -79,6 +79,18 @@ def create_routes(gateway_app):
     def console_js():
         return _serve_console_file("console.js", "application/javascript")
 
+    @router.get("/api/console/wechat-startup", dependencies=[Depends(verify_token)])
+    def wechat_startup_status():
+        return gateway_app.wechat_startup.status
+
+    @router.post("/api/console/wechat-startup", dependencies=[Depends(verify_token)])
+    def start_wechat():
+        startup = gateway_app.wechat_startup
+        if not startup.supported:
+            raise HTTPException(status_code=501, detail="当前平台不支持自动登录")
+        accepted = startup.start(manual=True)
+        return {"accepted": accepted, **startup.status}
+
     @router.post("/api/console/state", dependencies=[Depends(verify_token)])
     def console_state(request: ConsoleStateRequest):
         """返回微信主窗口的聊天列表、聊天区和输入框状态."""

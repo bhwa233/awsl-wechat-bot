@@ -130,9 +130,28 @@ class LinuxSendGuardTest(unittest.TestCase):
         adapter._focus_input_area.return_value = True
         console = LinuxConsoleAdapter(adapter)
         console._click = Mock()
-        node = {"name": "group", "selected": False}
+        node = {"name": "group", "selected": False, "ref": "session"}
+        adapter.accessibility.info.return_value = node
         console._select(LinuxWeChatWindow("WeChat", "0x1"), node)
         console._click.assert_called_once_with(node)
+
+    def test_selection_accepts_changed_preview_but_rejects_changed_chat(self):
+        adapter = Mock()
+        adapter._ambiguous_titles = set()
+        adapter.window_nodes.return_value = [self.field()]
+        adapter._focus_input_area.return_value = True
+        console = LinuxConsoleAdapter(adapter)
+        console._click = Mock()
+        old = {"name": "group [1]\nold preview", "selected": False, "ref": "session"}
+        fresh = {**old, "name": "group\nnew preview"}
+        adapter.accessibility.info.return_value = fresh
+        console._select(LinuxWeChatWindow("WeChat", "0x1"), old)
+        console._click.assert_called_once_with(fresh)
+        console._click.reset_mock()
+        adapter.accessibility.info.return_value = {**fresh, "name": "another group"}
+        with self.assertRaisesRegex(RuntimeError, "会话已变化"):
+            console._select(LinuxWeChatWindow("WeChat", "0x1"), old)
+        console._click.assert_not_called()
 
     def test_already_open_window_restores_main_selection(self):
         adapter = Mock()

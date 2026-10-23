@@ -214,7 +214,10 @@ class LinuxConsoleAdapter(BaseConsoleAdapter):
         self._require_unique_chat(name, nodes)
         if node["selected"] and chat_title(nodes, window.title) == name and input_node(nodes) and self.adapter._focus_input_area(window):
             return name
-        self._click(node)
+        fresh = self.adapter.accessibility.info(node["ref"])
+        if self._session_name(fresh["name"]) != name:
+            raise RuntimeError("会话已变化,请刷新后重试")
+        self._click({**node, **fresh})
         deadline = time.monotonic() + 4
         while time.monotonic() < deadline:
             nodes = self.adapter.window_nodes(window)

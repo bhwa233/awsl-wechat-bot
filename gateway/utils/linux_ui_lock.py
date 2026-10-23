@@ -22,7 +22,7 @@ class LinuxUILock:
             if not directory.is_dir():
                 directory = Path.home() / ".cache" / "awsl-wechat-gateway"
                 directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-            file = (directory / "wx-sync-ui.lock").open("a")
+            file = (directory / "awsl-wechat-ui.lock").open("a")
             deadline = time.monotonic() + 10
             while True:
                 try:

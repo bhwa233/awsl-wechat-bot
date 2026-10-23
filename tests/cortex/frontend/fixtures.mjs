@@ -1,5 +1,8 @@
 export async function mockApi(page, base) {
     const state = {
+        startupState: 'disabled',
+        startupOutcome: 'ready',
+        startupSupported: true,
         failTasks: false,
         failMessages: false,
         delayA: false,
@@ -129,6 +132,11 @@ export async function mockApi(page, base) {
             };
         else if (endpoint === '/api/gateway/health')
             result = { capabilities: { voice: true, max_binary_file_bytes: 1024 * 1024 } };
+        else if (endpoint === '/api/console/wechat-startup') {
+            if (method === 'POST') state.startupState = 'logging_in';
+            else if (state.startupState === 'logging_in') state.startupState = state.startupOutcome;
+            result = { enabled: false, supported: state.startupSupported, state: state.startupState, accepted: method === 'POST' };
+        }
         else if (endpoint === '/api/groups')
             result = [
                 { name: '开发群', active: true },

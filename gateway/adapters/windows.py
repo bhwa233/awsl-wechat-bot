@@ -648,7 +648,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 for thread_id in {foreground_thread, target_thread} - {current_thread, 0}:
                     if user32.AttachThreadInput(current_thread, thread_id, True):
                         attached.append(thread_id)
-                user32.ShowWindow(hwnd, 9)
+                if user32.IsIconic(hwnd):
+                    user32.ShowWindow(hwnd, 9)
                 user32.BringWindowToTop(hwnd)
                 user32.SetForegroundWindow(hwnd)
             finally:

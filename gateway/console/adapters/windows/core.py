@@ -53,16 +53,6 @@ class WindowsUIAMixin:
             return True
 
         try:
-            if hasattr(window, "ShowWindow"):
-                window.ShowWindow(1)
-        except Exception:
-            pass
-        try:
-            if hasattr(window, "Restore"):
-                window.Restore()
-        except Exception:
-            pass
-        try:
             window.SetForeground()
             time.sleep(0.3)
             return True
@@ -79,7 +69,8 @@ class WindowsUIAMixin:
             import win32con
             import win32gui
 
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            if win32gui.IsIconic(hwnd):
+                win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             win32gui.SetWindowPos(
                 hwnd,
                 win32con.HWND_TOPMOST,

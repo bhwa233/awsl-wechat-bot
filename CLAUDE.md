@@ -76,6 +76,7 @@ per group                              │ 广播
 - `logging.py` - HealthFilter + setup_uvicorn_logging()
 
 **gateway/** - Gateway 服务
+- `startup/` - 统一微信启动与持续看护，默认关闭；`adapters/base.py` 定义平台契约，`linux.py` 管理 X11/AT-SPI/固定环境注入，`windows.py` 管理本机 WMI 启动与 UIA/Win32；`restart_budget.py` 持久化限额（3次/小时）。同一开关与 Cortex 按钮执行登录、窗口恢复、主窗与独立窗口全部最大化；进程退出后重试，不主动终止微信，二维码/锁定中止。状态与启动 API 为 `/api/console/wechat-startup`
 - `runtime.py` - GatewayRuntime：自动窗口发现（5s 扫描），管理 detectors/sender/gateway
 - `asgi.py` - FastAPI app 工厂，lifespan 管理生命周期
 - `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播 + subscribe regex 校验

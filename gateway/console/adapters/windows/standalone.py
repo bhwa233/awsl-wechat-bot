@@ -80,6 +80,8 @@ class WindowsStandaloneMixin:
             auto = self._ensure_uia()
             with self._ui_operation_lock():
                 windows = [self._standalone_cache_entry(control) for control in self._standalone_windows(auto)]
+                if any(not item.conversation_id for item in windows):
+                    return self._action_error("部分窗口缺少可验证的会话 ID,保留原缓存")
                 cache = StandaloneWindowCache(
                     updated_at=datetime.now(UTC),
                     windows=windows,
@@ -228,7 +230,7 @@ class WindowsStandaloneMixin:
 
         previous_signature: tuple[tuple[str, str], ...] | None = None
         for _ in range(self.CHAT_LIST_TRAVERSAL_STEPS):
-            nodes = self._collect_nodes(main_window, max_depth=18, max_nodes=max_nodes)
+            nodes = self._collect_nodes(list_control, max_depth=18, max_nodes=max_nodes)
             cells = [node for node in nodes if node["class_name"] == "mmui::ChatSessionCell"]
             matches = [node for node in cells if predicate(node)]
             if len(matches) == 1:
@@ -256,7 +258,7 @@ class WindowsStandaloneMixin:
     ) -> str:
         previous_signature: tuple[tuple[str, str], ...] | None = None
         for _ in range(self.CHAT_LIST_TRAVERSAL_STEPS):
-            nodes = self._collect_nodes(main_window, max_depth=18, max_nodes=max_nodes)
+            nodes = self._collect_nodes(list_control, max_depth=18, max_nodes=max_nodes)
             cells = [node for node in nodes if node["class_name"] == "mmui::ChatSessionCell"]
             if not cells:
                 return "聊天列表中没有可见会话"

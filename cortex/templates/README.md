@@ -8,6 +8,7 @@ Preact 及同包 Hooks 已固定在 `vendor/preact/`，由 `index.html` 的本�
 
 ## 文件职责
 
+- `wechat_startup.js`：概览微信启动按钮和进度，复用 Console 代理；启动成功后刷新服务状态。
 - `app.js`：应用上下文、导航与浏览器历史、主题、Token、概览。
 - `api.js`：鉴权、HTTP 错误、超时和取消；公共数据格式化。
 - `ui.js`：基础控件、焦点管理弹窗、请求与可见性轮询 Hooks。

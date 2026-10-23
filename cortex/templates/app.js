@@ -22,6 +22,7 @@ import { Console } from './console.js';
 import { Tasks } from './tasks.js';
 import { CustomCommands, RemoteCommands } from './custom_commands.js';
 import { Webhooks } from './webhooks.js';
+import { WeChatStartup } from './wechat_startup.js?v=202610230002';
 
 const pages = [
     ['dashboard', '概览', 'dashboard'],
@@ -131,6 +132,7 @@ function Dashboard({ active }) {
         h(
             'div',
             { class: 'dash-grid' },
+            h(WeChatStartup, { active, onReady: () => { resource.reload(); refreshServer(); } }),
             h(
                 'div',
                 { class: 'card dash-health' },

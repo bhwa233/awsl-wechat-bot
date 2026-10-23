@@ -34,6 +34,10 @@ class Config(BaseSettings):
     # 发送间隔配置
     GLOBAL_SEND_INTERVAL: float = 3.0  # 全局发送间隔(秒)
 
+    # Gateway 启动时自动打开微信、登录并恢复独立窗口（Windows/Linux）
+    WECHAT_AUTO_LOGIN_ENABLED: bool = False
+    WECHAT_EXECUTABLE_PATH: str = ""
+
     # Windows 语音发送(TTS -> VB-CABLE -> 微信右 Alt 录音)
     LOCALAI_TTS_API_URL: str = ""
     LOCALAI_TTS_API_KEY: str = ""
