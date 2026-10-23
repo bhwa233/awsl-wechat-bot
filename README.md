@@ -6,7 +6,7 @@
 
 ## 功能特性
 
-- **跨平台支持**：macOS (Quartz 截图 + Vision OCR) / Windows (UI Automation) / Linux (Chatlog 读取 + X11 发送)
+- **跨平台支持**：macOS (Quartz 截图 + Vision OCR) / Windows (UIA / Chatlog 读取) / Linux (Chatlog / AT-SPI 读取 + X11 发送)
 - **自动窗口发现**：自动扫描微信群聊窗口，动态增删检测线程
 - **WebSocket 消息网关**：统一消息广播，支持正则过滤订阅
 - **多群并发处理**：每群独立检测线程，全局限速发送
@@ -14,6 +14,12 @@
 - **Chatlog 双后端**：v1（pycryptodome 离线解密）/ v2（原生库在线读 SQLCipher v4，Windows/Linux），默认走 v2
 - **富媒体渲染**：图片（V2 .dat 派生 AES + wxgf→JPEG）/ 表情包 / 语音（SILK→MP3）/ 视频缩略图 / 位置 / 名片 / appmsg；Web UI 内置 `[发呆][呲牙]` 等微信表情符 → Unicode emoji 替换
 - **定时任务 / 群聊总结 / @触发 / 动态命令 / Webhook 转发**
+
+## 消息读取方式（Windows / Linux）
+
+通过 `.env` 或环境变量配置消息读取方式，修改后重启 Gateway 生效：`LINUX_MESSAGE_READER=chatlog`（默认）、`WINDOWS_MESSAGE_READER=accessibility`（默认 UIA）。两项均可选 `chatlog` / `accessibility`，Linux 的辅助功能为 AT-SPI。读取选择和处理均在各平台适配器内部实现。
+
+Chatlog 需要 v2 服务，可提供发送人及 @ 信息。Linux AT-SPI 只读取独立窗口已加载的文本，不依赖 Chatlog；当前控件不提供发送人及 @，只能过滤程序自己发送的文本/文件，无法保证窗口外消息不丢失。
 
 ## 微信启动与窗口恢复（Windows / Linux）
 
@@ -239,7 +245,7 @@ uv run tools/extract_wx_keys_linux.py --mode passphrase --json
 
 默认输出是 `{"contact/contact.db":"64hex","message/message_0.db":"64hex"}` 这种 flat JSON；如果写入 `.env`，整段 JSON 放到 `WECHAT_DB_KEY=` 后面即可。
 
-Linux 的主要 Gateway/Console 能力包括文本、图片、文件、TTS/MP3 原生语音、前缀提及、会话列表/切换/滚动、独立窗口开关/缓存/手动恢复和可见文本引用。与 Windows 的边界差异：Linux 需要 X11（不支持纯 Wayland），接收消息依赖 Chatlog v2 与 per-db key，引用原文找不到时停止发送，列表没有稳定群 ID。实机验收基线是 Debian 13 x86_64、微信 4.1.13.9；ARM64、其他微信版本和语种未做同等实机验收。
+Linux 的主要 Gateway/Console 能力包括文本、图片、文件、TTS/MP3 原生语音、前缀提及、会话列表/切换/滚动、独立窗口开关/缓存/手动恢复和可见文本引用。与 Windows 的边界差异：Linux 需要 X11（不支持纯 Wayland），默认接收消息依赖 Chatlog v2 与 per-db key，也可配置为 AT-SPI，引用原文找不到时停止发送，列表没有稳定群 ID。实机验收基线是 Debian 13 x86_64、微信 4.1.13.9；ARM64、其他微信版本和语种未做同等实机验收。
 主窗口和独立窗口的逐项结果、收消息回放方式及验证边界见 [Linux Gateway 实机验收](docs/linux-gateway-acceptance.md)。
 Console state 提供中英文引用的 `content/quote/raw_text`、时间行分类及置顶/免打扰/多行预览；时间行结合格式和行高识别，避免把时间格式的正文直接当作时间。`include_patterns=true` 返回当前控件实际支持的 AT-SPI 接口、属性、动作与文本能力，只读取信息，不执行动作。Linux AT-SPI 不提供的 Windows UIA 类名和 Pattern 不会伪造。
 图片/文件名限制为 200 个 UTF-8 字节，截断时保留普通扩展名并加短哈希避免同前缀撞名，文件创建或写入失败也会清理临时路径。独立窗口无法匹配会话 ID 时拒绝覆盖原缓存；语音结束后先恢复默认麦克风、卸载临时设备，再删除恢复标记，清理失败会保留标记供后续操作重试。
@@ -274,7 +280,7 @@ CHATLOG_HTTP_PORT=7998
 # Chatlog 默认后端（true→v2 原生库，false→v1 pycryptodome）
 CHATLOG_USE_V2=true
 
-# Linux Gateway 通过 X11 发送、通过 Chatlog 读取消息
+# Linux Gateway 通过 X11 发送，默认通过 Chatlog 读取消息
 LINUX_WECHAT_DISPLAY=:10
 LINUX_WECHAT_XAUTHORITY=~/.Xauthority
 LINUX_CHATLOG_MESSAGE_LIMIT=20
@@ -462,7 +468,7 @@ Cortex 控制台页的文本消息（含引用回复）提供“⋯”菜单，�
 | `sender_name` | string | 发送人名称，沿用 Chatlog 的名称选择规则，无法取得时为空字符串 |
 | `at_users` | string[] | 被 @ 的 WX ID 列表，未取得时为空列表 |
 
-Linux Adapter 直接传递这三个字段。Windows UIA 和 macOS OCR 未取得的信息使用上述空值，不猜测身份。Chatlog 接口、原有消息正文及检测规则保持原样。
+Windows/Linux 的 Chatlog 读取方式传递这三个字段；Windows UIA、Linux AT-SPI 和 macOS OCR 未取得的信息使用上述空值，不猜测身份。
 
 **Server → Client：**
 ```json

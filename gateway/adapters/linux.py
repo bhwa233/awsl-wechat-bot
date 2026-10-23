@@ -1,6 +1,6 @@
 """Linux 微信适配器.
 
-接收消息通过 chatlog HTTP API 读取,发送通过 X11 窗口激活和剪贴板完成.
+接收消息通过 Chatlog 或 AT-SPI 读取,发送通过 X11 窗口激活和剪贴板完成.
 """
 
 from __future__ import annotations
@@ -17,7 +17,9 @@ import subprocess
 import tempfile
 import threading
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
+from collections import deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import ClassVar
@@ -36,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 _MAIN_WINDOW_TITLES = {"微信", "WeChat", "Weixin"}
 _WECHAT_CLASS = "wechat.wechat"
+_VOICE_MESSAGE_RE = re.compile(r'Audio\d+"sec(?:Unplayed)?')
 _AT_PREFIX_RE = re.compile(r"^((?:@[^\s@,\uff0c;\uff1b:\uff1a]+\s+)+)(.*)", re.DOTALL)
 
 
@@ -87,6 +90,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
     _CHATLOG_RETRY_INTERVAL: ClassVar[float] = 5.0
 
     def __init__(self) -> None:
+        self._atspi_readers = {}
+        self._sent_messages = LinuxSentMessages()
         self._send_lock = LinuxUILock()
         self.accessibility = LinuxAccessibility()
         self._chatlog = httpx.Client(
@@ -267,7 +272,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         self._group_cache_retry_at = 0.0
 
     def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
-        self._refresh_group_cache()
+        if config.LINUX_MESSAGE_READER == "chatlog":
+            self._refresh_group_cache()
         windows = self.list_windows()
         counts: dict[str, int] = {}
         for window in windows:
@@ -282,6 +288,11 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         ]
 
     def get_messages_from_window(self, window: LinuxWeChatWindow) -> list[ReceivedMessage]:
+        if config.LINUX_MESSAGE_READER == "accessibility":
+            key = window.window_id
+            if key not in self._atspi_readers:
+                self._atspi_readers[key] = LinuxAccessibilityReader(self, window)
+            return self._atspi_readers[key].poll()
         talker = self._resolve_talker(window)
         if not talker:
             raise RuntimeError(f"[{window.title}] 未匹配 chatlog talker")
@@ -375,7 +386,9 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                 if not clipboard_owner:
                     return False
             try:
+                token = self._sent_messages.record(window.expected_chat or window.title, text)
                 if not self._paste_and_send(window, clear=False, paste=bool(remaining)):
+                    self._sent_messages.discard(token)
                     return False
                 time.sleep(0.3)
                 return True
@@ -655,7 +668,12 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                         return False
                 if not clipboard_owner:
                     return False
+                token = None
+                if not as_image:
+                    token = self._sent_messages.record(window.expected_chat or window.title, os.path.basename(temp_path))
                 if not self._paste_and_send(window, delay=2.0):
+                    if token is not None:
+                        self._sent_messages.discard(token)
                     return False
                 self._schedule_temp_cleanup(temp_path, delay=15 if as_image else 180)
                 return True
@@ -814,3 +832,79 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         if os.path.basename(temp_dir).startswith("awsl-wechat-"):
             with contextlib.suppress(Exception):
                 os.rmdir(temp_dir)
+
+
+class LinuxAccessibilityReader:
+    def __init__(self, adapter, window):
+        self.adapter = adapter
+        self.window = window
+        from gateway.console.adapters.linux import LinuxConsoleAdapter
+
+        self.parser = LinuxConsoleAdapter(adapter)
+        self._previous = None
+
+    def poll(self):
+        nodes = self.adapter.window_nodes(self.window)
+        if chat_title(nodes, self.window.title) != (self.window.expected_chat or self.window.title):
+            raise RuntimeError("辅助功能读取的会话发生变化")
+        parent = self.parser._list_node(nodes, {"消息", "Messages"})
+        if parent is None:
+            raise RuntimeError("AT-SPI 未找到消息列表,保留原基线")
+        rows = self.parser._children(nodes, parent)
+        parsed = self.parser._message_items(nodes, parent)
+        current = [(row["ref"], row["name"]) for row in rows]
+        previous = self._previous
+        if not current:
+            if previous is None:
+                self._previous = []
+            return []
+        self._previous = current
+        if previous is None:
+            return []
+        # 仅接收旧列表尾部之后追加的行; 失去重叠时重建基线,避免滚动历史造成重播。
+        boundary = next((i + 1 for i in range(len(current) - 1, -1, -1) if current[i] == previous[-1]), None) if previous else 0
+        if boundary is None:
+            return []
+        result = []
+        for item in parsed[boundary:]:
+            text = item["raw_text"].strip()
+            if (item["kind"] == "timestamp" or not text or _VOICE_MESSAGE_RE.fullmatch(text)
+                    or text in {"Animated Stickers", "[图片]", "[表情]", "[视频]", "[语音]"}):
+                continue
+            if self.adapter._sent_messages.is_self_sent(self.window.expected_chat or self.window.title, item["content"]):
+                continue
+            result.append(ReceivedMessage(content=text))
+        return result
+
+
+class LinuxSentMessages:
+    def __init__(self):
+        self._records = deque(maxlen=200)
+        self._lock = threading.Lock()
+
+    @staticmethod
+    def _normalize(text):
+        return re.sub(r"\s+", " ", unicodedata.normalize("NFKC", text)).strip()
+
+    def record(self, key, content):
+        token = object()
+        with self._lock:
+            self._records.append((token, time.monotonic(), key, self._normalize(content)))
+        return token
+
+    def discard(self, token):
+        with self._lock:
+            self._records = deque((item for item in self._records if item[0] is not token), maxlen=200)
+
+    def is_self_sent(self, key, content):
+        text = self._normalize(content)
+        if not text:
+            return False
+        now = time.monotonic()
+        with self._lock:
+            for record in self._records:
+                _, stamp, name, value = record
+                if now - stamp <= 120 and name == key and value == text:
+                    self._records.remove(record)
+                    return True
+        return False

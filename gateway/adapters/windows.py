@@ -5,11 +5,13 @@ import os
 import re
 import threading
 import time
+import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
 from typing import ClassVar
 
+import httpx
 from pydantic import computed_field
 
 logging.getLogger("comtypes").setLevel(logging.WARNING)
@@ -160,6 +162,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         return name[:200]
 
     def __init__(self):
+        self._db_reader = WindowsChatlogReader(self) if config.WINDOWS_MESSAGE_READER == "chatlog" else None
         self._send_lock = threading.Lock()  # 仅发送需要锁(激活窗口+剪贴板+按键)
         self._sent_messages = _SentMessageStore()
         self._thread_inits: dict[int, auto.UIAutomationInitializerInThread] = {}
@@ -181,6 +184,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         initialize: bool = False,
     ) -> list[ReceivedMessage]:
         key = self._message_state_key(window)
+        if config.WINDOWS_MESSAGE_READER == "chatlog":
+            return [] if initialize else messages
         with self._message_state_lock:
             state = self._message_states.setdefault(key, _MessageState())
             current = state.observed
@@ -674,6 +679,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             list[str]: 消息列表
         """
         self._ensure_uia()
+        if config.WINDOWS_MESSAGE_READER == "chatlog":
+            return self._db_reader.read(window)
         state_key = self._message_state_key(window)
         # 读取不需要锁:每个线程有独立 UIA/COM 上下文,读不同窗口可并行
         logger.debug("正在查找消息列表...")
@@ -1115,3 +1122,75 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             return False
         finally:
             self._send_lock.release()
+
+
+class WindowsChatlogReader:
+    def __init__(self, adapter):
+        self.adapter = adapter
+        host = config.CHATLOG_HTTP_HOST if config.CHATLOG_HTTP_HOST != "0.0.0.0" else "127.0.0.1"
+        self.client = httpx.Client(
+            base_url=f"http://{host}:{config.CHATLOG_HTTP_PORT}/api/chatlog/v2/",
+            headers={"Authorization": f"Bearer {config.HTTP_API_TOKEN}"} if config.HTTP_API_TOKEN else {},
+            timeout=30,
+        )
+        self.talkers = {}
+        self.cursors = {}
+        self.seen = {}
+
+    def read(self, window):
+        key = self.adapter._message_state_key(window)
+        talker = self.talkers.get(key)
+        if talker is None:
+            talker = self.adapter.standalone_conversation_id(self.adapter._automation_id(window))
+            if not talker:
+                response = self.client.get("groups", params={"limit": 0})
+                response.raise_for_status()
+                matches = {g["username"] for g in response.json()
+                           if window.Name in {g.get(k) for k in ("username", "display_name", "remark", "nick_name")}}
+                if len(matches) != 1:
+                    raise RuntimeError(f"[{window.Name}] 无法唯一匹配 Windows Chatlog 会话")
+                talker = matches.pop()
+            self.talkers[key] = talker
+        cursor = self.cursors.get(key)
+        if cursor is None:
+            response = self.client.get("messages", params={"group": talker, "limit": 20, "desc": True})
+            response.raise_for_status()
+            rows = list(reversed(response.json()))
+        else:
+            rows = []
+            offset = 0
+            while True:
+                response = self.client.post("messages/batch", json={
+                    "items": [{"group": talker, "since_seq": cursor}], "limit": 100, "offset": offset,
+                })
+                response.raise_for_status()
+                page = response.json()["results"][talker]
+                rows.extend(page)
+                if len(page) < 100 or any(row["seq"] > cursor for row in page):
+                    break
+                offset += len(page)
+        result = []
+        known = self.seen.get(key, set())
+        identities = set()
+        latest = cursor or 0
+        for row in rows:
+            sequence = int(row["seq"])
+            identity = (sequence, int(row.get("server_id", 0)), int(row.get("local_id", 0)))
+            identities.add(identity)
+            latest = max(latest, sequence)
+            if identity in known or row["is_self"] or (cursor is not None and sequence < cursor):
+                continue
+            content = row["content"]
+            if row["msg_type"] == 49:
+                try:
+                    content = ET.fromstring(content).findtext(".//title", "").strip()
+                except ET.ParseError:
+                    continue
+            elif row["msg_type"] != 1:
+                continue
+            if content:
+                result.append(ReceivedMessage(content=content, sender=row.get("sender", ""),
+                                              sender_name=row.get("sender_name", ""), at_users=row.get("at_users", [])))
+        self.cursors[key] = latest
+        self.seen[key] = {identity for identity in known | identities if identity[0] >= latest}
+        return result

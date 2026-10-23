@@ -3,6 +3,8 @@ AWSL 微信机器人配置 - 使用 Pydantic Settings
 支持从环境变量读取配置
 """
 
+from typing import Literal
+
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -33,6 +35,10 @@ class Config(BaseSettings):
 
     # 发送间隔配置
     GLOBAL_SEND_INTERVAL: float = 3.0  # 全局发送间隔(秒)
+
+    # 消息读取方式, 修改后重启 Gateway 生效
+    LINUX_MESSAGE_READER: Literal["chatlog", "accessibility"] = "chatlog"
+    WINDOWS_MESSAGE_READER: Literal["chatlog", "accessibility"] = "accessibility"
 
     # Gateway 启动时自动打开微信、登录并恢复独立窗口（Windows/Linux）
     WECHAT_AUTO_LOGIN_ENABLED: bool = False
