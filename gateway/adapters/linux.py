@@ -86,6 +86,7 @@ def _x11_env() -> dict[str, str]:
 
 
 class LinuxWeChatAdapter(BaseWeChatAdapter):
+    FILE_SEND_CLEANUP_DELAY = 180.0
     SUPPORTS_MENTION_ALL = True
     _TEMP_CLEANUP_DELAY: ClassVar[float] = 15.0
     _CHATLOG_RETRY_INTERVAL: ClassVar[float] = 5.0
@@ -428,6 +429,9 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             if not sent:
                 self._schedule_temp_cleanup(temp_path)
 
+    def send_file_path_to_window(self, window: LinuxWeChatWindow, file_path: Path, filename: str) -> bool:
+        return self._send_file_path(window, str(file_path), cleanup=False)
+
     def send_voice_to_window(self, window, file_base64, filename, timeout=None) -> bool:
         from gateway.utils.linux_voice import connect_wechat_microphone, decoded_voice, microphone, play_voice
 
@@ -662,7 +666,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                 raise RuntimeError("无法安全清理 @ 草稿") from exc
             return text
 
-    def _send_file_path(self, window: LinuxWeChatWindow, temp_path: str, *, as_image=False) -> bool:
+    def _send_file_path(self, window: LinuxWeChatWindow, temp_path: str, *, as_image=False, cleanup=True) -> bool:
         with self.ui_operation_lock:
             clipboard_owner: subprocess.Popen | bool | None = None
             try:
@@ -694,7 +698,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                     if token is not None:
                         self._sent_messages.discard(token)
                     return False
-                self._schedule_temp_cleanup(temp_path, delay=15 if as_image else 180)
+                if cleanup:
+                    self._schedule_temp_cleanup(temp_path, delay=15 if as_image else 180)
                 return True
             except Exception as exc:
                 logger.error("[%s] 发送文件失败: %s", window.title, exc)

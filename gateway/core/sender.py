@@ -113,7 +113,10 @@ class MessageSender:
                         send_result = "invalid"
                         logger.warning(f"[{task.group_name}] 文件消息缺少文件名,跳过发送")
                         continue
-                    send_ok = self.adapter.send_file_to_window(window, task.message, task.filename)
+                    if task.file_path is None:
+                        send_ok = self.adapter.send_file_to_window(window, task.message, task.filename)
+                    else:
+                        send_ok = self.adapter.send_file_path_to_window(window, task.file_path, task.filename)
                     preview = f"[文件] {task.filename}"
                 elif task.message_type == MessageType.VOICE:
                     if self.voice_synthesis_worker and self.voice_synthesis_worker.enqueue(task):
@@ -144,6 +147,8 @@ class MessageSender:
             except Exception as e:
                 logger.error(f"[{task.group_name}] 发送出错: {e}", exc_info=True)
             finally:
+                if task.completion is not None and not task.completion.done():
+                    task.completion.set_result(send_result == "success")
                 metrics.increment(
                     "sends_total",
                     group=task.group_name,

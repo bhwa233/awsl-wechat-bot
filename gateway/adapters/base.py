@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from common.models import ReceivedMessage
@@ -18,6 +19,7 @@ class DiscoveredWindow:
 class BaseWeChatAdapter(ABC):
     """微信操作适配器基类"""
 
+    FILE_SEND_CLEANUP_DELAY = 0.0
     SUPPORTS_VOICE = False
     SUPPORTS_MENTION_ALL = False
 
@@ -55,6 +57,11 @@ class BaseWeChatAdapter(ABC):
     @abstractmethod
     def send_file_to_window(self, window: Any, file_base64: str, filename: str) -> bool:
         """向指定窗口发送文件(base64 编码)"""
+        pass
+
+    @abstractmethod
+    def send_file_path_to_window(self, window: Any, file_path: Path, filename: str) -> bool:
+        """Send an existing file; the caller owns its lifecycle."""
         pass
 
     def send_voice_to_window(

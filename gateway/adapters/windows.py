@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass, field
 from difflib import SequenceMatcher
+from pathlib import Path
 from typing import ClassVar
 
 import httpx
@@ -139,6 +140,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         *(f"LPT{i}" for i in range(1, 10)),
     }
     _DROPFILE_CLEANUP_DELAY = 60.0
+    FILE_SEND_CLEANUP_DELAY = _DROPFILE_CLEANUP_DELAY
     _DROPFILE_CLEANUP_RETRY_DELAY = 1.0
     _DROPFILE_CLEANUP_RETRIES = 10
     _VOICE_ALT_KEY = auto.Keys.VK_RMENU
@@ -1128,6 +1130,16 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             finally:
                 if temp_path or temp_dir:
                     self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=1.0)
+
+    def send_file_path_to_window(self, window, file_path: Path, filename: str) -> bool:
+        self._ensure_uia()
+        with self._send_lock:
+            if not self.activate_specific_window(window):
+                return False
+            target = self.clear_input(window)
+            self._paste_file_to_window(window, str(file_path))
+            self._send_file_paste_and_enter(target, self._message_state_key(window), filename)
+            return True
 
     def send_voice_to_window(
         self,

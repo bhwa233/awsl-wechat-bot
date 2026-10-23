@@ -329,8 +329,15 @@ uv run run_daemon.py       # Daemon (:8001)
 GET  /api/health              # 健康检查
 GET  /api/groups              # 群组列表
 POST /api/send                # 发送文本/图片/文件/语音
+POST /api/send/file           # Stream a file, then queue it for sending
 WS   /ws                      # WebSocket（首条消息认证）
 ```
+
+`POST /api/send/file?group_name=demo&filename=report.pdf` accepts a raw request body (for example, `application/octet-stream`). The filename must be a portable basename of at most 200 UTF-8 bytes; invalid names return 400. Uploads stream directly into one final file in the system temporary directory, without Base64 conversion or multipart spooling.
+
+Limits: 100 MiB per file, 256 MiB of temporary files owned by the current Gateway process, five concurrent uploads, and a 300-second upload timeout. HTTP 200 means the complete file has entered the send queue; oversized files return 413, a sixth concurrent upload returns 429, and exhausted storage or queue capacity returns 503. A full send queue is handled by the existing enqueue result after reception; rejected files are removed. Files left behind by a previous Gateway process are outside the new process's quota.
+
+The existing HTTP/WS Base64 interfaces and limits remain unchanged. Base64 keeps its existing decode, temporary-file, and send entry points. The API owns streamed-file reception, storage accounting, and cleanup. The existing queue carries the completed path; the sender only reports its send result through a Future, without a cleanup callback. API background tasks wait for that result and schedule deletion without blocking requests. Adapters send that path through their existing paste/send helpers. After successful sends, cleanup waits 60 seconds on Windows and 180 seconds on Linux, and runs immediately on macOS. Deletion failures are retried without releasing the reserved capacity. Interrupted uploads and files rejected by the send queue are cleaned up immediately.
 
 ### Chatlog (:7998)
 

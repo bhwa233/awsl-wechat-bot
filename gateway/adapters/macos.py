@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 import Quartz
 
@@ -336,3 +337,13 @@ class MacOSWeChatAdapter(BaseWeChatAdapter):
                 return False
             finally:
                 self._cleanup_temp_file(tmp_path)
+
+    def send_file_path_to_window(self, window: MacOSWindow, file_path: Path, filename: str) -> bool:
+        with self._send_lock:
+            if self._run_applescript(f'set the clipboard to {{POSIX file "{file_path}"}}') is None:
+                return False
+            time.sleep(0.3)
+            if not self._activate_window_by_index(window.index):
+                return False
+            time.sleep(0.2)
+            return self._paste_clipboard_and_send()

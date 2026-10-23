@@ -1,11 +1,14 @@
 """公共数据模型 - WS 协议 + 内部队列"""
 
 import re
+from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Discriminator, Tag, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, Discriminator, Field, InstanceOf, Tag, TypeAdapter, field_validator, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from common.config import config
 
@@ -81,6 +84,13 @@ class MessagePayload(BaseModel):
 
 class OutgoingMessage(MessagePayload):
     group_name: str
+    file_path: SkipJsonSchema[Path | None] = Field(default=None, exclude=True)
+    completion: SkipJsonSchema[InstanceOf[Future[bool]] | None] = Field(default=None, exclude=True)
+
+    @field_validator("file_path", "completion", mode="before")
+    @classmethod
+    def internal_send_state(cls, value):
+        return value if isinstance(value, (Path, Future)) else None
 
 
 # ── Client → Server ──────────────────────────────────────
