@@ -24,65 +24,39 @@
 ## 总体架构
 
 ```mermaid
-flowchart TB
-    subgraph Daemon["Daemon (:8001)"]
-        Manager["BotProcessManager<br/>启停 / 更新 / 日志 / 健康检查"]
+flowchart LR
+    subgraph Bot["main.py · 独立子进程与异常重启"]
+        direction LR
+        subgraph Gateway["Gateway :8000"]
+            direction TB
+            Detector["窗口发现 / Detector"] --> Hub["WS Hub / 订阅广播"]
+            API["HTTP API / Console"] --> Sender["发送队列 / Sender"]
+            Hub --> Sender
+            Sender -->|语音合成| TTS["后台 TTS worker"]
+            TTS -->|合成后入队| Sender
+        end
+        subgraph Cortex["Cortex :7999"]
+            direction TB
+            WebUI["Web UI / HTTP 代理"]
+            GWClient["GatewayClient / WS"] <--> Runtime["AI / 命令"]
+            GWClient <--> Webhook["Webhook / 回复"]
+            Tasks["定时任务 / 群聊总结"] --> GWClient
+            WebUI -.管理.-> Tasks
+            WebUI -.管理.-> Webhook
+        end
+        subgraph Chatlog["Chatlog :7998"]
+            direction TB
+            Reader["数据库后端<br/>v1 离线 / v2 原生"] --> Query["消息 / 联系人<br/>群成员查询"]
+            Reader --> Media["富媒体解析<br/>图片 / 语音 / 文件"]
+        end
+        Gateway <-->|WS 收发 / HTTP 代理| Cortex
+        Cortex -->|HTTP 查询 / 媒体| Chatlog
+        Gateway -.->|Chatlog 读取模式| Chatlog
     end
-    Supervisor["main.py<br/>子进程监督 / 异常退出重启"]
-    Manager --> Supervisor
-
-    subgraph Gateway["Gateway (:8000)"]
-        Scanner["Window Scanner<br/>每 5 秒发现窗口"]
-        Detectors["Detector × N<br/>按群检测新消息"]
-        Queue[(gateway_queue)]
-        WSHub["WS Hub<br/>正则过滤 / priority / passive"]
-        SendAPI["HTTP 发送 API<br/>Base64 / 流式文件接收与清理"]
-        Sender["MessageSender<br/>发送队列 / 全局限速"]
-        TTS["VoiceSynthesisWorker<br/>LocalAI / EdgeTTS"]
-        Console["Console<br/>主窗口交互"]
-        Scanner --> Detectors
-        Detectors --> Queue --> WSHub
-        SendAPI --> Sender
-        WSHub --> Sender
-        Sender -->|TTS 请求| TTS
-        TTS -->|合成后入队| Sender
-    end
-
-    subgraph Cortex["Cortex (:7999)"]
-        WebUI["Preact Web UI<br/>聊天 / 任务 / 命令 / Webhook"]
-        Proxy["HTTP 代理<br/>Gateway / Chatlog"]
-        GWClient["GatewayClient<br/>WS 连接 / 重连 / 订阅"]
-        Runtime["CortexRuntime<br/>AI / 本地与远程命令"]
-        Webhook["WebhookService<br/>有界队列 / worker / 可选回复"]
-        Scheduler["TaskScheduler<br/>cron / 每 5 秒轮询"]
-        Summary["SummaryService<br/>聊天记录 / LLM / 图片渲染"]
-        WebUI --> Proxy
-        GWClient <--> Runtime
-        GWClient <--> Webhook
-        Scheduler --> GWClient
-        Scheduler --> Summary
-        Summary --> GWClient
-    end
-
-    subgraph Chatlog["Chatlog (:7998)"]
-        ChatlogAPI["v1: pycryptodome 离线解密<br/>v2: 原生库在线读取 SQLCipher<br/>消息 / 联系人 / 群成员 / 媒体"]
-    end
-
-    Supervisor --> Gateway
-    Supervisor --> Cortex
-    Supervisor --> Chatlog
-    WeChat["微信客户端"] -. UIA / AT-SPI / OCR .-> Detectors
-    Sender -->|平台 Adapter| WeChat
-    Console -->|平台 Adapter / UI 锁| WeChat
-    WSHub <-->|WebSocket| GWClient
-    Client["外部 API / WS 客户端"] <-->|WebSocket| WSHub
-    Client -->|HTTP| SendAPI
-    Proxy -->|HTTP| SendAPI
-    Proxy -->|HTTP| Console
-    Proxy -->|HTTP| ChatlogAPI
-    Summary -->|HTTP| ChatlogAPI
-    Detectors -. Chatlog 读取模式 .-> ChatlogAPI
-    ChatlogAPI -->|读取| DB[(微信数据库)]
+    Daemon["Daemon :8001<br/>启停 / 更新 / 健康检查"] --> Bot
+    WeChat["微信客户端"] <-->|窗口交互| Gateway
+    Chatlog -->|读取| DB[(微信数据库)]
+    style Bot fill:none,stroke:#b8c0cc,stroke-dasharray:4 4
 ```
 
 Gateway 与微信运行在同一桌面环境，Chatlog 部署在数据库所在机器；Cortex 可独立部署。Web UI 通过 Cortex 的 HTTP 代理访问 Gateway / Chatlog；业务收发走 WS。详细组件与线程职责见 [架构文档](docs/architecture.md)。
