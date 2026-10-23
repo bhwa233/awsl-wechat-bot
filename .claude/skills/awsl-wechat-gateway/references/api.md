@@ -31,6 +31,7 @@ Use `Authorization: Bearer <token>` when a token is available. Omit the header w
 ```
 
 - `message_type`: `text`, `image`, `file`, `voice`, or `voice_file`.
+- `mention_all`: optional boolean, default `false`, text only, Windows/Linux only. Types `@` and clicks the first “所有人” / “Mention All” candidate without searching, then sends the body. Requires an available owner/admin candidate. Missing/disabled candidates stop the send without falling back to literal text. A body prefix `@所有人` / `@all` does not enable it. The same option is accepted by WS `send_message` and Console `/api/console/send-message` (using `chat_name`). Confirm native delivery through Chatlog `at_users` containing `notify@all`.
 - `image` and `file` use base64 content in `message`.
 - `file` requires `filename`.
 - `voice` uses plain text in `message`, supports Windows/Linux with the required audio devices, and defaults to at most 1,000 input characters and 60 seconds of synthesized audio.

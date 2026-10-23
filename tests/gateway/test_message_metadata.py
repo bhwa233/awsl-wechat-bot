@@ -4,21 +4,78 @@ import queue
 import sys
 import threading
 import unittest
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from common.models import GatewayMessage, ReceivedMessage, WSSubscription, parse_client_message, parse_server_message
+from common.models import (
+    GatewayMessage,
+    MessageType,
+    OutgoingMessage,
+    ReceivedMessage,
+    WSSubscription,
+    parse_client_message,
+    parse_server_message,
+)
 from gateway.adapters.linux import LinuxWeChatAdapter, LinuxWeChatWindow
 from gateway.core.detector import MessageDetector
 from gateway.core.gateway import Gateway
 from gateway.routes.console import ConsoleSendMessageRequest
 
-with patch.dict(sys.modules, {'uiautomation': SimpleNamespace(Keys=SimpleNamespace(VK_RMENU=165))}):
+with nullcontext() if sys.platform == 'win32' else patch.dict(
+    sys.modules, {'uiautomation': SimpleNamespace(Keys=SimpleNamespace(VK_RMENU=165))},
+):
     from gateway.adapters.windows import WindowsWeChatAdapter, _MessageRecord, _MessageState
     from gateway.console.adapters.windows.adapter import WindowsConsoleAdapter
 
 
 class MessageMetadataTest(unittest.TestCase):
+    def test_option_survives_websocket_and_console(self):
+        payload = {'type': 'send_message', 'group_name': 'group', 'message': '正文', 'mention_all': True}
+        message = parse_client_message(json.dumps(payload)).to_outgoing_message()
+        self.assertTrue(message.mention_all)
+        self.assertFalse(OutgoingMessage(group_name='group', message='@所有人 正文').mention_all)
+        self.assertTrue(ConsoleSendMessageRequest(chat_name='group', message='正文', mention_all=True).mention_all)
+
+    def test_binary_and_voice_cannot_mention_all(self):
+        for message_type in MessageType:
+            if message_type == MessageType.TEXT:
+                continue
+            with self.subTest(message_type=message_type), self.assertRaisesRegex(ValueError, 'mention_all'):
+                OutgoingMessage(group_name='group', message_type=message_type, message='正文', filename='file', mention_all=True)
+
+    def test_unsupported_platform_is_rejected_before_queueing(self):
+        adapter = SimpleNamespace(SUPPORTS_MENTION_ALL=False, SUPPORTS_VOICE=False)
+        gateway = Gateway(SimpleNamespace(adapter=adapter))
+        self.assertIn('@all', gateway.get_send_error(OutgoingMessage(group_name='group', message='正文', mention_all=True)))
+
+    def test_body_prefix_does_not_enable_all(self):
+        for parser in [WindowsWeChatAdapter._parse_at_prefix, WindowsConsoleAdapter._parse_at_prefix]:
+            for text in ['@所有人 正文', '@all 正文']:
+                self.assertEqual(parser(text), ([], text))
+            self.assertEqual(parser('@成员 正文'), (['成员'], '正文'))
+
+    def test_all_popup_read_failure_stops_selection(self):
+        adapter = WindowsWeChatAdapter()
+        popup = Mock(ClassName='mmui::XPopover', NativeWindowHandle=1)
+        popup.GetRuntimeId.return_value = [2]
+        item = Mock(Name='所有人', ControlTypeName='ListItemControl', IsOffscreen=False, IsEnabled=True)
+        target = Mock()
+        target.GetRuntimeId.return_value = [1]
+        automation = SimpleNamespace(WalkControl=Mock(side_effect=[
+            [], [(popup, 1)], [(item, 1)], RuntimeError('UIA unavailable'),
+        ]))
+        with patch.dict(adapter.select_mention_all.__func__.__globals__, {'auto': automation}), \
+                patch('ctypes.windll', SimpleNamespace(user32=Mock(GetForegroundWindow=lambda: 1)), create=True), \
+                self.assertRaisesRegex(RuntimeError, 'UIA unavailable'):
+            adapter.select_mention_all(SimpleNamespace(NativeWindowHandle=1), target)
+
+    def test_native_all_self_filter_requires_exact_body(self):
+        adapter = WindowsWeChatAdapter()
+        adapter._sent_messages.record('room', '@所有人 好')
+        self.assertTrue(adapter._is_self_sent_message('room', '@所有人\u2005好'))
+        self.assertFalse(adapter._is_self_sent_message('room', '@所有人\u2005坏'))
+
     def test_same_text_different_senders_survives_linux_detector_and_broadcast(self):
         adapter = LinuxWeChatAdapter.__new__(LinuxWeChatAdapter)
         adapter._seen_lock = threading.Lock()

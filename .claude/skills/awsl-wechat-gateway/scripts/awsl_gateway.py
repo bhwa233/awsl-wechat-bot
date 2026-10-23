@@ -166,11 +166,14 @@ def load_message_payload(args: argparse.Namespace) -> tuple[str, str | None]:
 
 
 def command_send(args: argparse.Namespace) -> None:
+    if args.mention_all and args.message_type != "text":
+        raise SystemExit("--mention-all only supports text messages")
     message, filename = load_message_payload(args)
     payload: dict[str, Any] = {
         "group_name": args.group,
         "message_type": args.message_type,
         "message": message,
+        "mention_all": args.mention_all,
     }
     if filename:
         payload["filename"] = filename
@@ -241,6 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("text", "image", "file", "voice", "voice_file"),
         default="text",
     )
+    send_parser.add_argument("--mention-all", action="store_true", help="Native @all for text messages (owner/admin only)")
     send_parser.add_argument("--message", default=None, help="Text content or pre-encoded base64 payload")
     send_parser.add_argument(
         "--file-path",

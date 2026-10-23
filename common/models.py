@@ -54,9 +54,12 @@ class MessagePayload(BaseModel):
     message_type: MessageType = MessageType.TEXT
     message: str | None = None
     filename: str | None = None
+    mention_all: bool = False
 
     @model_validator(mode="after")
     def check_content(self):
+        if self.mention_all and self.message_type != MessageType.TEXT:
+            raise ValueError("mention_all is only supported for text messages")
         if self.message_type in {MessageType.FILE, MessageType.VOICE_FILE} and not self.filename:
             raise ValueError(f"{self.message_type.value} 类型必须提供 filename")
         if not self.message:
@@ -128,6 +131,7 @@ class WSSendMessage(MessagePayload):
             message_type=self.message_type,
             message=self.message,
             filename=self.filename,
+            mention_all=self.mention_all,
         )
 
 

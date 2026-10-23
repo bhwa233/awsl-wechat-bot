@@ -314,6 +314,7 @@ class WindowsConsoleAdapter(
 
     def _send_text_message(
         self, *, text: str, chat_name: str, max_nodes: int = 5000, reply_to_message: str | None = None,
+        mention_all: bool = False,
     ) -> dict[str, Any]:
         auto = self._ensure_uia()
         window = self._find_main_window(auto)
@@ -331,6 +332,8 @@ class WindowsConsoleAdapter(
             if target is None:
                 return self._action_error("未找到聊天输入框", window=window)
 
+            input_id = None
+            sent_token = None
             try:
                 target.SendKeys("{CTRL}a{DELETE}", waitTime=0.2)
                 if cleanup.enter_context(self._wechat_adapter.reply_context(window, reply_to_message)):
@@ -338,7 +341,13 @@ class WindowsConsoleAdapter(
                     if target is None:
                         return self._action_error("引用后未找到输入框", window=window)
 
-                at_names, remaining = self._parse_at_prefix(text)
+                if mention_all:
+                    input_id = tuple(target.GetRuntimeId())
+                    name = self._wechat_adapter.select_mention_all(window, target)
+                    if not self._chat_names_match(chat_name, *self._current_chat_context(window)):
+                        raise RuntimeError("Chat changed before pasting the @all message")
+                    sent_text = f"@{name} {text}"
+                at_names, remaining = ([], text) if mention_all else self._parse_at_prefix(text)
                 at_ok = True
                 try:
                     baseline = self._count_at_popovers(auto, window)
@@ -366,8 +375,21 @@ class WindowsConsoleAdapter(
                 if remaining:
                     self._set_clipboard_text_verified(auto, remaining)
                     target.SendKeys("{CTRL}v", waitTime=0.2)
+                if mention_all:
+                    keys = {self._wechat_adapter._message_state_key(control)
+                            for control in self._standalone_windows(auto) if control.Name == chat_name}
+                    if len(keys) == 1:
+                        sent_token = self._wechat_adapter._sent_messages.record(keys.pop(), sent_text)
+                    if (not self._chat_names_match(chat_name, *self._current_chat_context(window))
+                            or not target.HasKeyboardFocus or tuple(target.GetRuntimeId()) != input_id):
+                        raise RuntimeError("Chat or input focus changed before sending @all")
                 target.SendKeys("{ENTER}", waitTime=0.2)
             except Exception as e:
+                if sent_token is not None:
+                    self._wechat_adapter._sent_messages.discard(sent_token)
+                if (mention_all and input_id is not None
+                        and self._chat_names_match(chat_name, *self._current_chat_context(window))):
+                    self._wechat_adapter.clear_mention_all_draft(window, target, input_id)
                 return self._action_error(f"发送文本失败: {e}", window=window)
 
             time.sleep(0.35)
@@ -382,6 +404,7 @@ class WindowsConsoleAdapter(
         chat_name: str,
         max_nodes: int = 5000,
         reply_to_message: str | None = None,
+        mention_all: bool = False,
     ) -> dict[str, Any]:
         if not self._console_lock.acquire(blocking=False):
             return self._action_error("Console 正在执行其他操作")
@@ -393,6 +416,7 @@ class WindowsConsoleAdapter(
                 chat_name=chat_name,
                 max_nodes=max_nodes,
                 reply_to_message=reply_to_message,
+                mention_all=mention_all,
             )
         except Exception as e:
             return self._action_error(f"发送消息失败: {e}")
@@ -408,6 +432,7 @@ class WindowsConsoleAdapter(
         chat_name: str,
         max_nodes: int,
         reply_to_message: str | None = None,
+        mention_all: bool = False,
     ) -> dict[str, Any]:
         if message_type == "voice":
             if not self._send_voice_to_window or not self._synthesize_voice:
@@ -433,7 +458,8 @@ class WindowsConsoleAdapter(
                 self._wechat_adapter.clear_reply(window)
 
         if message_type == "text":
-            return self._send_text_message(text=message, chat_name=chat_name, max_nodes=max_nodes, reply_to_message=reply_to_message)
+            return self._send_text_message(text=message, chat_name=chat_name, max_nodes=max_nodes,
+                                           reply_to_message=reply_to_message, mention_all=mention_all)
 
         if message_type == "image":
             if not self._send_image_to_window:
@@ -470,6 +496,8 @@ class WindowsConsoleAdapter(
             return [], text
         prefix, body = m.group(1), m.group(2)
         names = [tok[1:] for tok in prefix.split() if tok.startswith('@')]
+        if any(name.casefold() in {"所有人", "all"} for name in names):
+            return [], text
         return names, body
 
     @staticmethod

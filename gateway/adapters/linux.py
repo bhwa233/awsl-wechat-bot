@@ -86,6 +86,7 @@ def _x11_env() -> dict[str, str]:
 
 
 class LinuxWeChatAdapter(BaseWeChatAdapter):
+    SUPPORTS_MENTION_ALL = True
     _TEMP_CLEANUP_DELAY: ClassVar[float] = 15.0
     _CHATLOG_RETRY_INTERVAL: ClassVar[float] = 5.0
 
@@ -371,7 +372,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         title = root.findtext(".//title")
         return title.strip() if title else ""
 
-    def send_text_to_window(self, window: LinuxWeChatWindow, text: str) -> bool:
+    def send_text_to_window(self, window: LinuxWeChatWindow, text: str, *, mention_all: bool = False) -> bool:
         with self.ui_operation_lock:
             clipboard_owner: subprocess.Popen | bool | None = None
             if not self._activate_window(window):
@@ -380,20 +381,29 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                 return False
             if not self._send_context_matches(window) or not self._keys("ctrl+a", "Delete"):
                 return False
-            remaining = self._prepare_mentions(window, text)
-            if remaining:
-                clipboard_owner = self._set_clipboard_text(remaining)
-                if not clipboard_owner:
-                    return False
+            sent = False
+            token = None
             try:
-                token = self._sent_messages.record(window.expected_chat or window.title, text)
-                if not self._paste_and_send(window, clear=False, paste=bool(remaining)):
-                    self._sent_messages.discard(token)
-                    return False
-                time.sleep(0.3)
-                return True
+                sent_text = text
+                if mention_all:
+                    selected_name = self._select_mention(window, None)
+                    sent_text = f"@{selected_name} {text}"
+                remaining = text if mention_all else self._prepare_mentions(window, text)
+                if remaining:
+                    clipboard_owner = self._set_clipboard_text(remaining)
+                    if not clipboard_owner:
+                        return False
+                token = self._sent_messages.record(window.expected_chat or window.title, sent_text)
+                sent = self._paste_and_send(window, clear=False, paste=bool(remaining))
+                if sent:
+                    time.sleep(0.3)
+                return sent
             finally:
+                if token is not None and not sent:
+                    self._sent_messages.discard(token)
                 self._stop_clipboard_owner(clipboard_owner)
+                if mention_all and not sent and self._focus_input_area(window) and self._send_context_matches(window):
+                    self._keys("ctrl+a", "Delete")
 
     def send_image_to_window(self, window: LinuxWeChatWindow, image_base64: str) -> bool:
         image_data = base64.b64decode(image_base64)
@@ -590,22 +600,28 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             time.sleep(.05)
         else:
             raise RuntimeError("未打开 @ 弹层")
-        owner = self._set_clipboard_text(name)
-        if not owner:
+        owner = self._set_clipboard_text(name) if name is not None else None
+        if name is not None and not owner:
             raise RuntimeError("设置 @ 名称失败")
         try:
-            if not self._keys("ctrl+v"):
+            if name is not None and not self._keys("ctrl+v"):
                 raise RuntimeError("粘贴 @ 名称失败")
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 nodes = self.accessibility.nodes(popup, max_nodes=200, max_depth=12)
-                matches = [node for node in nodes if node["role"] == "list item" and node["name"] == name]
+                items = [node for node in nodes if node["role"] == "list item"]
+                if name is None:
+                    if items and items[0]["name"].strip().casefold() not in {"所有人", "mention all"}:
+                        raise RuntimeError("This chat has no @all option; group owner or admin permissions are required")
+                    matches = items[:1]
+                else:
+                    matches = [node for node in items if node["name"] == name]
                 if len(matches) > 1:
                     raise RuntimeError("@ 候选存在重名")
                 if matches:
                     fresh = self.accessibility.info(matches[0]["ref"])
                     rect = fresh["rect"]
-                    if (fresh["name"] != name or not rect or rect["width"] <= 0 or rect["height"] <= 0
+                    if (fresh["name"] != matches[0]["name"] or not fresh["enabled"] or not rect or rect["width"] <= 0 or rect["height"] <= 0
                             or not self._active_window_matches(window)):
                         raise RuntimeError("@ 候选或焦点已变化")
                     result = self._run_x11([
@@ -617,7 +633,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                     break
                 time.sleep(.05)
             else:
-                raise RuntimeError("未找到 @ 候选")
+                raise RuntimeError("No @all candidate was found" if name is None else "未找到 @ 候选")
         finally:
             self._stop_clipboard_owner(owner)
         deadline = time.monotonic() + 3
@@ -625,7 +641,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             if popup not in {node["ref"] for node in self._mention_popups()} and self._send_context_matches(window):
                 field = input_node(self.window_nodes(window))
                 if field and self.accessibility.text(field["ref"]).count("\ufffc") == before + 1:
-                    return
+                    return fresh["name"]
             time.sleep(.05)
         raise RuntimeError("未能确认原生 @ 已插入")
 
@@ -633,8 +649,11 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         match = _AT_PREFIX_RE.match(text)
         if not match:
             return text
+        names = [token[1:] for token in match[1].split()]
+        if any(name.casefold() in {"所有人", "all"} for name in names):
+            return text
         try:
-            for name in [token[1:] for token in match[1].split()]:
+            for name in names:
                 self._select_mention(window, name)
             return match[2]
         except Exception as exc:

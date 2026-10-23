@@ -38,6 +38,10 @@ uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message "Console test"
 
+# Native all-members mention (Windows/Linux, owner/admin candidate required)
+uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
+  --chat "测试群" --message "请查看群公告" --mention-all
+
 # Send attachments or Windows/Linux voice messages
 uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message-type image --file-path ./image.png
@@ -59,6 +63,8 @@ When resolving a chat manually, follow the same rules:
 Never alternate scroll directions or treat the traversal limit as an edge. Windows `ChatSessionCell` AutomationIds use the display-name form `session_item_<name>`. Linux returns opaque session `path` values from AT-SPI; refresh state before using them. Neither exposes the stable WeChat chat ID. Resolve it through Chatlog and do not infer it from a path.
 
 `send` resolves the exact chat-list item and uses Console UIA/AT-SPI state while opening and sending. UI recognition/validation and the actual send are decoupled: a validation failure or error response does not prove that no message was sent.
+
+`--mention-all` sets `mention_all=true` for one text message. It types `@` and directly clicks the first “所有人” / “Mention All” candidate without searching. If the candidate is missing or disabled, sending stops; it never falls back to literal text. Writing `@所有人` / `@all` in the body does not enable it. Confirm native all-members delivery through Chatlog `at_users` containing `notify@all`, following the confirmation window below.
 
 Linux requires WeChat started with `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`, a shared X11 user/session, and Chatlog v2; voice also needs PulseAudio. Current-chat controls may temporarily disappear from AT-SPI, including zero-sized rectangles: stop on an unrecognized target and refresh or reselect the chat before sending. Native `@name ` prefixes require unique visible member candidates and fall back to literal text on ambiguity. See the repository README for setup and platform limits.
 

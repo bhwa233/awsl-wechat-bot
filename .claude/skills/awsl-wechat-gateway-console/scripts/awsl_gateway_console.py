@@ -124,6 +124,8 @@ def command_scroll(args: argparse.Namespace) -> None:
 
 
 def command_send(args: argparse.Namespace) -> None:
+    if args.mention_all and args.message_type != "text":
+        raise SystemExit("--mention-all only supports text messages")
     open_result = request(args, "/api/console/open-chat", {
         "path": resolve_chat_path(args),
         "max_nodes": args.max_nodes,
@@ -140,6 +142,7 @@ def command_send(args: argparse.Namespace) -> None:
         "chat_name": args.chat,
         "message_type": args.message_type,
         "message": message,
+        "mention_all": args.mention_all,
         "max_nodes": args.max_nodes,
     }
     if filename:
@@ -169,6 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("text", "image", "file", "voice", "voice_file"),
         default="text",
     )
+    send_parser.add_argument("--mention-all", action="store_true", help="Native @all for text messages (owner/admin only)")
     send_parser.add_argument("--message", default=None, help="Text content or pre-encoded base64 payload")
     send_parser.add_argument("--file-path", default=None, help="Local attachment to base64 encode")
     send_parser.add_argument("--filename", default=None, help="Filename for file/voice_file messages")

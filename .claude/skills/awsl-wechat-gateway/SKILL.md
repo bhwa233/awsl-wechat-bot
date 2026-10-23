@@ -27,6 +27,7 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 - Manage cached connection info with `config show|set|clear`.
 - List open/listened chat windows with `windows`, which calls `GET /api/groups`.
 - Send messages with `send --group <window_name> --message <text>`. Use the visible/open window name from `windows` as `--group`.
+- Send a native all-members mention on Windows/Linux with `send --group <window_name> --message <body> --mention-all`. This is a text-only option, requires an available owner/admin all-members candidate, and fails without sending when that candidate is missing. A literal `@所有人` or `@all` prefix does not enable it. Confirm delivery and `at_users` containing `notify@all` through Chatlog.
 - Send Windows/Linux TTS voice with `--message-type voice --message <text>` or an MP3 with `--message-type voice_file --file-path <file.mp3>`. Both are limited to 60 seconds. Linux requires PulseAudio; check `GET /api/health` → `capabilities.voice` before sending.
 
 **Note:** Chatlog features (decrypt, groups, messages) have been moved to the `awsl-wechat-chatlog` skill. Use that skill for WeChat database operations.

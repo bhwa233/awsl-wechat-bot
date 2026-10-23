@@ -313,7 +313,7 @@ class LinuxMentionTest(unittest.TestCase):
         self.adapter.accessibility = Mock()
         self.adapter.accessibility.text.side_effect = ["", "\ufffc"]
         self.adapter._mention_popups = Mock(side_effect=[[], [], [{"ref": "popup"}], []])
-        self.candidate = {"ref": "candidate", "role": "list item", "name": "George",
+        self.candidate = {"ref": "candidate", "role": "list item", "name": "George", "enabled": True,
                           "rect": {"left": 0, "top": 0, "width": 100, "height": 30}}
         self.adapter.accessibility.nodes.return_value = [self.candidate]
         self.adapter.accessibility.info.return_value = self.candidate
@@ -321,6 +321,22 @@ class LinuxMentionTest(unittest.TestCase):
         self.adapter._set_clipboard_text = Mock(return_value=True)
         self.adapter._stop_clipboard_owner = Mock()
         self.adapter._keys = Mock(return_value=True)
+
+    def test_all_clicks_first_native_candidate_without_searching(self):
+        self.candidate['name'] = 'Mention All'
+        with patch("gateway.adapters.linux.time.sleep"):
+            self.assertEqual(self.adapter._select_mention(self.window, None), 'Mention All')
+        self.adapter._set_clipboard_text.assert_not_called()
+        self.adapter._keys.assert_not_called()
+        self.assertEqual(self.adapter._run_x11.call_count, 2)
+
+    def test_all_rejects_regular_member_or_disabled_candidate(self):
+        for name, enabled in [('George', True), ('所有人', False)]:
+            self.setUp()
+            self.candidate.update(name=name, enabled=enabled)
+            with self.subTest(name=name), patch("gateway.adapters.linux.time.sleep"), self.assertRaises(RuntimeError):
+                self.adapter._select_mention(self.window, None)
+            self.assertEqual(self.adapter._run_x11.call_count, 1)
 
     def test_waits_for_popup_and_confirms_native_chip(self):
         def clipboard(name):

@@ -82,6 +82,8 @@ class _SentMessageStore:
                     continue
                 if stored_content == content or stored_norm == norm:
                     return True
+                if stored_norm.casefold().startswith(("@所有人 ", "@mention all ")):
+                    continue
                 if len(stored_norm) >= 8 and len(norm) >= 8 and (
                     stored_norm.startswith(norm) or norm.startswith(stored_norm)
                 ):
@@ -127,6 +129,7 @@ class WindowsGroupDebugInfo(GroupDebugInfo):
 
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     SUPPORTS_VOICE = True
+    SUPPORTS_MENTION_ALL = True
     STANDALONE_AUTOMATION_PREFIX: ClassVar[str] = "ChatSingleWindow"
     _SEEN_RUNTIME_IDS_LIMIT = 256
     _ILLEGAL_FILENAME_CHARS = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
@@ -462,7 +465,60 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             return [], text
         prefix, body = m.group(1), m.group(2)
         names = [tok[1:] for tok in prefix.split() if tok.startswith('@')]
+        if any(name.casefold() in {"所有人", "all"} for name in names):
+            return [], text
         return names, body
+
+    def clear_mention_all_draft(self, window, target, input_id):
+        import ctypes
+
+        try:
+            foreground = ctypes.windll.user32.GetForegroundWindow()
+            handles = {window.NativeWindowHandle}
+            handles.update(ctrl.NativeWindowHandle for ctrl, _ in auto.WalkControl(window, maxDepth=10)
+                           if ctrl.ClassName == "mmui::XPopover" and ctrl.Exists(0))
+            if foreground and foreground in handles and tuple(target.GetRuntimeId()) == input_id:
+                target.Click(waitTime=0.05)
+                target.SendKeys('{CTRL}a{DELETE}', waitTime=0.1)
+        except Exception as exc:
+            logger.warning("Failed to clear the @all draft: %s", exc)
+
+    def select_mention_all(self, window, target):
+        import ctypes
+
+        input_id = tuple(target.GetRuntimeId())
+        baseline = {tuple(ctrl.GetRuntimeId()) for ctrl, _ in auto.WalkControl(window, maxDepth=10)
+                    if ctrl.ClassName == "mmui::XPopover" and ctrl.Exists(0)}
+        target.SendKeys('@', waitTime=0.05)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            popups = [ctrl for ctrl, _ in auto.WalkControl(window, maxDepth=10)
+                      if ctrl.ClassName == "mmui::XPopover" and ctrl.Exists(0)
+                      and tuple(ctrl.GetRuntimeId()) not in baseline]
+            if len(popups) > 1:
+                raise RuntimeError("Cannot uniquely identify the mention popup")
+            items = [ctrl for ctrl, _ in auto.WalkControl(popups[0], maxDepth=8)
+                     if ctrl.ControlTypeName == "ListItemControl" and not ctrl.IsOffscreen] if popups else []
+            if items:
+                item = items[0]
+                name = item.Name.strip()
+                if name.casefold() not in {"所有人", "mention all"} or not item.IsEnabled:
+                    raise RuntimeError("This chat has no @all option; group owner or admin permissions are required")
+                foreground = ctypes.windll.user32.GetForegroundWindow()
+                if (not foreground or foreground not in {window.NativeWindowHandle, popups[0].NativeWindowHandle}
+                        or tuple(target.GetRuntimeId()) != input_id):
+                    raise RuntimeError("Chat or focus changed before selecting @all")
+                item.Click(waitTime=0.05)
+                deadline = time.monotonic() + self._AT_POPOVER_GONE_TIMEOUT
+                while any(ctrl.ClassName == "mmui::XPopover" and ctrl.Exists(0)
+                          and tuple(ctrl.GetRuntimeId()) not in baseline
+                          for ctrl, _ in auto.WalkControl(window, maxDepth=10)):
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("Could not confirm the @all option was selected")
+                    time.sleep(self._AT_POPOVER_INTERVAL)
+                return name
+            time.sleep(0.05)
+        raise RuntimeError("No @all candidate was found")
 
     def _count_at_popovers(self, window) -> int:
         """统计窗口子树里 mmui::XPopover 控件数量。"""
@@ -883,7 +939,7 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             if clicked:
                 self.clear_reply(window, key)
 
-    def send_text_to_window(self, window, text: str) -> bool:
+    def send_text_to_window(self, window, text: str, *, mention_all: bool = False) -> bool:
         """向指定窗口发送文本消息
 
         Args:
@@ -900,12 +956,18 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
             # 激活窗口
             if not self.activate_specific_window(window):
                 return False
+            input_id = None
             try:
                 target = self.clear_input(window)
 
                 # 开头 @ 名字逐个走「@ → 等新 popover → 粘名字 → Enter → 等 popover 关闭」
                 # popover 未弹/异常则清空，fallback 整条原文按字面发出
-                at_names, remaining = self._parse_at_prefix(text)
+                sent_text = text
+                if mention_all:
+                    input_id = tuple(target.GetRuntimeId())
+                    name = self.select_mention_all(window, target)
+                    sent_text = f"@{name} {text}"
+                at_names, remaining = ([], text) if mention_all else self._parse_at_prefix(text)
                 at_ok = True
                 try:
                     # baseline 锚定进入 @ 流程前已存在的 popover 数量，
@@ -956,7 +1018,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     target.SendKeys('{CTRL}v', waitTime=0.2)
 
                 # 发送消息
-                token = self._sent_messages.record(self._message_state_key(window), text)
+                if mention_all and (not target.HasKeyboardFocus or tuple(target.GetRuntimeId()) != input_id):
+                    raise RuntimeError("Input focus changed before sending @all")
+                token = self._sent_messages.record(self._message_state_key(window), sent_text)
                 try:
                     target.SendKeys('{ENTER}', waitTime=0.2)
                 except Exception:
@@ -965,6 +1029,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                 logger.debug(f"✓ 发送成功到 [{window.Name}]: {text[:20]}...")
                 return True
             except Exception as e:
+                if mention_all and input_id is not None:
+                    self.clear_mention_all_draft(window, target, input_id)
                 logger.error(f"发送消息失败: {e}")
                 return False
 

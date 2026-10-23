@@ -261,7 +261,7 @@ class LinuxConsoleAdapter(BaseConsoleAdapter):
             raise RuntimeError("滚动会话列表失败")
         time.sleep(.2)
 
-    def send_message(self, *, message_type, message, filename, chat_name, max_nodes=5000, reply_to_message=None):
+    def send_message(self, *, message_type, message, filename, chat_name, max_nodes=5000, reply_to_message=None, mention_all=False):
         if not self._console_lock.acquire(blocking=False):
             return self._error("Console 正在执行其他操作")
         try:
@@ -272,13 +272,14 @@ class LinuxConsoleAdapter(BaseConsoleAdapter):
                 message_type = "voice_file"
             with self.adapter.ui_operation_lock:
                 return self._send_message(message_type=message_type, message=message, filename=filename,
-                                          chat_name=chat_name, max_nodes=max_nodes, reply_to_message=reply_to_message)
+                                          chat_name=chat_name, max_nodes=max_nodes, reply_to_message=reply_to_message,
+                                          mention_all=mention_all)
         except Exception as exc:
             return self._error(str(exc))
         finally:
             self._console_lock.release()
 
-    def _send_message(self, *, message_type, message, filename, chat_name, max_nodes, reply_to_message):
+    def _send_message(self, *, message_type, message, filename, chat_name, max_nodes, reply_to_message, mention_all=False):
         window = self._main()
         self._activate(window)
         nodes = self.adapter.window_nodes(window)
@@ -291,7 +292,7 @@ class LinuxConsoleAdapter(BaseConsoleAdapter):
             if reply_to_message:
                 self._prepare_reply(window, reply_to_message)
             if message_type == "text":
-                ok = self.adapter.send_text_to_window(window, message)
+                ok = self.adapter.send_text_to_window(window, message, mention_all=mention_all)
             elif message_type == "image":
                 ok = self.adapter.send_image_to_window(window, message)
             elif message_type == "file":

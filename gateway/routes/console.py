@@ -122,6 +122,7 @@ def create_routes(gateway_app):
             chat_name=request.chat_name,
             max_nodes=request.max_nodes,
             reply_to_message=request.reply_to_message,
+            mention_all=request.mention_all,
         )
 
     @router.get("/api/console/standalone-windows", dependencies=[Depends(verify_token)])

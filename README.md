@@ -453,6 +453,14 @@ scrape_configs:
 {"type": "send_message", "group_name": "群名", "message_type": "voice_file", "message": "<mp3-base64>", "filename": "voice.mp3"}
 ```
 
+`mention_all` 是单条文本消息的可选布尔字段，默认 `false`，支持 Windows/Linux 的 `/api/send`、WS `send_message` 和主窗口 Console `/api/console/send-message`（Cortex 代理同样支持）。设为 `true` 时，先输入 `@`，直接点击新弹层第一项“所有人”或“Mention All”，再粘贴正文发送；不搜索“所有人”。账号需有群主或管理员权限，且当前微信必须提供该候选。候选缺失、不可用或目标发生变化时停止发送，不降级为普通文字。仅在正文里写 `@所有人` 或 `@all` 不会启用全体提醒。图片、文件和语音不能携带此选项，macOS 暂不支持。
+
+```json
+{"group_name":"测试群","message_type":"text","message":"请查看群公告","mention_all":true}
+```
+
+WS 请求在上述结构中增加 `"type":"send_message"`；主窗口 Console 将 `group_name` 换成 `chat_name`。该选项通过 API 或 CLI 提供，每条请求独立指定，不提供 Web UI 控件。Gateway 与 Console CLI 可使用 `--mention-all`。实际原生全体提醒须通过 Chatlog 消息的 `at_users` 包含 `notify@all` 核验，入队成功或正文显示 `@` 均不能替代核验。
+
 `reply_to_message` 仅在 Windows/Linux 主窗口 Console 的 `/api/console/send-message` 请求结构体中提供，用于指定要回复的原始消息正文，只支持文本回复。Gateway `/api/send`、WS `send_message` 和独立窗口发送不提供引用功能；独立窗口发送前只清空正文，不检查或清理引用。
 Console 不提供引用正文或只包含空白时普通发送；提供时先在当前加载的消息中从下往上精确匹配，再尝试统一空白后的匹配，每轮取最近的一条。Windows 找不到或消息不在可见区域时普通发送；Linux 则停止发送。不滚动历史，也不使用前缀、包含或相似度匹配。
 Console 发送前尝试取消已有引用；Windows 清理异常只记录日志，普通发送继续，Linux 无法确认清理结果时停止发送。引用准备失败会停止本次发送；本次点过“引用”后，无论发送操作是否报错，结束时都尝试清理引用预览，结束清理失败只记录日志。按窗口和聊天名称核对，不区分同名聊天；不自动重发，清理不代表确认送达。
