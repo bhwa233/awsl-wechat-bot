@@ -231,7 +231,7 @@ Server → Client:
 
 - **macOS**: 需要辅助功能权限（发送）+ 屏幕录制权限（截图）
 - **Windows**: 建议管理员权限运行，UIA 使用 UIAutomationInitializerInThread per-thread 初始化
-- **Linux**: 微信与 Gateway 使用同一用户和 X11 会话，需要 Chatlog v2 和 `wmctrl`/`xdotool`/`xclip`/`xwininfo`，文本优先 `xsel`。微信启动前设置 `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`；语音需要 `pactl`/`paplay`，无声卡环境先准备虚拟麦克风。完整部署步骤见 README Linux setup
+- **Linux**: 微信与 Gateway 使用同一用户和 X11 会话，需要 Chatlog v2 和 `wmctrl`/`xdotool`/`xclip`/`xwininfo`，文本优先 `xsel`。微信启动前设置 `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`；语音需要 `pactl`/`paplay`，无声卡环境先准备虚拟麦克风。完整部署步骤见 docs/platform-setup.md 的 Linux setup
 - **Linux Console**: 列表 path 不是群 ID，群 ID 来自 Chatlog；同名无法唯一对应时停止自动窗口操作。原生 @ 仅解析正文开头的 `@昵称 `，候选不唯一/不存在时清理草稿后发送原文。引用只匹配 Console 当前可见消息，Linux 找不到原文或无法确认清理时停止发送。AT-SPI 控件缺失/坐标无效时停止发送，不凭截图或固定坐标兜底
 - **Linux 主窗口状态**: 微信开独立窗口会清空主窗口聊天区，Console 开窗后重新选中原会话恢复控件。整体 `available` 不表示已选中聊天；发送还需核对 `chat_area`、`input_box` 与焦点。同名会话拒绝选择和发送，跳过重复点击还要求目标列表项处于 selected 状态
 - **Linux Console 状态/调试**: 返回中英文引用结构、结合格式与行高的时间行分类、置顶/免打扰/多行预览；`include_patterns` 仅查询实际 AT-SPI 接口/属性/动作/文本，不执行动作，不使用会导致 Qt 崩溃的 Properties.GetAll。
