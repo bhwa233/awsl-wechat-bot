@@ -8,7 +8,7 @@ description: "Use when Codex needs to list or scroll chats, or send a message th
 Run commands from the repository root with the bundled CLI:
 
 ```bash
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" list
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" list
 ```
 
 ## Connection
@@ -17,8 +17,8 @@ Reuse `~/.config/awsl-wechat-gateway/config.json`. Do not create Console-specifi
 Configure or inspect the shared connection with the Gateway CLI:
 
 ```bash
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" config show
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" config show
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
   config set --base-url http://127.0.0.1:8000 --token "$HTTP_API_TOKEN"
 ```
 
@@ -28,24 +28,24 @@ Explicit `--base-url` and `--token` overrides use the same Gateway cache. Add `-
 
 ```bash
 # List main-window chats
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" list
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" list
 
 # Scroll the virtualized chat list, then inspect the newly visible chats
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll down
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll up
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll down
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" scroll up
 
 # Open the chat and request a send
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message "Console test"
 
 # Native all-members mention (Windows/Linux, owner/admin candidate required)
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "测试群" --message "请查看群公告" --mention-all
 
 # Send attachments or Windows/Linux voice messages
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message-type image --file-path ./image.png
-uv run ".claude/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
+uv run ".agents/skills/awsl-wechat-gateway-console/scripts/awsl_gateway_console.py" send \
   --chat "Bruce" --message-type voice --message "Console TTS test"
 
 ```

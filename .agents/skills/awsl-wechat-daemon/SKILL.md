@@ -11,11 +11,11 @@ Run commands from the repository root. Use the bundled CLI through `uv run`; dep
 
 ```bash
 # First-time setup: cache the Daemon base URL (and optional token)
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" \
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" \
   config set --base-url http://127.0.0.1:8001 --token "$HTTP_API_TOKEN"
 
 # Subsequent calls reuse the cached connection automatically
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" status
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" status
 ```
 
 Connection info (`base_url`, `token`) is cached at `~/.config/awsl-wechat-daemon/config.json` (chmod 600). The CLI accepts an HTTP(S) REST base URL only. The token is optional. When omitted, the CLI sends no `Authorization` header.
@@ -37,29 +37,29 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 
 ```bash
 # Cache connection details once
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" \
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" \
   config set --base-url http://127.0.0.1:8001 --token "$HTTP_API_TOKEN"
 
 # Inspect or remove the cached connection
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" config show
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" config clear
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" config show
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" config clear
 
 # Check daemon health
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" health
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" health
 
 # Get bot process status (PID, uptime, restart count)
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" status
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" status
 
 # Start / stop / restart the bot
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" start
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" stop
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" restart
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" start
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" stop
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" restart
 
 # Pull latest code, sync deps, restart bot
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" update
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" update
 
 # Tail last 200 lines of bot logs
-uv run ".claude/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" logs --lines 200
+uv run ".agents/skills/awsl-wechat-daemon/scripts/awsl_daemon.py" logs --lines 200
 ```
 
 ## Daemon Notes

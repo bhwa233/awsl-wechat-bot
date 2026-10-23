@@ -1,1 +1,239 @@
-CLAUDE.md
+# AGENTS.md
+
+This file provides guidance to coding agents when working with code in this repository.
+
+## Project Overview
+
+AWSL WeChat Bot - 跨平台微信群聊机器人，采用 Gateway + Cortex 微服务架构。Gateway 负责微信窗口交互和 WS 消息广播，Cortex 作为 WS 客户端处理业务逻辑（AI/命令/触发/Webhook）。
+
+## Development Commands
+
+```bash
+# Setup (uv)
+uv sync                    # 安装依赖
+cp .env.example .env
+
+# Run (Gateway :8000 + Chatlog :7998 + Cortex :7999)
+uv run main.py
+
+# Run individually
+uv run -m gateway.main     # Gateway only (:8000)
+uv run -m chatlog.main     # Chatlog only (:7998)
+uv run -m cortex.main      # Cortex only (:7999)
+uv run run_daemon.py       # Daemon (:8001)
+
+# Tools
+uv run tools/inspect_wechat.py   # 微信窗口检查
+uv run tools/extract_wx_keys_windows.py  # Windows 提取微信数据库密钥
+sudo uv run tools/extract_wx_keys_linux.py  # Linux 提取微信数据库密钥（内存扫描，微信 ≤4.1.12）
+uv run tools/extract_wx_keys_linux.py --mode passphrase  # 微信 ≥4.1.13：关闭微信后运行，自动重启微信捕获 passphrase 派生密钥
+uv run --with pycryptodome tools/extract_wx_image_key_windows.py  # Windows 派生图片 V2 .dat AES key
+uv run --with pycryptodome tools/extract_wx_image_key_linux.py    # Linux 派生图片 V2 .dat AES key (无需 root)
+
+# 依赖管理
+uv add <package>           # 添加依赖
+uv add --optional decrypt <package>  # 添加到 decrypt 可选组
+uv remove <package>        # 移除依赖
+uv lock                    # 重新生成 lock 文件
+```
+
+## Architecture
+
+```
+Detector (n) ──▶ gateway_queue ──▶ Gateway WS Server (:8000)
+per group                              │ 广播
+                          ┌────────────┼────────────┐
+                          ▼            ▼            ▼
+                    GatewayClient  WS Client A  WS Client B
+                    (Cortex :7999) (外部程序)   (外部程序)
+                          │
+                    ┌─────┴─────┐
+                    ▼           ▼
+              CortexRuntime  WebhookService   ← MessageListener
+              (AI/命令/触发)  (Webhook 转发)
+                    │
+                    ├── send_message via WS ──▶ Gateway ──▶ Sender
+                    │
+                    └── HTTP ──▶ Chatlog Service (:7998)
+                                (解密/查群/查消息)
+```
+
+### Services
+
+| Service | Port | Role |
+|---------|------|------|
+| Gateway | 8000 | WS 消息网关 + REST API + 微信窗口交互 |
+| Chatlog | 7998 | 微信数据库解密/查询（独立数据层服务） |
+| Daemon  | 8001 | Bot 子进程管理（启停/更新） |
+| Cortex  | 7999 | 业务逻辑（AI/命令/触发/Webhook/定时任务/群聊总结）+ Gateway/Chatlog API 代理 |
+
+### Key Components
+
+**common/** - 共享模块
+- `config.py` - Pydantic Settings 配置 (全局 `config` 实例，从 .env 读取)
+- `models.py` - WS 协议 Pydantic 模型 (discriminated union 解析, WSType 常量, model_validator 校验, MAX_REGEX_LEN 共享常量)
+- `auth.py` - Bearer Token 验证 (HMAC 常量时间比较)
+- `logging.py` - HealthFilter + setup_uvicorn_logging()
+
+**gateway/** - Gateway 服务
+- `startup/` - 统一微信启动与持续看护，默认关闭；`adapters/base.py` 定义平台契约，`linux.py` 管理 X11/AT-SPI/固定环境注入，`windows.py` 管理本机 WMI 启动与 UIA/Win32；`restart_budget.py` 持久化限额（3次/小时）。同一开关与 Cortex 按钮执行登录、窗口恢复、主窗与独立窗口全部最大化；进程退出后重试，不主动终止微信，二维码/锁定中止。状态与启动 API 为 `/api/console/wechat-startup`
+- `runtime.py` - GatewayRuntime：自动窗口发现（5s 扫描），管理 detectors/sender/gateway
+- `asgi.py` - FastAPI app 工厂，lifespan 管理生命周期
+- `core/gateway.py` - Gateway WS hub：队列消费 + 正则匹配广播 + subscribe regex 校验
+- `core/detector.py` - MessageDetector：per-group 消息检测线程，消费平台适配器筛出的新消息
+- `core/models.py` - SendTask + SentMessageStore（自消息检测：精确/前缀/包含/相似度 4 层匹配）
+- `core/sender.py` - MessageSender：全局限速串行发送 (GLOBAL_SEND_INTERVAL)
+- `core/voice_synthesis_worker.py` - VoiceSynthesisWorker：独立线程将 voice 合成为 voice_file 后加入发送队列
+- `adapters/base.py` - BaseWeChatAdapter 抽象基类 (窗口读取/发送 + 平台消息检测策略)
+- `adapters/macos.py` - macOS: Quartz CGWindowListCreateImage 截图 + Vision OCR（无需激活窗口）
+- `adapters/windows.py` - Windows: uiautomation 控件遍历，UIAutomationInitializerInThread per-thread 初始化，读取无锁并行，文本/图片/文件/语音发送共用 _send_lock 串行；语音通过 LocalAI TTS（EdgeTTS 回退）+ VB-CABLE + 右 Alt 录音实现
+- `adapters/linux.py` - Linux: Chatlog v2 seq 游标读取文本，AT-SPI 定位控件，X11 发送文本/图片/文件，PulseAudio 虚拟麦克风发送原生语音
+- `console/adapters/linux.py` - Linux Console：会话切换/滚动、独立窗口缓存/恢复、文本引用；与发送器共用跨进程 UI 锁
+- `utils/linux_accessibility.py` / `linux_ui_lock.py` / `linux_voice.py` - AT-SPI D-Bus 控件读取、跨进程锁、虚拟麦克风与录音路由
+- `utils/voice_synthesis.py` - 平台无关的 LocalAI/EdgeTTS 语音合成
+- `utils/ocr.py` - macOS Vision OCR 封装
+- `utils/screenshot.py` - 截图工具
+- `utils/accessibility.py` - macOS 辅助功能权限检查
+- `routes/` - REST (health, groups, messages) + WS 端点 (`ws.py`)
+
+**chatlog/** - 聊天记录独立服务（纯数据层，不依赖 Gateway/Cortex）
+- `__init__.py` - 导出 ChatlogService 和相关模型
+- `asgi.py` - FastAPI app 工厂（v1/v2 双前缀挂载 + 默认无版本路径按 `CHATLOG_USE_V2` 切换）
+- `main.py` - 独立入口（`uv run -m chatlog.main`）
+- `routes.py` - v1 HTTP 路由（decrypt/groups/messages/group-display-name/health/media，挂载在 `/api/chatlog/v1`）
+- `routes_v2.py` - v2 HTTP 路由（同 v1 接口集合，挂载在 `/api/chatlog/v2`，Windows/Linux）
+- `service.py` - v1 ChatlogService（pycryptodome 离线解密）
+- `service_v2.py` - v2 ChatlogServiceV2（原生库在线读取）
+- `models.py` - HTTP API 响应模型（`ChatlogGroupResponse`, `ChatlogMessageResponse`；`server_id: int` + `server_id_str: str` 双字段避免 JS Number 精度丢失；`ChatlogMessageResponse.at_users: list[str]` 群聊被 @ 人 wxid 列表，源自消息 `source` 字段 base64→zstd→XML 的 `<atuserlist>`，向下兼容默认空）
+- `wechat_db.py` - v1 实现（WeChatDBDecryptor + WeChatDBReader），含 ChatRoom/Message dataclass 和 protobuf 解析；解密扩展覆盖 message_resource.db / media_0.db / emoticon.db
+- `wechat_db_v2.py` - v2 实现（WeChatDBReaderV2），通过原生库跑 raw SQL，复用 v1 的 dataclass 和 protobuf 解析
+- `media/` - 富媒体解析层（图片 V2 .dat / sticker / voice / video thumb 统一抽象）
+  - `route.py` - `MediaBackendBinding` (V1/V2) + `register_media_route()` 注册 GET `/media`；image/video-thumb 强制 `IMAGE_AES_KEY`，voice/sticker/file 不依赖；file 响应附 `Content-Disposition` (UTF-8 + ASCII fallback)
+  - `adapters.py` - `MediaAdapter` ABC + `V1SqliteAdapter` (sqlite3 直读) + `V2NativeAdapter` (原生库 + SQL 占位手动转义，db_path → key LRU 缓存 32)
+  - `resolver.py` - `MediaResolver`：`decode_image` / `decode_video_thumb` / `decode_voice` / `decode_sticker`
+  - `cache.py` - 进程级共享缓存：sticker / hd_image 各 50MB 字节预算 LRU；emoticon_lookup OrderedDict LRU 32
+  - `decrypt.py` - V2 .dat AES-128-ECB + XOR magic + 尾对齐块解密
+  - `wxgf.py` - PyAV 取末帧将 wxgf (HEVC) 转 JPEG
+  - `voice.py` - pilk + PyAV 将 SILK v3 转 MP3
+- `platform/` - Chatlog 平台特性封装（Windows/Linux 原生库加载、数据库路径解析、配置检查、Linux per-db key 解析）
+- `vendor/awsl_wechat_chatlog.dll` - awsl-wechat-chatlog 编译产物（11MB，Windows x86-64）
+- `vendor/libawsl_wechat_chatlog.so` - awsl-wechat-chatlog 编译产物（Linux x86-64 兼容文件）
+- `vendor/libawsl_wechat_chatlog_linux_amd64.so` / `vendor/libawsl_wechat_chatlog_linux_arm64.so` - awsl-wechat-chatlog Linux 分架构编译产物
+
+**cortex/** - Cortex 服务
+- `models.py` - TriggerType 枚举 + MessageListener 抽象基类（模板方法，异常由基类捕获）
+- `runtime.py` - CortexRuntime (MessageListener)：先 trigger 匹配再滑动窗口限速 + ThreadPoolExecutor 处理 AI/命令
+- `asgi.py` - FastAPI app 工厂，组装 listener 注册 + scheduler + lifespan
+- `gateway_client.py` - GatewayClient：纯 WS 客户端，连接/重连/订阅/收发，add_listener 注册 MessageListener
+- `scheduler.py` - TaskScheduler：轮询定时任务，通过 GatewayClient WS 发消息，summary 任务本地异步执行
+- `services/ai.py` - httpx.Client 连接池调用 OpenAI API
+- `services/command.py` - httpx.Client 调用命令 API
+- `services/trigger.py` - TriggerMatcher 正则匹配（AI/命令/文本/图片触发）
+- `services/webhook.py` - WebhookService (MessageListener)：SQLModel ORM + ThreadPoolExecutor fire-and-forget
+- `services/scheduled_task.py` - ScheduledTaskService：SQLModel ORM CRUD + cron 调度
+- `services/chatlog_client.py` - ChatlogClient：httpx.Client 调用 Chatlog 服务 API
+- `services/summary.py` - 群聊总结核心算法（格式化/排行榜/LLM 调用/Markdown→图片渲染）
+- `services/summary_service.py` - SummaryService：调 chatlog 拉消息，本地 LLM + 渲染，通过 gateway_client WS 发出
+- `routes/` - tasks, webhooks, health, webui（入口 `/` + `/manifest.json`，静态资源挂载 `/static/*`）, summary, gateway_proxy（代理 Gateway API）, chatlog_proxy（代理 Chatlog API）
+- `templates/` - Cortex Web UI（SPA：聊天/定时任务/Webhook 三个 tab，由 `/static/*` 挂载提供静态文件）
+
+**daemon/** - Daemon 控制器
+- `manager.py` - BotProcessManager 进程管理（健康检查 + 自动重启）
+- `routes.py` - FastAPI 路由 (status/start/stop/restart/update/logs)
+
+## Key Patterns
+
+- **MessageListener 模式**: 抽象基类 `on_message(msg: WSMessageBroadcast)` + `_handle_message()`，异常由基类统一捕获。GatewayClient 通过 `add_listener()` 注册多个 listener（CortexRuntime、WebhookService）
+- **非阻塞 listener**: listener 回调在 GatewayClient async 线程中执行，禁止阻塞调用。CortexRuntime 用 `ThreadPoolExecutor` 处理 AI/命令，WebhookService 用 `ThreadPoolExecutor` 发 HTTP
+- **纯 WS 客户端**: GatewayClient 只管连接/重连/订阅/收发，不持有业务逻辑。指数退避重连 (1s → 30s)，asyncio.Event 优雅停止
+- **Gateway/Cortex 通信**: 所有消息收发走 WS 协议。Scheduler 发消息也通过 GatewayClient WS，不走 HTTP self-call
+- **Cortex Gateway 代理**: Cortex 前端通过后端代理访问 Gateway API（/api/groups, /api/send），避免跨端口直连
+- **macOS 截图**: Quartz `CGWindowListCreateImage` 按窗口 ID 内存截图，无需激活窗口，多群并行 OCR
+- **macOS 发送**: 需要激活窗口（AppleScript AXRaise + 剪贴板粘贴），`_send_lock` 串行化
+- **Windows UIA 线程**: `UIAutomationInitializerInThread` per-thread COM/UIA 初始化，读取无锁可并行，发送需 `_send_lock`；Console 另用操作锁防止慢速 TTS 期间切换聊天，合成本身不占 UI 锁
+- **Windows 语音发送**: `voice` 在独立线程中优先用 OpenAI 兼容 LocalAI TTS 合成 MP3，失败时回退 EdgeTTS，完成后回到发送队列；`voice_file` 接收 Base64 MP3。两者经 VB-CABLE 播放到默认麦克风，激活目标窗口后按住右 Alt，播放结束松开发送；单条最多 60 秒。Linux 通过 PulseAudio 支持同样的载荷，macOS 不支持
+- **Linux Chatlog 读取**: Gateway 不做截图/OCR，通过 Chatlog v2 `/messages/batch` 的 seq 游标增量查询，保留边界去重；已识别自消息即使尚未确认也不阻塞游标。发送依赖 `wmctrl`、`xdotool`、`xclip`、`xwininfo`，推荐 `xsel`
+- **增量读取失败**: v2 batch 严格读取数据库时间索引，相关库任一查询失败则不返回部分结果，Gateway 保留游标重试
+- **Linux 操作锁/录音保护**: Console 操作锁覆盖 TTS，UI 锁只覆盖实际操作。录音结束/取消必须同时确认录音流和 UI 状态；未确认时保留无声输入与持久化 pending-recording 标记，所有后续 UI 操作先尝试恢复，确认停止后才清理设备。缓存恢复返回实际失败状态及计数
+- **消息去重**: 各平台适配器按会话维护进程内状态；Windows 优先 UIA RuntimeId、hash 序列回退，macOS 使用 SHA256 上下文哈希且只触发最后一条，Linux 使用 seq 游标及 (seq, server_id, local_id) 去重
+- **限速**: 全局发送间隔 `GLOBAL_SEND_INTERVAL`（默认 3s），群级触发限速 `TRIGGER_RATE_LIMIT`（默认 10次/60s 滑动窗口，在 trigger 匹配之后检查）
+- **WS 首条消息认证**: 连接后首条消息必须是 `{"type": "auth", "token": "xxx"}`，`hmac.compare_digest` 常量时间比较，10s 超时断开。Token 不经过 URL，不留日志
+- **WS 协议模型**: Pydantic discriminated union + TypeAdapter 一步解析，WSType 常量，发送载荷统一为 `message_type + message + filename`
+- **HTTP 客户端**: 全局使用 httpx（无 requests 依赖），服务内持久连接池，AI service 限制 max_connections=10
+- **远程命令开关**: `REMOTE_COMMANDS_ENABLED` 默认 true，但 `COMMAND_API_BASE_URL` 默认为空；未配置 URL 或设为 false 时 Cortex 不初始化 `CommandService`，不加载/刷新/执行远程命令，本地自定义命令不受影响
+- **自消息过滤**: Windows UIA 读取所有文本消息（语音气泡直接忽略），SentMessageStore 通过精确/前缀/包含/相似度 4 层匹配过滤自发消息，TTL 120s
+- **输入校验**: 正则长度 MAX_REGEX_LEN=200（common/models.py 共享），cron 表达式限 256 字符，AppleScript 参数化防注入（`on run argv`）
+- **触发词空守卫**: `TRIGGER_KEYWORD` 为空时跳过 AI/刷新命令匹配（`startswith("")` 恒 True），命令匹配不受影响
+- **comtypes 日志静默**: Windows 上 `comtypes` logger 设为 WARNING 级别，屏蔽 COM 类型库生成的 INFO 日志
+- **WS 订阅优先级**: subscribe 支持 `priority`（int，默认 0）和 `passive`（bool，默认 false）。广播时 passive 客户端始终收到消息，非 passive 只推送给匹配的最高优先级客户端。Cortex 默认 priority=10
+- **chatlog 独立服务**: chatlog 是纯数据层独立服务（:7998），不依赖 Gateway/Cortex。提供解密/查群/查消息 HTTP API。Cortex 通过 ChatlogClient 调用 chatlog 拉消息，本地跑 LLM 总结 + 渲染，再通过 gateway_client WS 发出。chatlog 需部署在微信数据库所在机器
+
+## HTTP API
+
+Gateway (:8000): `GET /api/health`, `GET /api/groups`, `POST /api/send`, `WS /ws`
+
+Chatlog (:7998):
+- v1 (pycryptodome 离线解密): `GET /api/chatlog/v1/health`, `POST /api/chatlog/v1/decrypt`, `GET /api/chatlog/v1/groups`, `GET /api/chatlog/v1/contacts`, `GET /api/chatlog/v1/members`, `GET /api/chatlog/v1/messages`, `POST /api/chatlog/v1/messages/search`, `GET /api/chatlog/v1/group-display-name`, `GET /api/chatlog/v1/media`
+- v2 (原生库在线读取，Windows/Linux): `GET /api/chatlog/v2/health`, `POST /api/chatlog/v2/decrypt` (no-op), `GET /api/chatlog/v2/groups`, `GET /api/chatlog/v2/contacts`, `GET /api/chatlog/v2/members`, `GET /api/chatlog/v2/messages`, `POST /api/chatlog/v2/messages/search`, `POST /api/chatlog/v2/messages/batch`, `GET /api/chatlog/v2/group-display-name`, `GET /api/chatlog/v2/media`
+- v2 DB 读取守卫: 除 `/health` 与 no-op `/decrypt` 外，v2 读取接口先完成认证，再检查微信进程；微信未运行时返回 `503`，避免读取未在线数据库。`/media` 单独兼容 `?token=` 后也执行同一 ready 检查
+- 联系人/群成员端点 `GET /contacts?usernames=`: 按 wxid 批量查（逗号分隔，最多 200）返回昵称/备注/头像。`GET /members?group=<xxx@chatroom>`: 列出群完整成员名单，解析 `chat_room.ext_buffer` protobuf 得全部成员 wxid + 群内昵称(display_name)，再批量补 contact 表的昵称/头像，群主排首位并标 `is_owner`
+- 消息端点 `GET /messages`: 返回 `ChatlogMessageResponse` 列表，群聊消息含 `at_users`（被 @ 人 wxid 列表，读消息表 `source` 列 base64→zstd→XML 解 `<atuserlist>`；自闭合/CDATA 空/裸 wxid/逗号分隔多个均兼容，非群聊或无 @ 为空）
+- 消息搜索端点 `POST /messages/search`: 请求体 `{group,query,senders,start,end,limit,offset,desc}`，`query` 或 `senders` 至少提供一个；关键词搜索仅在 SQL 中匹配 `msg_type=1` 的未压缩纯文本，仅按发送者搜索则在 SQL 中按人/时间过滤；群聊搜索保持旧 `sender:\n正文` 解析兼容
+- 批量消息端点 `POST /messages/batch` (v2): 请求体 `{items:[{group,since_seq}], limit, offset}`，`offset` 默认 0，按每群 `sort_seq >= since_seq`、`local_id` 升序排列并在跨库合并后分页，返回 `{results:{group:[...]}}`。Linux 同 seq 边界占满一页时继续翻页，避免游标卡住
+- 默认（无版本前缀）`/api/chatlog/*`: 由 `CHATLOG_USE_V2` 切换（默认 true→v2，false→v1）
+- 媒体端点 `GET /media?msg_type=&group=&server_id=&local_id=&create_time=&content=&hd=`: msg_type=3 image / 34 voice / 43 video thumb / 47 sticker / 49 file。image/video-thumb 需要 `IMAGE_AES_KEY`；voice 依赖 av/pilk（必需依赖，普通 `uv sync` 安装），优先按 `server_id` 查询，自发语音因 VoiceInfo.svr_id=0 时用消息返回的 `local_id + create_time` 唯一回退；sticker/file 不依赖密钥。image `hd=1` 通过 message_resource md5 查本机 `.dat`，按无后缀原图 / `_h` / `_W` / 非缩略图 / `_t` 顺序尝试，wxgf/HEVC 经 av 转 JPEG；转发聊天记录 type=19 的内嵌图片当前不按普通 msg_type=3 暴露。file 走 `msg/file/<YYYY-MM>/<title>` 明文 + `Content-Disposition` (UTF-8 + ASCII fallback) 浏览器原文件名下载，上限 200MB。返回原始 bytes + `X-Media-Md5` / `X-Media-Format` / `Cache-Control: private, max-age=86400, immutable` / `ETag`
+- 健康端点 `media` 字段：`{image, sticker, video_thumb, voice, file}` 各 bool，前端据此启用渲染
+
+Cortex (:7999):
+- Web UI: `GET /` (HTML), `GET /manifest.json`, `GET /static/*`
+- API: `GET /api/health`, CRUD `/api/tasks`, CRUD `/api/webhooks`, `POST /api/summary`, `GET /api/groups`(代理 Gateway), `POST /api/send`(代理 Gateway), `GET /api/chatlog/groups`(代理 Chatlog), `GET /api/chatlog/contacts`(代理 Chatlog), `GET /api/chatlog/members`(代理 Chatlog 群成员), `GET /api/chatlog/messages`(代理 Chatlog), `POST /api/chatlog/messages/search`(代理 Chatlog 纯文本搜索), `POST /api/chatlog/decrypt`(代理 Chatlog), `GET /api/chatlog/health`(代理 Chatlog 无版本健康端点，含 media 能力), `GET /api/chatlog/media`(代理 Chatlog 富媒体)
+
+Daemon (:8001): `GET /status`, `POST /start|stop|restart|update`, `GET /logs`
+
+认证: REST `Authorization: Bearer <HTTP_API_TOKEN>`；`/api/chatlog/*/media` 兼容 `?token=<HTTP_API_TOKEN>`；WS 首条消息认证 `{"type": "auth", "token": "xxx"}`(hmac.compare_digest)
+
+## WS Protocol
+
+连接: `ws://host:8000/ws`
+
+Client → Server:
+- `{"type": "auth", "token": "xxx"}` — 首条消息认证（10s 超时断开），成功返回 auth_ok
+- `{"type": "subscribe", "group_filter": "regex", "message_filter": "regex", "priority": 0, "passive": false}` — priority/passive 可选，无效 regex 返回 error
+- `{"type": "unsubscribe"}`
+- `{"type": "send_message", "group_name": "...", "message_type": "text|image|file|voice|voice_file", "message": "...", "filename": "..."}`（file/voice_file 需要 filename；voice 是 TTS 文本，voice_file 是 Base64 MP3；支持 Windows/Linux，Linux 需 PulseAudio）
+
+Server → Client:
+- `{"type": "auth_ok"}`
+- `{"type": "subscribe_ok", ...}`
+- `{"type": "message", "group_name": "...", "content": "...", "timestamp": ...}`
+- `{"type": "send_ok"}`
+- `{"type": "error", "detail": "..."}`
+
+## Threading Model
+
+- **Gateway 线程**: scan_loop(窗口发现) + detector(per-group, 读取无锁并行) + voice-synthesizer(TTS 后台合成) + sender(串行发送) + consume_loop(队列广播)
+- **GatewayClient 线程**: 独立 asyncio 事件循环，只做 WS 收发 + listener 分发（listener 回调必须非阻塞）
+- **Cortex ThreadPoolExecutor(4)**: AI/命令等阻塞操作从 listener 回调提交到此线程池
+- **Webhook ThreadPoolExecutor(3)**: HTTP POST fire-and-forget
+- **Scheduler 线程**: 5s 轮询定时任务，summary 任务异步提交到 SummaryService worker 线程（不阻塞调度）
+- **Summary worker 线程**: daemon 线程，调 ChatlogClient HTTP 拉消息 + LLM + 渲染 + gateway_client WS 发出
+- **Chatlog 服务**: 独立 uvicorn 进程，sync def 路由（FastAPI 自动线程池），无外部出站网络
+- **main.py**: asyncio.gather 运行三个 server（Gateway + Chatlog + Cortex），异常时通知退出
+
+## Development Notes
+
+- **测试**: 使用标准库 unittest，按服务组织在 `tests/`；Gateway：`uv run python -m unittest discover -s tests/gateway`。没有配置 pytest/mypy，前端检查见 `tests/README.md`
+- **Python 3.11+**: `requires-python = ">=3.11"`
+- **uv 包管理**: 使用 uv 而非 pip，pyproject.toml 管理依赖；富媒体依赖 av/pilk/numpy 是必需依赖，避免 daemon 普通 `uv sync` 后丢失原图 HEVC 转码和语音能力
+- **配置**: Pydantic Settings 从 `.env` 读取，关键变量见 `.env.example`（`CHECK_INTERVAL`, `TRIGGER_*`, `OPENAI_*`, `REMOTE_COMMANDS_ENABLED`, `DAEMON_*`, `WECHAT_DB_*`, `CHATLOG_USE_V2`, `LINUX_WECHAT_*`, `LINUX_CHATLOG_*`, `DEBUG`）
+
+## Platform Notes
+
+- **macOS**: 需要辅助功能权限（发送）+ 屏幕录制权限（截图）
+- **Windows**: 建议管理员权限运行，UIA 使用 UIAutomationInitializerInThread per-thread 初始化
+- **Linux**: 微信与 Gateway 使用同一用户和 X11 会话，需要 Chatlog v2 和 `wmctrl`/`xdotool`/`xclip`/`xwininfo`，文本优先 `xsel`。微信启动前设置 `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1`；语音需要 `pactl`/`paplay`，无声卡环境先准备虚拟麦克风。完整部署步骤见 README Linux setup
+- **Linux Console**: 列表 path 不是群 ID，群 ID 来自 Chatlog；同名无法唯一对应时停止自动窗口操作。原生 @ 仅解析正文开头的 `@昵称 `，候选不唯一/不存在时清理草稿后发送原文。引用只匹配 Console 当前可见消息，Linux 找不到原文或无法确认清理时停止发送。AT-SPI 控件缺失/坐标无效时停止发送，不凭截图或固定坐标兜底
+- **Linux 主窗口状态**: 微信开独立窗口会清空主窗口聊天区，Console 开窗后重新选中原会话恢复控件。整体 `available` 不表示已选中聊天；发送还需核对 `chat_area`、`input_box` 与焦点。同名会话拒绝选择和发送，跳过重复点击还要求目标列表项处于 selected 状态
+- **Linux Console 状态/调试**: 返回中英文引用结构、结合格式与行高的时间行分类、置顶/免打扰/多行预览；`include_patterns` 仅查询实际 AT-SPI 接口/属性/动作/文本，不执行动作，不使用会导致 Qt 崩溃的 Properties.GetAll。
+- **Linux 异常资源恢复**: 文件名按 UTF-8 字节限长并保留扩展名，临时文件创建失败也清理；缺失会话 ID 时保留旧窗口缓存；语音清理成功后才删除恢复标记，清理失败不放行后续 UI 操作。
+- **Linux 原生库**: Windows DLL、Linux amd64/ARM64 `.so` 及兼容别名统一使用上游 v0.1.22 release pipeline 产物；Linux 使用 `file:` URI + `mode=ro`，去除 `nolock`，继续读取 WAL，不使用 `immutable`；来源、CI 和哈希见 `chatlog/vendor/UPSTREAM.md`

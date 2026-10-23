@@ -11,11 +11,11 @@ Run commands from the repository root. Use the bundled CLI through `uv run`; dep
 
 ```bash
 # First-time setup: cache the Chatlog base URL (and optional token)
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" \
   config set --base-url http://127.0.0.1:7998 --token "$HTTP_API_TOKEN"
 
 # Subsequent calls reuse the cached connection automatically
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" groups
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" groups
 ```
 
 Connection info (`base_url`, `token`) is cached at `~/.config/awsl-wechat-chatlog/config.json` (chmod 600). The CLI accepts an HTTP(S) REST base URL only. The token is optional. When omitted, the CLI sends no `Authorization` header.
@@ -76,53 +76,53 @@ as ordinary `msg_type=3` media; do not treat the outer card's `server_id` as an 
 
 ```bash
 # Cache connection details once
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" \
   config set --base-url http://127.0.0.1:7998 --token "$HTTP_API_TOKEN"
 
 # Inspect or remove the cached connection
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" config show
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" config clear
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" config show
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" config clear
 
 # Decrypt WeChat DB records
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" decrypt
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" decrypt
 
 # Find chatlog group IDs
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" groups --limit 20
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" groups --limit 20
 
 # Query the latest 50 records for a group ID (newest first)
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
   --group 12345@chatroom --start "2026-04-23" --limit 50 --desc
 
 # Query the same range oldest first
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" messages \
   --group 12345@chatroom --start "2026-04-23" --limit 50 --asc
 
 # Search visible plain-text message bodies from selected senders
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
   --group 12345@chatroom --query "发布" \
   --sender wxid_alice --sender wxid_bob --limit 50 --desc
 
 # Query all text messages from one sender in a time range (no keyword required)
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
   --group 12345@chatroom --sender wxid_alice \
   --start "2026-05-01" --end "2026-05-04" --limit 1000 --asc
 
 # Count messages per sender, including all message types
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" count-messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" count-messages \
   --group 12345@chatroom --start "2026-09-01" --end "2026-09-11" \
   --all-types
 
 # Find images and stickers from a sender
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" search-messages \
   --group 12345@chatroom --sender wxid_alice --msg-type 3 --msg-type 47 --desc
 
 # Count all types in a time range (omit --sender to count everyone)
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" count-messages \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" count-messages \
   --group 12345@chatroom --sender wxid_alice --all-types \
   --start "2026-09-01" --end "2026-09-11"
 
 # Get group display name
-uv run ".claude/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" group-name \
+uv run ".agents/skills/awsl-wechat-chatlog/scripts/awsl_chatlog.py" group-name \
   --group 12345@chatroom
 
 # Download an image HD/original. Get talker + server_id_str from `messages`.

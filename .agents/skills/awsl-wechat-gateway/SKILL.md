@@ -11,11 +11,11 @@ Run commands from the repository root. Use the bundled CLI through `uv run`; dep
 
 ```bash
 # First-time setup: cache the Gateway base URL (and optional token)
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
   config set --base-url http://127.0.0.1:8000 --token "$HTTP_API_TOKEN"
 
 # Subsequent calls reuse the cached connection automatically
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" windows
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" windows
 ```
 
 Connection info (`base_url`, `token`) is cached at `~/.config/awsl-wechat-gateway/config.json` (chmod 600). The CLI accepts an HTTP(S) REST base URL only, such as `http://127.0.0.1:8000` or `https://gateway.example.com`. Convert any Gateway WebSocket endpoint to its HTTP(S) origin before invoking the CLI. The token is optional. When omitted, the CLI sends no `Authorization` header.
@@ -37,38 +37,38 @@ Resolution order: explicit `--base-url` / `--token` flags > cached config. Passi
 
 ```bash
 # Cache connection details once, then drop --base-url/--token from later calls
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
   config set --base-url https://wxbot-gateway.home.dreamhunter.uk --token "$HTTP_API_TOKEN"
 
 # Inspect or remove the cached connection
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" config show
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" config clear
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" config show
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" config clear
 
 # List currently detected WeChat windows (uses cached connection)
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" windows
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" windows
 
 # Override the cached base URL for a single call without touching the cache
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" \
   --base-url http://127.0.0.1:8000 --no-save windows
 
 # Send text to an open chat window
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message "收到"
 
 # Prefer binary streaming for a local file (up to 100 MiB)
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" --timeout 300 send \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" --timeout 300 send \
   --group "测试群" --message-type file --file-path ./document.pdf
 
 # Send a local image; image inputs retain Base64 encoding
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type image --file-path ./image.png
 
 # Send synthesized voice on a Windows/Linux Gateway
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type voice --message "你好，这是一条语音消息"
 
 # Send an existing MP3 as voice on a Windows/Linux Gateway
-uv run ".claude/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
+uv run ".agents/skills/awsl-wechat-gateway/scripts/awsl_gateway.py" send \
   --group "测试群" --message-type voice_file --file-path ./voice.mp3
 ```
 
