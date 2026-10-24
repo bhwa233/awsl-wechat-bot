@@ -189,10 +189,10 @@ class CommandService:
     def execute_command(self, command_key: str, params: str = "", group_name: str = "") -> OutgoingMessage | None:
         try:
             full_command = f"{command_key} {params}" if params else command_key
-            resp = self._client.post(
+            resp = self._client.get(
                 f"{self.api_base_url}/command",
-                json={"command": full_command},
-                headers={"accept": "application/json", "Content-Type": "application/json"},
+                params={"command": full_command},
+                headers={"accept": "application/json"},
             )
             resp.raise_for_status()
 

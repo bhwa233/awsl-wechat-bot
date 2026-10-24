@@ -42,6 +42,8 @@ LINUX_CHATLOG_MESSAGE_LIMIT=20
 LINUX_CHATLOG_GROUP_CACHE_TTL=30
 ```
 
+远程命令服务需提供 `GET /command/list` 和 `GET /command?command=...`；Cortex 使用查询参数传递完整命令。
+
 ## 运行
 
 ```bash
