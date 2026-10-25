@@ -433,6 +433,9 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         return self._send_file_path(window, str(file_path), cleanup=False)
 
     def send_voice_to_window(self, window, file_base64, filename, timeout=None) -> bool:
+        if config.LINUX_MESSAGE_READER == "chatlog" and window.expected_chat is None:
+            logger.error("Native Linux voice requires accessibility mode")
+            return False
         from gateway.utils.linux_voice import connect_wechat_microphone, decoded_voice, microphone, play_voice
 
         if not self.SUPPORTS_VOICE:
@@ -519,6 +522,18 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                 return False
             if not self._active_window_matches(window):
                 return False
+            if config.LINUX_MESSAGE_READER == "chatlog" and window.expected_chat is None:
+                if not self._standalone_window_matches(window):
+                    return False
+                geometry = self._window_geometry(window.window_id)
+                if not geometry:
+                    return False
+                x, y, width, height = geometry
+                if width <= 0 or height <= 45 or not self._active_window_matches(window):
+                    return False
+                return self._run_x11([
+                    "xdotool", "mousemove", str(x + width // 2), str(y + height - 45), "click", "1",
+                ]).returncode == 0 and self._send_context_matches(window)
             nodes = self.window_nodes(window)
             field = input_node(nodes)
             if field is None or not field["enabled"]:
@@ -533,7 +548,7 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             ])
             return result.returncode == 0 and self._send_context_matches(window)
         except Exception as exc:
-            logger.warning("AT-SPI 输入框定位失败: %s", exc)
+            logger.warning("Linux input targeting failed: %s", exc)
             return False
 
     def _window_geometry(self, window_id: str) -> tuple[int, int, int, int] | None:
@@ -586,6 +601,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
                 and node["rect"]["width"] > 0 and node["rect"]["height"] > 0]
 
     def _select_mention(self, window, name):
+        if config.LINUX_MESSAGE_READER == "chatlog" and window.expected_chat is None:
+            raise RuntimeError("Native mentions require accessibility")
         if not self._send_context_matches(window):
             raise RuntimeError("输入 @ 前会话或焦点发生变化")
         field = input_node(self.window_nodes(window))
@@ -650,6 +667,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         raise RuntimeError("未能确认原生 @ 已插入")
 
     def _prepare_mentions(self, window: LinuxWeChatWindow, text: str) -> str:
+        if config.LINUX_MESSAGE_READER == "chatlog" and window.expected_chat is None:
+            return text
         match = _AT_PREFIX_RE.match(text)
         if not match:
             return text
@@ -730,6 +749,8 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
             return False
         if not self._active_window_matches(window):
             return False
+        if config.LINUX_MESSAGE_READER == "chatlog" and window.expected_chat is None:
+            return self._standalone_window_matches(window)
         try:
             nodes = self.window_nodes(window)
             field = input_node(nodes)
@@ -738,6 +759,12 @@ class LinuxWeChatAdapter(BaseWeChatAdapter):
         except Exception as exc:
             logger.warning("AT-SPI 发送上下文检查失败: %s", exc)
             return False
+
+    def _standalone_window_matches(self, window: LinuxWeChatWindow) -> bool:
+        if window.expected_chat is not None or window.title in _MAIN_WINDOW_TITLES:
+            return False
+        matches = [candidate for candidate in self.list_windows() if candidate.title == window.title]
+        return len(matches) == 1 and matches[0].window_id == window.window_id
 
     def _paste_and_send(self, window: LinuxWeChatWindow, *, delay=.35, clear=True, paste=True) -> bool:
         if not self._send_context_matches(window):

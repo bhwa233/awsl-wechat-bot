@@ -8,6 +8,7 @@ from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from common.config import config
 from common.models import (
     GatewayMessage,
     MessageType,
@@ -25,8 +26,75 @@ from gateway.routes.console import ConsoleSendMessageRequest
 with nullcontext() if sys.platform == 'win32' else patch.dict(
     sys.modules, {'uiautomation': SimpleNamespace(Keys=SimpleNamespace(VK_RMENU=165))},
 ):
-    from gateway.adapters.windows import WindowsWeChatAdapter, _MessageRecord, _MessageState
+    from gateway.adapters.windows import WindowsNativeWindow, WindowsWeChatAdapter, _MessageRecord, _MessageState
     from gateway.console.adapters.windows.adapter import WindowsConsoleAdapter
+
+
+class WindowsNativeWindowTest(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch.object(config, "WINDOWS_MESSAGE_READER", "chatlog"))
+        self.native = Mock()
+        self.native.error = RuntimeError
+        self.native.IsWindow.return_value = True
+        self.native.IsWindowVisible.return_value = True
+        self.native.GetWindowText.side_effect = {
+            1: "group", 2: "WeChat", 3: "duplicate", 4: "duplicate", 5: "migration", 6: "group",
+        }.get
+        self.native.GetClassName.return_value = "Qt51514QWindowIcon"
+        self.native.GetForegroundWindow.return_value = 1
+        self.native.EnumWindows.side_effect = lambda callback, arg: [callback(hwnd, arg) for hwnd in range(1, 7)]
+        self.enterContext(patch.dict(sys.modules, {
+            "win32gui": self.native,
+            "win32process": SimpleNamespace(GetWindowThreadProcessId=lambda hwnd: (0, 999 if hwnd == 6 else 123)),
+        }))
+        self.enterContext(patch("psutil.process_iter", return_value=[SimpleNamespace(pid=123, info={"name": "Weixin.exe"})]))
+        self.window = WindowsNativeWindow("group", 1, "Qt51514QWindowIcon")
+
+    def test_native_discovery_excludes_main_and_duplicate_titles_without_uia(self):
+        adapter = WindowsWeChatAdapter()
+        self.addCleanup(adapter._db_reader.client.close)
+        adapter._db_reader.client.get = Mock(return_value=Mock(json=lambda: [
+            {"username": "one@chatroom", "display_name": "group"},
+            {"username": "two@chatroom", "display_name": "duplicate"},
+        ]))
+        adapter._ensure_uia = Mock(side_effect=AssertionError("UIA must not be initialized"))
+        result = adapter.find_all_wechat_windows()
+        self.assertEqual([w.title for w in result], ["group"])
+        self.assertIsInstance(result[0].window, WindowsNativeWindow)
+        adapter._db_reader.read = Mock(return_value=[])
+        self.assertEqual(adapter.get_messages_from_window(self.window), [])
+        adapter._ensure_uia.assert_not_called()
+        self.native.GetClassName.side_effect = RuntimeError("Window closed during enumeration")
+        self.assertEqual(adapter.find_all_wechat_windows(), [])
+
+    def test_native_keys_stop_if_identity_or_foreground_changes(self):
+        automation = Mock()
+        with patch("gateway.adapters.windows.auto", automation):
+            self.window.SendKeys("{ENTER}")
+            self.native.GetForegroundWindow.return_value = 2
+            with self.assertRaisesRegex(RuntimeError, "focus"):
+                self.window.SendKeys("{ENTER}")
+            self.native.GetForegroundWindow.return_value = 1
+            self.native.GetWindowText.side_effect = lambda _: "different group"
+            with self.assertRaisesRegex(RuntimeError, "focus"):
+                self.window.SendKeys("{ENTER}")
+        automation.SendKeys.assert_called_once_with("{ENTER}", waitTime=0.2)
+
+    def test_native_text_skips_uia_mentions_and_rejects_explicit_all(self):
+        adapter = WindowsWeChatAdapter()
+        self.addCleanup(adapter._db_reader.client.close)
+        adapter._ensure_uia = Mock(side_effect=AssertionError("UIA must not be initialized"))
+        adapter._count_at_popovers = Mock(side_effect=AssertionError("UIA must not be queried"))
+        adapter.activate_specific_window = Mock(return_value=True)
+        adapter._focus_send_target = Mock(return_value=self.window)
+        automation = Mock()
+        automation.GetClipboardText.return_value = "@someone body"
+        with patch("gateway.adapters.windows.auto", automation):
+            self.assertTrue(adapter.send_text_to_window(self.window, "@someone body"))
+            self.assertFalse(adapter.send_text_to_window(self.window, "body", mention_all=True))
+        adapter._ensure_uia.assert_not_called()
+        adapter._count_at_popovers.assert_not_called()
+        self.assertEqual(sum(call.args[0] == "{ENTER}" for call in automation.SendKeys.call_args_list), 1)
 
 
 class MessageMetadataTest(unittest.TestCase):

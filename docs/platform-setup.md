@@ -6,11 +6,22 @@
 
 以下命令均在项目根目录执行。
 
-## 消息读取方式（Windows / Linux）
+## Gateway 收发方式（Windows / Linux）
 
-通过 `.env` 或环境变量配置消息读取方式，修改后重启 Gateway 生效：`LINUX_MESSAGE_READER=chatlog`（默认）、`WINDOWS_MESSAGE_READER=accessibility`（默认 UIA）。两项均可选 `chatlog` / `accessibility`，Linux 的辅助功能为 AT-SPI。读取选择和处理均在各平台适配器内部实现。
+沿用 `.env` / 环境变量 `WINDOWS_MESSAGE_READER`（默认 `accessibility`）、`LINUX_MESSAGE_READER`（默认 `chatlog`）。两项含义一致，分别控制对应平台的 Gateway 收发，修改后重启 Gateway：
 
-Chatlog 需要 v2 服务，可提供发送人及 @ 信息。Linux AT-SPI 只读取独立窗口已加载的文本，不依赖 Chatlog；当前控件不提供发送人及 @，只能过滤程序自己发送的文本/文件，无法保证窗口外消息不丢失。
+| 值 | 接收消息 | 独立窗口发送 |
+| --- | --- | --- |
+| `chatlog` | Chatlog v2，提供发送人及 @ 信息 | Windows 使用 Win32，Linux 使用 X11；不调用 UIA / AT-SPI |
+| `accessibility` | Windows UIA / Linux AT-SPI，只读取窗口已加载的内容 | 使用对应平台的辅助功能定位和操作控件 |
+
+Console 独立于此配置，始终使用 Windows UIA / Linux AT-SPI。微信自动登录和窗口恢复也仍需辅助功能。不要通过切换 Gateway 模式关闭 Console 的辅助功能。
+
+Chatlog 模式要求配置本机 Chatlog v2 和数据库密钥。独立窗口必须已打开且名称唯一；发送按窗口尺寸定位输入区，校验窗口身份与前台窗口，只能确认窗口级焦点，不能确认输入控件焦点。普通文本中的 `@昵称` 按原文发送，原生 @（含 `mention_all=true`）需要辅助功能模式；Linux 原生语音也需要辅助功能模式，Windows 可沿用右 Alt 录音快捷键。
+
+Windows 的 Chatlog 模式仅发现属于微信进程、且标题能唯一匹配 Chatlog 群列表的窗口；不会将其他程序、迁移或备份对话框当作群聊。
+
+Linux AT-SPI 不依赖 Chatlog，但当前控件不提供发送人及 @，只能过滤程序自己发送的文本/文件，无法保证窗口外消息不丢失。
 
 ## Windows 语音发送
 
@@ -59,7 +70,9 @@ Linux Gateway 通过 Chatlog 读取消息、通过 X11 发送消息，不使用�
 sudo apt-get install -y wmctrl xdotool xclip x11-utils xsel pulseaudio pulseaudio-utils
 ```
 
-微信与 Gateway 使用同一个 Linux 用户和 X11 会话。启动微信前启用无障碍接口：
+微信与 Gateway 使用同一个 Linux 用户和 X11 会话。`LINUX_MESSAGE_READER=chatlog` 时，已打开独立窗口的文本、图片和文件收发不要求微信开放 AT-SPI，也不会先尝试 AT-SPI 再回退。
+
+Gateway 的 `accessibility` 模式、Console、微信自动登录和窗口恢复需要 AT-SPI。启用方式是在启动微信前设置：
 
 ```bash
 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 /opt/wechat/wechat
@@ -68,11 +81,11 @@ QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 /opt/wechat/wechat
 也可将 `QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1` 写入 `/etc/environment`，重新登录桌面后生效；已运行的微信仍需重启。
 Console 通过 AT-SPI 读取会话列表、切换聊天、定位输入框和操作独立窗口，复用 `/console`、Cortex 前端及 `/api/console/*` 接口。
 会话列表会虚拟化，`path` 必须使用最近一次 state 返回的值；列表变化后失效的 path 会拒绝执行。
-列表 path 不是 `xxx@chatroom` 群 ID；稳定会话 ID 由 Chatlog 查询得到。AT-SPI 控件缺失或返回无效坐标时停止发送；界面可见不代表辅助功能控件可用，应刷新或重新选择会话后再操作。
+列表 path 不是 `xxx@chatroom` 群 ID；稳定会话 ID 由 Chatlog 查询得到。Console 的 AT-SPI 控件缺失或返回无效坐标时停止发送；界面可见不代表辅助功能控件可用，应刷新或重新选择会话后再操作。
 独立窗口缓存使用会话 ID，恢复时重新查询当前显示名；同名会话无法唯一对应时拒绝自动操作。
 Linux 微信打开独立窗口时会清空主窗口右侧聊天区；Console 在开窗后重新选中原会话，让主窗口继续可用。手动开窗留下空白区时，重新点击目标会话即可恢复；此时 state 的整体 `available=true` 只代表主窗口可访问，仍需检查 `chat_area.available` 和 `input_box.available`。
 
-文本、图片、文件和原生语音发送共用跨进程 UI 锁。粘贴前校验剪贴板，回车前复查目标窗口、当前聊天与输入框焦点；独立窗口也执行输入焦点检查。同名会话在 Chatlog 或当前列表中无法唯一对应时停止操作。
+文本、图片、文件和原生语音发送共用跨进程 UI 锁。粘贴前校验剪贴板，回车前复查发送上下文；辅助功能路径检查当前聊天与输入框焦点，Chatlog 模式的独立窗口发送检查目标窗口与前台窗口。同名会话在 Chatlog 或当前窗口列表中无法唯一对应时停止操作。
 Console 的操作锁覆盖 TTS 合成期间，期间切换聊天、滚动和开关窗口会返回忙；合成本身不占全局 UI 锁。窗口缓存恢复按实际结果返回成功或失败，并提供 opened/already_open/failed 计数。
 图片按图片 MIME 粘贴，文件按 `text/uri-list` 粘贴并保留文件名。文本开头的 `@昵称 ` 会尝试选择原生成员候选，支持多个前缀（如 `@甲 @乙 正文`）；名称中含空白不支持作为单个候选。只扫描新出现的提及弹层，点击候选后确认弹层关闭且输入框新增原生提及对象。候选不存在或重名时清理已选提及后按原文发送。原生 @ 是否成功应核对 Chatlog `at_users`，不能只看正文有 `@`。
 Console 文本引用只匹配当前可见消息，未找到原文或无法确认引用预览时停止发送。

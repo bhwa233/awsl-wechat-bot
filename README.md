@@ -10,7 +10,7 @@
 
 ## 功能特性
 
-- **平台适配**：Windows UIA；Linux Chatlog / AT-SPI + X11。
+- **平台适配**：Windows Chatlog + Win32 / UIA；Linux Chatlog + X11 / AT-SPI。
 - **多群监听**：自动发现独立窗口，按群并发检测，全局限速发送。
 - **WebSocket 网关**：正则订阅、`priority` 优先级和 `passive` 广播。
 - **消息发送**：文本、图片、文件、TTS / MP3；兼容 Base64 和流式文件上传。
@@ -128,7 +128,7 @@ uv run main.py
 | 文档 | 内容 |
 | --- | --- |
 | [配置与运行](docs/configuration.md) | `.env`、独立启动、触发方式、远程命令白名单 |
-| [平台配置](docs/platform-setup.md) | Windows 语音、Linux 安装、消息读取方式与疑难排查 |
+| [平台配置](docs/platform-setup.md) | Windows 语音、Linux 安装、Gateway 收发方式与疑难排查 |
 | [微信启动与窗口恢复](docs/wechat-startup.md) | 登录看护、窗口缓存、恢复限制与状态 API |
 | [开机启动部署](docs/boot-autostart.md) | Linux systemd / 桌面、Windows 登录与 Daemon 自启 |
 | [API 与监控](docs/api.md) | HTTP、流式上传、WebSocket、认证、Prometheus |

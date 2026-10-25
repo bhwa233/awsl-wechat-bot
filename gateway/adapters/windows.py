@@ -128,6 +128,28 @@ class WindowsGroupDebugInfo(GroupDebugInfo):
         return WindowsWeChatAdapter.standalone_conversation_id(self.automation_id)
 
 
+@dataclass
+class WindowsNativeWindow:
+    Name: str
+    NativeWindowHandle: int
+    ClassName: str
+
+    def Exists(self, timeout: float = 0.5) -> bool:
+        import win32gui
+
+        hwnd = self.NativeWindowHandle
+        return (win32gui.IsWindow(hwnd) and win32gui.GetWindowText(hwnd) == self.Name
+                and win32gui.GetClassName(hwnd) == self.ClassName)
+
+    def SendKeys(self, keys: str, *, waitTime: float = 0.2) -> None:
+        import win32gui
+
+        if not self.Exists() or win32gui.GetForegroundWindow() != self.NativeWindowHandle:
+            raise RuntimeError("Target window lost foreground focus")
+        # 此键盘工具使用 Win32 SendInput, 不查询 UIA 控件。
+        auto.SendKeys(keys, waitTime=waitTime)
+
+
 class WindowsWeChatAdapter(BaseWeChatAdapter):
     SUPPORTS_VOICE = True
     SUPPORTS_MENTION_ALL = True
@@ -426,6 +448,25 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         return target
 
     def _focus_send_target(self, window):
+        if isinstance(window, WindowsNativeWindow):
+            import win32api
+            import win32con
+            import win32gui
+
+            matches = [w for w in self.find_all_wechat_windows() if w.title == window.Name]
+            if len(matches) != 1 or matches[0].window.NativeWindowHandle != window.NativeWindowHandle:
+                raise RuntimeError("Standalone window is missing or ambiguous")
+            if not window.Exists() or win32gui.GetForegroundWindow() != window.NativeWindowHandle:
+                raise RuntimeError("Target window lost foreground focus")
+            _, _, width, height = win32gui.GetClientRect(window.NativeWindowHandle)
+            if width <= 0 or height <= 45:
+                raise RuntimeError("Invalid standalone window geometry")
+            position = win32gui.ClientToScreen(window.NativeWindowHandle, (width // 2, height - 45))
+            win32api.SetCursorPos(position)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0)
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0)
+            time.sleep(0.2)
+            return window
         target = self._find_chat_input_control(window)
         if target is None:
             return window
@@ -622,6 +663,39 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
     def find_all_wechat_windows(self) -> list[DiscoveredWindow]:
         """查找所有微信窗口(包括弹出的群聊窗口)."""
+        if config.WINDOWS_MESSAGE_READER == "chatlog":
+            import psutil
+            import win32gui
+            import win32process
+
+            pids = {p.pid for p in psutil.process_iter(["name"])
+                    if (p.info["name"] or "").lower() in {"wechat.exe", "weixin.exe"}}
+            if not pids:
+                return []
+            response = self._db_reader.client.get("groups", params={"limit": 0})
+            response.raise_for_status()
+            titles = {}
+            for group in response.json():
+                for name in {group.get(key) for key in ("username", "display_name", "remark", "nick_name")} - {None, ""}:
+                    titles.setdefault(name, set()).add(group["username"])
+            windows = []
+
+            def collect(hwnd, _):
+                try:
+                    if not win32gui.IsWindowVisible(hwnd) or win32process.GetWindowThreadProcessId(hwnd)[1] not in pids:
+                        return
+                    title = win32gui.GetWindowText(hwnd)
+                    if title in {"微信", "WeChat", "Weixin"} or len(titles.get(title, ())) != 1:
+                        return
+                    windows.append(WindowsNativeWindow(title, hwnd, win32gui.GetClassName(hwnd)))
+                except win32gui.error:
+                    return
+
+            win32gui.EnumWindows(collect, None)
+            counts = {}
+            for window in windows:
+                counts[window.Name] = counts.get(window.Name, 0) + 1
+            return [self._discovered_window(window) for window in windows if counts[window.Name] == 1]
         self._ensure_uia()
         logger.debug("正在扫描所有微信窗口...")
         all_windows: list[DiscoveredWindow] = []
@@ -740,9 +814,9 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         Returns:
             list[str]: 消息列表
         """
-        self._ensure_uia()
         if config.WINDOWS_MESSAGE_READER == "chatlog":
             return self._db_reader.read(window)
+        self._ensure_uia()
         state_key = self._message_state_key(window)
         # 读取不需要锁:每个线程有独立 UIA/COM 上下文,读不同窗口可并行
         logger.debug("正在查找消息列表...")
@@ -951,7 +1025,12 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         Returns:
             bool: 是否发送成功
         """
-        self._ensure_uia()
+        if isinstance(window, WindowsNativeWindow):
+            if mention_all:
+                logger.error("Native mentions require accessibility mode")
+                return False
+        else:
+            self._ensure_uia()
         with self._send_lock:
             logger.debug(f"[send_text_to_window] 向窗口 {window.Name} 发送: {text[:20]}...")
 
@@ -969,12 +1048,12 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     input_id = tuple(target.GetRuntimeId())
                     name = self.select_mention_all(window, target)
                     sent_text = f"@{name} {text}"
-                at_names, remaining = ([], text) if mention_all else self._parse_at_prefix(text)
+                at_names, remaining = ([], text) if mention_all or isinstance(window, WindowsNativeWindow) else self._parse_at_prefix(text)
                 at_ok = True
                 try:
                     # baseline 锚定进入 @ 流程前已存在的 popover 数量，
                     # 避免无关 popover（表情/右键菜单/残影）造成 false positive
-                    baseline = self._count_at_popovers(window)
+                    baseline = self._count_at_popovers(window) if at_names else 0
                     for name in at_names:
                         target.SendKeys('@', waitTime=0.05)
                         if not self._wait_at_popover(window, baseline):
@@ -1053,7 +1132,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
 
         import win32clipboard
 
-        self._ensure_uia()
+        if not isinstance(window, WindowsNativeWindow):
+            self._ensure_uia()
         with self._send_lock:
             logger.debug(f"[send_image_to_window] 向窗口 {window.Name} 发送图片...")
 
@@ -1104,7 +1184,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         """向指定窗口发送文件(base64 编码)"""
         import base64
 
-        self._ensure_uia()
+        if not isinstance(window, WindowsNativeWindow):
+            self._ensure_uia()
         with self._send_lock:
             logger.debug(f"[send_file_to_window] 向窗口 {window.Name} 发送文件: {filename}")
 
@@ -1132,7 +1213,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
                     self._schedule_temp_path_cleanup(temp_path, temp_dir, initial_delay=1.0)
 
     def send_file_path_to_window(self, window, file_path: Path, filename: str) -> bool:
-        self._ensure_uia()
+        if not isinstance(window, WindowsNativeWindow):
+            self._ensure_uia()
         with self._send_lock:
             if not self.activate_specific_window(window):
                 return False
@@ -1151,7 +1233,8 @@ class WindowsWeChatAdapter(BaseWeChatAdapter):
         """通过 VB-CABLE 向 Windows 微信发送 Base64 MP3 语音。"""
         from gateway.utils.windows_voice import prepare_voice_file
 
-        self._ensure_uia()
+        if not isinstance(window, WindowsNativeWindow):
+            self._ensure_uia()
         logger.debug(f"[send_voice_to_window] 向窗口 {window.Name} 发送语音: {filename}")
         deadline = time.monotonic() + (config.WINDOWS_VOICE_TIMEOUT if timeout is None else timeout)
         try:

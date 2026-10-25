@@ -190,6 +190,7 @@ class LinuxConsoleFailureTest(unittest.TestCase):
 
 class LinuxRecordingFailureTest(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch("gateway.adapters.linux.config.LINUX_MESSAGE_READER", "accessibility"))
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         self.marker = Path(directory.name) / "pending.json"

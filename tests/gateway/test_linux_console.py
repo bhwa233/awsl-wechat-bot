@@ -100,6 +100,9 @@ class LinuxMessageCursorTest(unittest.TestCase):
 
 
 class LinuxSendGuardTest(unittest.TestCase):
+    def setUp(self):
+        self.enterContext(patch("gateway.adapters.linux.config.LINUX_MESSAGE_READER", "accessibility"))
+
     def test_current_chat_is_focused_without_reclicking_session(self):
         adapter = Mock()
         adapter._ambiguous_titles = set()
@@ -191,13 +194,52 @@ class LinuxSendGuardTest(unittest.TestCase):
         adapter.window_nodes.return_value = [self.field()]
         self.assertTrue(adapter._send_context_matches(LinuxWeChatWindow("group", "0x1")))
 
-    def test_standalone_accessibility_failure_does_not_click_geometry(self):
+    @patch("gateway.adapters.linux.config.LINUX_MESSAGE_READER", "chatlog")
+    def test_chatlog_sends_without_accessibility(self):
+        adapter = object.__new__(LinuxWeChatAdapter)
+        adapter._ambiguous_titles = set()
+        adapter._active_window_matches = Mock(return_value=True)
+        adapter.window_nodes = Mock(side_effect=RuntimeError("unavailable"))
+        adapter._window_geometry = Mock(return_value=(10, 20, 800, 600))
+        adapter._run_x11 = Mock(return_value=Mock(returncode=0))
+        window = LinuxWeChatWindow("group", "0x1")
+        adapter.list_windows = Mock(return_value=[window])
+        self.assertTrue(adapter._focus_input_area(window))
+        adapter._run_x11.assert_called_once_with(["xdotool", "mousemove", "410", "575", "click", "1"])
+        adapter.window_nodes.assert_not_called()
+        self.assertEqual(adapter._prepare_mentions(window, "@someone body"), "@someone body")
+        with self.assertRaisesRegex(RuntimeError, "require accessibility"):
+            adapter._select_mention(window, None)
+        adapter._active_window_matches.return_value = False
+        self.assertFalse(adapter._send_context_matches(window))
+        adapter._active_window_matches.return_value = True
+        adapter.window_nodes = Mock(return_value=[self.field(ref=AccessibleRef("bus", "/field"))])
+        adapter.accessibility = Mock()
+        self.assertTrue(adapter._focus_input_area(LinuxWeChatWindow("WeChat", "0x1", expected_chat="group")))
+        adapter.accessibility.focus.assert_called_once()
+
+    @patch("gateway.adapters.linux.config.LINUX_MESSAGE_READER", "chatlog")
+    def test_chatlog_rejects_main_ambiguous_missing_or_invalid_windows(self):
         adapter = object.__new__(LinuxWeChatAdapter)
         adapter._ambiguous_titles = set()
         adapter._active_window_matches = Mock(return_value=True)
         adapter.window_nodes = Mock(side_effect=RuntimeError("unavailable"))
         adapter._run_x11 = Mock()
-        self.assertFalse(adapter._focus_input_area(LinuxWeChatWindow("group", "0x1")))
+        window = LinuxWeChatWindow("group", "0x1")
+        cases = [
+            (LinuxWeChatWindow("WeChat", "0x1"), [], (0, 0, 800, 600)),
+            (LinuxWeChatWindow("group", "0x1", expected_chat="group"), [window], (0, 0, 800, 600)),
+            (window, [window, LinuxWeChatWindow("group", "0x2")], (0, 0, 800, 600)),
+            (window, [], (0, 0, 800, 600)),
+            (window, [LinuxWeChatWindow("group", "0x2")], (0, 0, 800, 600)),
+            (window, [window], None),
+            (window, [window], (0, 0, 0, 600)),
+        ]
+        for target, windows, geometry in cases:
+            with self.subTest(target=target, windows=windows, geometry=geometry):
+                adapter.list_windows = Mock(return_value=windows)
+                adapter._window_geometry = Mock(return_value=geometry)
+                self.assertFalse(adapter._focus_input_area(target))
         adapter._run_x11.assert_not_called()
 
     def test_zero_sized_input_is_rejected(self):
@@ -305,6 +347,7 @@ class LinuxSendGuardTest(unittest.TestCase):
 
 class LinuxMentionTest(unittest.TestCase):
     def setUp(self):
+        self.enterContext(patch("gateway.adapters.linux.config.LINUX_MESSAGE_READER", "accessibility"))
         self.adapter = object.__new__(LinuxWeChatAdapter)
         self.window = LinuxWeChatWindow("group", "0x1")
         self.adapter._send_context_matches = Mock(return_value=True)
