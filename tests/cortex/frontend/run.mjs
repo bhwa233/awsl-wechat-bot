@@ -10,7 +10,7 @@ const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright')
 const root = fileURLToPath(new URL('../../../cortex/templates/', import.meta.url));
 const artifacts = process.env.FRONTEND_TEST_ARTIFACTS || (await fs.mkdtemp(path.join(os.tmpdir(), 'awsl-frontend-')));
 await fs.mkdir(artifacts, { recursive: true });
-const allModules = ['app', 'tasks', 'webhooks', 'commands', 'chat', 'console'];
+const allModules = ['app', 'tasks', 'webhooks', 'commands', 'chat', 'console', 'archive'];
 const modules = process.argv.slice(2).length ? process.argv.slice(2) : allModules;
 for (const name of modules) assert.ok(allModules.includes(name), `未知测试模块：${name}`);
 const server = http.createServer(async (req, res) => {

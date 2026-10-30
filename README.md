@@ -15,6 +15,7 @@
 - **WebSocket 网关**：正则订阅、`priority` 优先级和 `passive` 广播。
 - **消息发送**：文本、图片、文件、TTS / MP3；兼容 Base64 和流式文件上传。
 - **聊天记录**：v1 离线解密 / v2 原生库在线读取，支持搜索、联系人与群成员。
+- **云端归档**：通过 SparkHub API 接入 Cloudflare D1，支持 Windows/Linux 指定群历史补录、持续增量、断点续传和云端查询，admin 展示接收统计。
 - **富媒体**：图片解密、HEVC 转 JPEG、SILK 转 MP3、表情与文件读取。
 - **AI 与命令**：OpenAI 兼容接口、关键词 / @ 触发、本地与远程命令。
 - **任务与总结**：cron 调度、LLM 群聊总结、Markdown 图片输出。
@@ -133,6 +134,7 @@ uv run main.py
 | [开机启动部署](docs/boot-autostart.md) | Linux systemd / 桌面、Windows 登录与 Daemon 自启 |
 | [API 与监控](docs/api.md) | HTTP、流式上传、WebSocket、认证、Prometheus |
 | [架构与线程模型](docs/architecture.md) | 服务关系、消息流与线程职责 |
+| [Cloudflare D1 归档](docs/cloudflare-archive.md) | 云端部署、指定群管理、增量同步与后续向量化 |
 | [数据库密钥提取](docs/wechat-db-key-extraction.md) | Windows / Linux 数据库密钥与图片密钥 |
 | [原生库来源](chatlog/vendor/UPSTREAM.md) | Chatlog 二进制版本、构建来源与哈希 |
 | [前端开发](cortex/templates/README.md) | 无构建前端的组件结构与回归验证 |

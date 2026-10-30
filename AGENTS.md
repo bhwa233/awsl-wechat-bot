@@ -27,6 +27,7 @@
 | Daemon | 8001 | Bot 启停、更新、日志与健康看护；`daemon/manager.py`、`daemon/routes.py` |
 
 - `main.py`：监督 Gateway、Chatlog、Cortex 三个独立子进程，异常退出后重启对应服务。
+- 启用 `ARCHIVE_ENABLED` 后另监督 `archive.main`；`archive/` 复用 ChatlogClient、httpx 和 SQLiteMigrator，接收与只读监控在 SparkHub 的 `apps/api/src/wechat-archive/` 和 admin；群范围与同步控制留在本地。
 - `common/`：配置、协议模型、认证、日志、指标及版本化 SQLite 迁移。
 - `gateway/core/`：Detector、WS hub、串行 Sender、后台 VoiceSynthesisWorker；`SendTask` 是 `OutgoingMessage` 的别名。
 - `gateway/adapters/`：平台读取/发送策略；`gateway/console/`：主窗口与独立窗口操作。
@@ -88,6 +89,9 @@ uv lock
 ```
 
 ## 验证与实机操作
+
+- 归档可靠性：`uv run python -m unittest discover -s tests/archive -p "test_*.py"`；SparkHub 仓库在 `apps/api` 执行 `pnpm exec vitest run src/wechat-archive`，使用本地 D1。本仓没有归档 Worker 或新增 Node/Python 依赖。
+- 归档 Web UI 复用 `cortex/templates/ui.js` 的控件、请求和轮询原语；验证入口与按服务约定见 `tests/README.md`。归档新增测试由 unittest discover 自动发现，不维护另一份数据库 schema。
 
 - 标准库 unittest 按服务运行，仅执行与改动相关的检查；前端和完整测试命令见 [测试说明](tests/README.md)。
 - 文档改动检查本地链接、锚点和 Mermaid 语法；提交前运行 `git diff --check`。

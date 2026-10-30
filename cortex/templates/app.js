@@ -22,11 +22,13 @@ import { Console } from './console.js';
 import { Tasks } from './tasks.js';
 import { CustomCommands, RemoteCommands } from './custom_commands.js';
 import { Webhooks } from './webhooks.js';
+import { Archive } from './archive.js';
 import { WeChatStartup } from './wechat_startup.js?v=202610230002';
 
 const pages = [
     ['dashboard', '概览', 'dashboard'],
     ['chat', '聊天记录', 'chat'],
+    ['archive', '云端归档', 'cloud'],
     ['console', '控制台', 'console'],
     ['tasks', '定时任务', 'clock'],
     ['remote-commands', '远程命令', 'cloud'],
@@ -36,6 +38,7 @@ const pages = [
 const components = {
     dashboard: Dashboard,
     chat: Chat,
+    archive: Archive,
     console: Console,
     tasks: Tasks,
     'remote-commands': RemoteCommands,

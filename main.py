@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AWSL 微信机器人 - 启动 Gateway + Chatlog + Cortex
+AWSL 微信机器人 - 启动 Gateway + Chatlog + Cortex, 可选 Archive
 """
 
 import contextlib
@@ -61,7 +61,10 @@ def main():
             "Gateway :%d + Chatlog :%d + Cortex :%d 启动中",
             config.HTTP_API_PORT, config.CHATLOG_HTTP_PORT, config.CORTEX_HTTP_PORT,
         )
-        for module in ("gateway.main", "chatlog.main", "cortex.main"):
+        modules = ["gateway.main", "chatlog.main", "cortex.main"]
+        if config.ARCHIVE_ENABLED:
+            modules.append("archive.main")
+        for module in modules:
             if stop_requested:
                 break
             thread = threading.Thread(target=supervise_service, args=(module, stop), daemon=True, name=module)
