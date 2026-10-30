@@ -30,12 +30,13 @@ class ArchiveSyncTest(unittest.TestCase):
         self.path = Path(directory) / "state.db"
         self.store = ArchiveStore(self.path, "account", "windows")
         self.store.set_group("room@chatroom", "测试群", True)
-        self.config = SimpleNamespace(ARCHIVE_PAGE_SIZE=2, ARCHIVE_MAX_PENDING_BYTES=10_000_000,
+        self.config = SimpleNamespace(ARCHIVE_PAGE_SIZE=2, ARCHIVE_MAX_PENDING_BYTES=10_000_000, ARCHIVE_POLL_SECONDS=60,
                                       ARCHIVE_RECONCILE_SECONDS=3600, ARCHIVE_OVERLAP_SECONDS=86400)
 
     def test_same_seq_pages_survive_restart_and_lost_ack_without_dropping_self_messages(self):
         rows = [message(1), message(1, server_id=9007199254740991008), *[message(i) for i in range(2, 8)]]
         received = {}
+        reports = []
         lose_ack = True
 
         def chatlog(request):
@@ -48,20 +49,30 @@ class ArchiveSyncTest(unittest.TestCase):
 
         def cloud(request):
             nonlocal lose_ack
+            self.assertTrue(request.url.path.startswith('/api/wechat-archive/v1/'))
+            if request.method == "GET":
+                return httpx.Response(200, json={"success": True, "data": {
+                    "account_id": "account", "source_id": "windows", "groups": ["room@chatroom"],
+                }})
             body = json.loads(request.content)
+            if request.url.path.endswith('/heartbeat'):
+                reports.append(body)
+                return httpx.Response(200, json={"success": True, "data": {"reported_at": body["reported_at"]}})
             for row in body["messages"]:
                 received[row["server_id"]] = row
             if lose_ack:
                 lose_ack = False
                 raise httpx.ReadTimeout("response lost", request=request)
-            return httpx.Response(200, json={"batch_id": body["batch_id"], "accepted": len(body["messages"])})
+            return httpx.Response(200, json={"success": True, "data": {
+                "batch_id": body["batch_id"], "accepted": len(body["messages"]),
+            }})
 
         local = ChatlogClient("http://chatlog")
         self.addCleanup(local.close)
         local._client = httpx.Client(base_url="http://chatlog", transport=httpx.MockTransport(chatlog))
-        remote = ArchiveClient("http://cloud", "not-used-by-transport")
+        remote = ArchiveClient("http://cloud/api/wechat-archive", "not-used-by-transport")
         self.addCleanup(remote.close)
-        remote.client = httpx.Client(base_url="http://cloud", transport=httpx.MockTransport(cloud))
+        remote.client = httpx.Client(base_url="http://cloud/api/wechat-archive/", transport=httpx.MockTransport(cloud))
         sync = ArchiveSync(self.store, local, remote, self.config)
         sync.tick(threading.Event())
         self.assertGreater(self.store.status()["pending"], 0)
@@ -74,6 +85,8 @@ class ArchiveSyncTest(unittest.TestCase):
         self.assertEqual(sum(row["is_self"] for row in received.values()), 3)
         self.assertEqual(self.store.status()["pending"], 0)
         self.assertTrue(self.store.groups()[0]["history_done"])
+        self.assertTrue(any(report.get("run", {}).get("status") == "completed" for report in reports))
+        self.assertNotIn("群成员", json.dumps(reports, ensure_ascii=False))
 
     def test_invalid_page_or_full_queue_rolls_back_seen_outbox_and_cursor_together(self):
         self.store.initialize("room@chatroom", 101)

@@ -80,8 +80,10 @@ def config_error(config) -> str:
         url = urlparse(config.ARCHIVE_URL)
     except ValueError:
         return "ARCHIVE_URL 无效"
-    if url.username or url.password or url.query or url.fragment or url.path not in {"", "/"}:
-        return "ARCHIVE_URL 必须是不含路径、凭证和查询参数的服务地址"
+    if url.username or url.password or url.query or url.fragment:
+        return "ARCHIVE_URL 必须是不含凭证和查询参数的服务地址"
+    if any(part in {".", ".."} for part in url.path.split("/")) or "%" in url.path:
+        return "ARCHIVE_URL 路径无效"
     if url.scheme != "https" and not (url.scheme == "http" and url.hostname in {"localhost", "127.0.0.1", "::1"}):
         return "ARCHIVE_URL 必须使用 HTTPS(本地回环开发地址除外)"
     if not url.hostname:

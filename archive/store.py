@@ -32,13 +32,17 @@ def _create_schema(conn):
         conn.execute(sql)
 
 
+def _add_batch_kind(conn):
+    SQLiteMigrator.add_column_if_missing(conn, "outbox", "kind TEXT NOT NULL DEFAULT 'mixed'", "kind")
+
+
 class ArchiveStore:
     def __init__(self, path: str | Path, account_id: str, source_id: str):
         self.path = str(path)
         self.account_id, self.source_id = account_id, source_id
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).touch(mode=0o600, exist_ok=True)
-        SQLiteMigrator(self.path).migrate([("001_archive", _create_schema)])
+        SQLiteMigrator(self.path).migrate([("001_archive", _create_schema), ("002_batch_kind", _add_batch_kind)])
         with closing(self.connect()) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT account_id, source_id FROM identity").fetchone()
@@ -129,9 +133,9 @@ class ArchiveStore:
                 if size + len(encode(envelope).encode()) + 4096 > MAX_BATCH_BYTES:
                     raise ValueError("单条消息超过归档上传限制;原文未丢弃,游标保持不变")
                 conn.execute(
-                    "INSERT INTO outbox(talker, local_key, payload, bytes) VALUES (?, ?, ?, ?) "
-                    "ON CONFLICT(talker, local_key) DO UPDATE SET payload=excluded.payload, bytes=excluded.bytes",
-                    (talker, key, payload, size),
+                    "INSERT INTO outbox(talker, local_key, payload, bytes, kind) VALUES (?, ?, ?, ?, ?) "
+                    "ON CONFLICT(talker, local_key) DO UPDATE SET payload=excluded.payload, bytes=excluded.bytes, kind=excluded.kind",
+                    (talker, key, payload, size, kind),
                 )
                 conn.execute("INSERT INTO seen VALUES (?, ?, ?) ON CONFLICT(talker, local_key) DO UPDATE SET digest=excluded.digest",
                              (talker, key, fingerprint))
@@ -157,19 +161,22 @@ class ArchiveStore:
                 (min(limit, 200),),
             ).fetchall()
         messages, groups, queued = [], {}, []
-        body = {"account_id": self.account_id, "source_id": self.source_id, "groups": [], "messages": messages}
+        kinds = set()
+        body = {"account_id": self.account_id, "source_id": self.source_id, "groups": [], "messages": messages, "kind": "mixed"}
         for row in rows:
             message = json.loads(row["payload"])
             groups[row["talker"]] = row["display_name"]
             candidate = {**body, "groups": [{"talker": key, "display_name": name} for key, name in groups.items()],
                          "messages": [*messages, message], "batch_id": "0" * 64}
-            if len(encode(candidate).encode()) > MAX_BATCH_BYTES:
+            if len(encode(candidate).encode()) + 256 > MAX_BATCH_BYTES:
                 break
             messages.append(message)
+            kinds.add(row["kind"])
             queued.append((row["id"], row["payload"], row["talker"]))
             body["groups"] = candidate["groups"]
         if not queued:
             return None
+        body["kind"] = next(iter(kinds)) if len(kinds) == 1 else "mixed"
         body["batch_id"] = digest(body)
         return body, queued
 

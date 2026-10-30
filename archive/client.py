@@ -1,4 +1,4 @@
-"""归档 Worker 的有界 HTTP 客户端。"""
+"""SparkHub 归档 API 的有界 HTTP 客户端。"""
 
 import httpx
 
@@ -17,20 +17,30 @@ class ArchiveClient:
 
     def upload(self, body: dict):
         response = self.client.post("/v1/batches", content=encode(body).encode(), headers={"Content-Type": "application/json"})
-        response.raise_for_status()
-        data = response.json()
+        data = self._data(response)
         if data.get("batch_id") != body["batch_id"] or data.get("accepted") != len(body["messages"]):
             raise ValueError("云端未完整确认当前批次,保留待上传数据")
 
     def messages(self, account_id: str, **filters):
         response = self.client.get("/v1/messages", params={"account_id": account_id, **filters})
-        response.raise_for_status()
-        return response.json()
+        return self._data(response)
 
     def scope(self):
         response = self.client.get("/v1/scope")
+        return self._data(response)
+
+    def heartbeat(self, body: dict):
+        response = self.client.post("/v1/heartbeat", content=encode(body).encode(),
+                                    headers={"Content-Type": "application/json"}, timeout=10)
+        return self._data(response)
+
+    @staticmethod
+    def _data(response):
         response.raise_for_status()
-        return response.json()
+        payload = response.json()
+        if not isinstance(payload, dict) or payload.get("success") is not True or not isinstance(payload.get("data"), dict):
+            raise ValueError("归档服务响应不完整,保留本地进度")
+        return payload["data"]
 
 
 def failure_message(error: Exception) -> str:

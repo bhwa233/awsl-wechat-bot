@@ -17,7 +17,7 @@ ENV/
 *.db-wal
 *.db.lock
 
-# Cloudflare Worker development
+# Local development tooling
 node_modules/
 .wrangler/
 .dev.vars

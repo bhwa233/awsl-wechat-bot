@@ -15,7 +15,7 @@
 - **WebSocket 网关**：正则订阅、`priority` 优先级和 `passive` 广播。
 - **消息发送**：文本、图片、文件、TTS / MP3；兼容 Base64 和流式文件上传。
 - **聊天记录**：v1 离线解密 / v2 原生库在线读取，支持搜索、联系人与群成员。
-- **云端归档**：可选 Cloudflare D1，指定群历史补录、持续增量、断点续传与云端查询，支持 Windows/Linux。
+- **云端归档**：通过 SparkHub API 接入 Cloudflare D1，支持 Windows/Linux 指定群历史补录、持续增量、断点续传和云端查询，admin 展示接收统计。
 - **富媒体**：图片解密、HEVC 转 JPEG、SILK 转 MP3、表情与文件读取。
 - **AI 与命令**：OpenAI 兼容接口、关键词 / @ 触发、本地与远程命令。
 - **任务与总结**：cron 调度、LLM 群聊总结、Markdown 图片输出。
