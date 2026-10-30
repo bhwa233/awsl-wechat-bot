@@ -12,6 +12,9 @@ export async function mockApi(page, base) {
         windowsOpen: false,
         cacheExists: false,
         consoleSelected: '开发群',
+        archiveGroups: [],
+        archiveSaveFails: false,
+        archiveQueryFails: false,
     };
     const errors = [],
         calls = [],
@@ -147,6 +150,37 @@ export async function mockApi(page, base) {
                 backend: 'v1',
                 media: { image: true, sticker: true, video_thumb: true, voice: true, file: true },
             };
+        else if (endpoint === '/api/archive/status') result = {
+            enabled: true, running: true, account_id: 'account', source_id: 'windows',
+            heartbeat: Date.now(), pending: 0, pending_bytes: 0, groups: state.archiveGroups,
+        };
+        else if (endpoint === '/api/archive/available-groups') result = groups;
+        else if (endpoint === '/api/archive/groups') {
+            if (state.archiveSaveFails) {
+                status = 503;
+                result = { detail: '归档设置暂时无法保存' };
+            } else {
+                const existing = state.archiveGroups.find((group) => group.talker === body.talker);
+                if (existing) existing.enabled = body.enabled;
+                else state.archiveGroups.push({ ...body, display_name: groups.find((group) => group.username === body.talker).display_name,
+                    history_done: true, pending: 0 });
+                result = { success: true };
+            }
+        }
+        else if (endpoint === '/api/archive/replay') {
+            state.archiveGroups.find((group) => group.talker === body.talker).history_done = false;
+            result = { success: true };
+        }
+        else if (endpoint === '/api/archive/messages' && state.archiveQueryFails) {
+            status = 503;
+            result = { detail: '云端记录暂时不可用' };
+        }
+        else if (endpoint === '/api/archive/messages') result = {
+            messages: [{ id: url.searchParams.has('cursor') ? 'older-message' : 'current-message',
+                server_id: '9007199254740991001', create_time: 100, sender: 'member', sender_name: '小明', msg_type: 1,
+                content: '归档正文 <img src=x onerror=alert(1)>', text: url.searchParams.has('cursor') ? '更早的归档正文' : '归档正文 <img src=x onerror=alert(1)>',
+                is_self: false }], next_cursor: url.searchParams.has('cursor') ? null : 'next-page',
+        };
         else if (endpoint === '/api/chatlog/groups') result = groups;
         else if (endpoint === '/api/chatlog/decrypt') result = { success: true, message: '解密完成' };
         else if (endpoint === '/api/chatlog/contacts') result = [{ username: 'user1', nick_name: '小明' }];

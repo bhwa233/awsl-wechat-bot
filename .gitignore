@@ -15,6 +15,12 @@ ENV/
 *.db
 *.db-shm
 *.db-wal
+*.db.lock
+
+# Cloudflare Worker development
+node_modules/
+.wrangler/
+.dev.vars
 
 # IDE
 .idea/

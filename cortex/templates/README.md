@@ -9,6 +9,7 @@ Preact 及同包 Hooks 已固定在 `vendor/preact/`，由 `index.html` 的本�
 ## 文件职责
 
 - `wechat_startup.js`：概览微信启动按钮和进度，复用 Console 代理；启动成功后刷新服务状态。
+- `archive.js`：指定群云端归档管理、进程与队列状态、带来源的云端记录查询；复用现有控件和轮询。
 - `app.js`：应用上下文、导航与浏览器历史、主题、Token、概览。
 - `api.js`：鉴权、HTTP 错误、超时和取消；公共数据格式化。
 - `ui.js`：基础控件、焦点管理弹窗、请求与可见性轮询 Hooks。
@@ -46,4 +47,4 @@ PLAYWRIGHT_MODULE=/tmp/awsl-preact-qa/node_modules/playwright/index.mjs node tes
 
 可用 `PLAYWRIGHT_CHANNEL` 指定浏览器通道，`FRONTEND_TEST_ARTIFACTS` 指定截图目录。默认截图写入系统临时目录。测试覆盖本地 Import Map 与单一 Preact 实例、表单 CRUD、失败重试、文件附件、总结配置、策略重新读取与过期响应取消、慢速 Gateway 下的会话恢复与手动发送目标、会话分页与请求竞态、媒体节点保留、输入法与重复发送保护、控制台、移动端、主题和认证。
 
-测试按服务归类在 `tests/cortex/`；浏览器用例可在入口后指定 `app`、`tasks`、`webhooks`、`commands`、`chat` 或 `console` 单独运行。每个浏览器模块使用独立的上下文与模拟数据。
+测试按服务归类在 `tests/cortex/`；浏览器用例可在入口后指定 `app`、`tasks`、`webhooks`、`commands`、`chat`、`console` 或 `archive` 单独运行。每个浏览器模块使用独立的上下文与模拟数据。

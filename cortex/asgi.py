@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from common.config import config
 from common.logging import setup_uvicorn_logging
 from cortex.metrics import metrics
-from cortex.routes import chatlog_proxy, custom_commands, gateway_proxy, health, remote_commands, summary, tasks, webhooks, webui
+from cortex.routes import archive, chatlog_proxy, custom_commands, gateway_proxy, health, remote_commands, summary, tasks, webhooks, webui
 from cortex.runtime import CortexRuntime
 from cortex.scheduler import TaskScheduler
 from cortex.services.scheduled_task import ScheduledTaskService
@@ -40,6 +40,7 @@ def create_app(cortex_app: CortexRuntime) -> FastAPI:
 
     gw_proxy_router, gw_proxy_client = gateway_proxy.create_routes(config.HTTP_API_BASE_URL, config.HTTP_API_TOKEN)
     cl_proxy_router, cl_proxy_client = chatlog_proxy.create_routes(chatlog_base_url, config.HTTP_API_TOKEN)
+    archive_router, archive_client = archive.create_routes(cortex_app.chatlog_client)
 
     cortex_app.gateway_client.add_listener(cortex_app)
     cortex_app.gateway_client.add_listener(webhook_service)
@@ -62,6 +63,7 @@ def create_app(cortex_app: CortexRuntime) -> FastAPI:
                 ("Chatlog 代理客户端", cl_proxy_client.aclose),
                 ("webhook 服务", webhook_service.close),
                 ("任务服务", task_service.close),
+                ("归档客户端", archive_client.close if archive_client else lambda: None),
             ]:
                 try:
                     result = cleanup()
@@ -86,5 +88,6 @@ def create_app(cortex_app: CortexRuntime) -> FastAPI:
     app.include_router(summary.create_routes(cortex_app.summary_service))
     app.include_router(gw_proxy_router)
     app.include_router(cl_proxy_router)
+    app.include_router(archive_router)
     app.mount("/static", StaticFiles(directory=os.path.join(project_root, "cortex", "templates")), name="static")
     return app

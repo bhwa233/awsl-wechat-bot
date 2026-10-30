@@ -35,6 +35,22 @@ class ChatlogClient:
         resp.raise_for_status()
         return resp.json()
 
+    def get_archive_messages(self, group: str, since_seq: int, *, limit: int = 200, offset: int = 0) -> list[dict]:
+        """归档固定调用 v2, 不受聊天页默认后端开关影响。"""
+        resp = self._client.post("/api/chatlog/v2/messages/batch", json={
+            "items": [{"group": group, "since_seq": since_seq}], "limit": limit, "offset": offset,
+        })
+        resp.raise_for_status()
+        data = resp.json()
+        if set(data.get("results", {})) != {group} or not isinstance(data["results"][group], list):
+            raise ValueError("Chatlog 增量查询结果不完整")
+        return data["results"][group]
+
+    def get_archive_latest(self, group: str) -> list[dict]:
+        resp = self._client.get("/api/chatlog/v2/messages", params={"group": group, "limit": 1, "desc": "true"})
+        resp.raise_for_status()
+        return resp.json()
+
     def get_messages(
         self,
         group: str,
@@ -135,4 +151,3 @@ class ChatlogClient:
             return None
         resp.raise_for_status()
         return resp.json()
-        return data.get("display_name")

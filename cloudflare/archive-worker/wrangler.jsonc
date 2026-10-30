@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "awsl-chat-archive",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-30",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "awsl-chat-archive",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

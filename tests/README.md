@@ -11,9 +11,12 @@ uv run python -m unittest discover -s tests/cortex -p "test_*.py"
 uv run python -m unittest discover -s tests/gateway -p "test_*.py"
 uv run python -m unittest discover -s tests/chatlog -p "test_*.py"
 uv run python -m unittest discover -s tests/runtime -p "test_*.py"
+uv run python -m unittest discover -s tests/archive -p "test_*.py"
 ```
 
 Cortex 覆盖 ORM、迁移、接口和静态资源；Gateway 覆盖消息读取、发送、窗口操作与启动看护；Chatlog 覆盖查询和分页；runtime 覆盖子进程监督。平台相关用例按环境跳过，以实际运行结果为准。
+
+归档覆盖同 seq 分页、重启恢复、持久化队列的事务回滚、确认丢失重传、内容更新与旧确认竞争。Worker 另在 `cloudflare/archive-worker` 运行 `npm test`，使用临时本地 D1 验证批量提交、跨设备去重、ID 关联和账号/群权限边界。详见 [归档说明](../docs/cloudflare-archive.md)。
 
 ## 前端回归
 

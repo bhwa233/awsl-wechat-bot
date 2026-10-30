@@ -5,7 +5,7 @@ AWSL 微信机器人配置 - 使用 Pydantic Settings
 
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -116,6 +116,19 @@ class Config(BaseSettings):
     # Chatlog HTTP API 服务配置
     CHATLOG_HTTP_HOST: str = "0.0.0.0"
     CHATLOG_HTTP_PORT: int = 7998
+
+    # Cloudflare 聊天归档(独立后台进程; 凭证不通过 Web UI 返回)
+    ARCHIVE_ENABLED: bool = False
+    ARCHIVE_URL: str = ""
+    ARCHIVE_TOKEN: str = ""
+    ARCHIVE_ACCOUNT_ID: str = ""
+    ARCHIVE_SOURCE_ID: str = ""
+    ARCHIVE_STATE_PATH: str = "archive_state.db"
+    ARCHIVE_POLL_SECONDS: float = Field(default=60, ge=1, le=3600)
+    ARCHIVE_PAGE_SIZE: int = Field(default=200, ge=1, le=500)
+    ARCHIVE_MAX_PENDING_BYTES: int = Field(default=100 * 1024 * 1024, ge=2 * 1024 * 1024)
+    ARCHIVE_RECONCILE_SECONDS: int = Field(default=3600, ge=60)
+    ARCHIVE_OVERLAP_SECONDS: int = Field(default=86400, ge=60)
 
     # 机器人名称列表(@名称 触发,替换为 "a " + 文本,支持多个名称,逗号分隔)
     BOT_NAMES: list[str] = []
